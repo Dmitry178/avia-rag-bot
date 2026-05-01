@@ -1,0 +1,23 @@
+_*
+!__init__.py
+.venv/
+.idea
+*.env
+!backend/.env.example
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+dist/
+build/
+
+# Data artifacts
+data/*.db
+data/*.index
+data/manifest.json
+
+# Node
+node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
