@@ -1,7 +1,9 @@
 from sqlalchemy.exc import IllegalStateChangeError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.repositories.chunk import ChunkRepository
 from app.repositories.health import HealthRepository
+from app.repositories.index_manifest import IndexManifestRepository
 
 
 class DBManager:
@@ -19,11 +21,26 @@ class DBManager:
 
         # repositories (set in __aenter__)
         self.health: HealthRepository
+        self.chunks: ChunkRepository
+        self.index_manifest: IndexManifestRepository
+
+    class EtlDBManager:
+        """
+
+        """
+
+        def __init__(self, session):
+            self.session = session
+
+            self.chunks = ChunkRepository(self.session)
+            self.index_manifest = IndexManifestRepository(self.session)
 
     async def __aenter__(self) -> "DBManager":
         self.session = self.session_factory()
 
+        self.etl = self.EtlDBManager(self.session)
         self.health = HealthRepository(self.session)
+
         return self
 
     async def __aexit__(self, exc_type, _exc_val, _exc_tb) -> None:
