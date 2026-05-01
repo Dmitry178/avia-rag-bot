@@ -95,6 +95,25 @@ class DataSettings(BaseModel):
         Path(self.dir).mkdir(parents=True, exist_ok=True)
 
 
+class ETLSettings(BaseModel):
+    """
+    ETL pipeline settings.
+    """
+
+    document_path: str = "docs/rag-document.md"
+
+    def resolve_document_path(self, repo_root: Path) -> Path:
+        """
+        Return absolute path to the knowledge base markdown document.
+        """
+
+        path = Path(self.document_path)
+        if path.is_absolute():
+            return path
+
+        return repo_root / path
+
+
 class LLMSettings(BaseModel):
     """
     OpenAI-compatible LLM provider settings.
@@ -141,8 +160,17 @@ class Settings(BaseSettings):
     log: LogSettings = Field(default_factory=LogSettings)
     db: DBSettings = Field(default_factory=DBSettings)
     data: DataSettings = Field(default_factory=DataSettings)
+    etl: ETLSettings = Field(default_factory=ETLSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+
+    @property
+    def repo_root(self) -> Path:
+        """
+        Monorepo root directory.
+        """
+
+        return _REPO_ROOT
 
 
 settings = Settings()
