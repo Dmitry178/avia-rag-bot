@@ -1,6 +1,8 @@
 from sqlalchemy.exc import IllegalStateChangeError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.repositories.chat import ChatRepository
+from app.repositories.chat_message import ChatMessageRepository
 from app.repositories.chunk import ChunkRepository
 from app.repositories.health import HealthRepository
 from app.repositories.index_manifest import IndexManifestRepository
@@ -21,23 +23,31 @@ class DBManager:
 
         # repositories (set in __aenter__)
         self.health: HealthRepository
-        self.chunks: ChunkRepository
-        self.index_manifest: IndexManifestRepository
+        self.etl: "DBManager.EtlDBManager"
+        self.chat: "DBManager.ChatDBManager"
 
     class EtlDBManager:
         """
-
+        ETL-related repositories.
         """
 
-        def __init__(self, session):
-            self.session = session
+        def __init__(self, session: AsyncSession) -> None:
+            self.chunks = ChunkRepository(session)
+            self.index_manifest = IndexManifestRepository(session)
 
-            self.chunks = ChunkRepository(self.session)
-            self.index_manifest = IndexManifestRepository(self.session)
+    class ChatDBManager:
+        """
+        Chat-related repositories.
+        """
+
+        def __init__(self, session: AsyncSession) -> None:
+            self.chats = ChatRepository(session)
+            self.messages = ChatMessageRepository(session)
 
     async def __aenter__(self) -> "DBManager":
         self.session = self.session_factory()
 
+        self.chat = self.ChatDBManager(self.session)
         self.etl = self.EtlDBManager(self.session)
         self.health = HealthRepository(self.session)
 
