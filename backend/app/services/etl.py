@@ -34,7 +34,7 @@ class ETLService:
         """
         API/CLI override or default from ETL__DOCUMENT_PATH (relative to repo root).
         """
-        
+
         if source_path:
             path = Path(source_path)
             if not path.is_absolute():
@@ -187,7 +187,7 @@ class ETLService:
         """
 
         latest = await self.db.etl.index_manifest.get_latest()
-        
+
         # Business rule: no manifest row means ingest has never completed successfully.
         if latest is None:
             raise ServiceError(
