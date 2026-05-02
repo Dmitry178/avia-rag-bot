@@ -54,7 +54,7 @@ class ChatService:
 
         error_code = getattr(exc, "error_code", "chat_error")
         detail = getattr(exc, "detail", str(exc))
-        
+
         await sse_manager.publish(
             client_id,
             "error",
@@ -69,7 +69,7 @@ class ChatService:
                 error_code="chat_not_found",
                 status_code=404,
             )
-        
+
         if chat.is_closed:
             raise ServiceError(
                 detail="Chat is closed",
@@ -257,7 +257,7 @@ class ChatService:
                 error_code="message_not_found",
                 status_code=404,
             )
-        
+
         if message.role != MessageRole.USER.value:
             raise ServiceError(
                 detail="Only user messages can be edited",
@@ -289,7 +289,7 @@ class ChatService:
                 error_code="message_not_found",
                 status_code=404,
             )
-        
+
         if message.role != MessageRole.ASSISTANT.value:
             raise ServiceError(
                 detail="Only assistant messages can be rated",
