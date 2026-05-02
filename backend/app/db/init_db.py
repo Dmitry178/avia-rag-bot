@@ -3,7 +3,7 @@
 from sqlmodel import SQLModel
 
 from app.db.session import engine
-from app.models import ChunkMeta, IndexManifest  # noqa: F401
+from app.models import Chat, ChatMessage, ChunkMeta, IndexManifest  # noqa: F401
 
 
 async def init_db() -> None:
