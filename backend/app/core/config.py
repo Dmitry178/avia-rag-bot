@@ -82,7 +82,7 @@ class DBSettings(BaseModel):
 
 class DataSettings(BaseModel):
     """
-    Filesystem paths for indexes and artifacts.
+    Filesystem paths for SQLite and sidecar JSON artifacts.
     """
 
     dir: str = "./data"
@@ -93,6 +93,30 @@ class DataSettings(BaseModel):
         """
 
         Path(self.dir).mkdir(parents=True, exist_ok=True)
+
+
+class FaissSettings(BaseModel):
+    """
+    FAISS vector index artifact directory (data-only, not a Python package).
+    """
+
+    dir: str = Field(default="./faiss", description="Directory for faiss.index (relative to backend root).")
+    index_file: str = Field(default="faiss.index", description="FAISS index filename inside dir.")
+
+    def index_path(self, backend_root: Path) -> Path:
+        """
+        Resolve absolute path to the FAISS index file.
+        """
+
+        base = Path(self.dir) if Path(self.dir).is_absolute() else backend_root / self.dir
+        return base / self.index_file
+
+    def ensure_exists(self, backend_root: Path) -> None:
+        """
+        Create FAISS artifact directory if missing.
+        """
+
+        self.index_path(backend_root).parent.mkdir(parents=True, exist_ok=True)
 
 
 class ETLSettings(BaseModel):
@@ -160,6 +184,7 @@ class Settings(BaseSettings):
     log: LogSettings = Field(default_factory=LogSettings)
     db: DBSettings = Field(default_factory=DBSettings)
     data: DataSettings = Field(default_factory=DataSettings)
+    faiss: FaissSettings = Field(default_factory=FaissSettings)
     etl: ETLSettings = Field(default_factory=ETLSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
@@ -171,6 +196,14 @@ class Settings(BaseSettings):
         """
 
         return _REPO_ROOT
+
+    @property
+    def backend_root(self) -> Path:
+        """
+        Backend package root (backend/).
+        """
+
+        return Path(__file__).resolve().parents[2]
 
 
 settings = Settings()
