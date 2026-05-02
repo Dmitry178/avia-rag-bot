@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 from app.core.config import Settings, settings
 from app.core.db_manager import DBManager
 from app.core.logs import logger
+from app.core.sse_manager import sse_manager
 from app.exceptions import handle_basic_db_errors
 from app.exceptions.service import ServiceError
-from app.infrastructure.llm.chat import ChatCompletionClient
-from app.infrastructure.sse.hub import sse_hub
+from app.llm.chat import ChatCompletionClient
 from app.models.chat_message import MessageRole
 from app.schemas.chat import (
     ChatDetailResponse,
@@ -54,7 +54,8 @@ class ChatService:
 
         error_code = getattr(exc, "error_code", "chat_error")
         detail = getattr(exc, "detail", str(exc))
-        await sse_hub.publish(
+        
+        await sse_manager.publish(
             client_id,
             "error",
             {"message": detail, "chat_id": chat_id, "error_code": error_code},
