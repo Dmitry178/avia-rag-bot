@@ -44,6 +44,10 @@ packages = ["app", "etl"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "api: HTTP API integration tests (tests/api/)",
+    "unit: business-logic unit tests (tests/unit/)",
+]
 
 [tool.ruff]
 line-length = 120
