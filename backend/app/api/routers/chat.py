@@ -3,13 +3,12 @@
 import json
 
 from collections.abc import AsyncIterator
-
 from fastapi import APIRouter, Depends, Query
 from sse_starlette.sse import EventSourceResponse
 
 from app.core.db_manager import DBManager
 from app.db.deps import get_db
-from app.infrastructure.sse.hub import sse_hub
+from app.core.sse_manager import sse_manager
 from app.schemas.chat import (
     ChatDetailResponse,
     ChatMessageResponse,
@@ -36,16 +35,13 @@ async def chat_events(client_id: str = Query(..., min_length=1)) -> EventSourceR
     """
 
     async def event_generator() -> AsyncIterator[dict[str, str]]:
-        queue = await sse_hub.subscribe(client_id)
-        try:
+        async with sse_manager.subscription(client_id) as queue:
             while True:
                 payload = await queue.get()
                 yield {
                     "event": payload["event"],
                     "data": json.dumps(payload["data"], ensure_ascii=False),
                 }
-        finally:
-            await sse_hub.unsubscribe(client_id, queue)
 
     return EventSourceResponse(event_generator())
 
