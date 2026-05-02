@@ -12,8 +12,8 @@ build/
 
 # Data artifacts
 data/*.db
-data/*.index
 data/manifest.json
+backend/faiss/*
 
 # Node
 node_modules/
