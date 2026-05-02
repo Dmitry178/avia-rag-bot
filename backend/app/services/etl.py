@@ -2,16 +2,17 @@
 
 import hashlib
 import json
+
 from datetime import UTC, datetime
 from pathlib import Path
 
 from app.core.config import Settings, settings
 from app.core.db_manager import DBManager
+from app.core.faiss_manager import faiss_manager
 from app.core.logs import logger
 from app.exceptions import handle_basic_db_errors
 from app.exceptions.service import ServiceError
-from app.infrastructure.faiss.store import save_index_async
-from app.infrastructure.llm.embeddings import EmbeddingClient
+from app.llm.embeddings import EmbeddingClient
 from app.models.chunk_meta import ChunkMeta
 from app.models.index_manifest import IndexManifest
 from app.schemas.etl import ChunkStatsResponse, IngestResponse, ManifestResponse
@@ -43,7 +44,7 @@ class ETLService:
         return self.settings.etl.resolve_document_path(self.settings.repo_root)
 
     def _faiss_index_path(self) -> Path:
-        return Path(self.settings.data.dir) / "faiss.index"
+        return self.settings.faiss.index_path(self.settings.backend_root)
 
     def _manifest_json_path(self) -> Path:
         # Duplicate of index_manifest row for tooling / Docker bootstrap without DB access.
@@ -138,7 +139,8 @@ class ETLService:
         # Index is rebuilt on disk only after SQLite succeeds so retrieval metadata stays consistent.
         data_dir = Path(self.settings.data.dir)
         data_dir.mkdir(parents=True, exist_ok=True)
-        await save_index_async(vectors, self._faiss_index_path())
+        self.settings.faiss.ensure_exists(self.settings.backend_root)
+        await faiss_manager.save_async(vectors, self._faiss_index_path())
 
         manifest_payload = {
             "source_path": source,
