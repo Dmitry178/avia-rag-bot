@@ -17,6 +17,7 @@ async def lifespan(_app: FastAPI):
     """
 
     settings.data.ensure_exists()
+    settings.faiss.ensure_exists(settings.backend_root)
     await init_db()
     logger.info("application_started", data_dir=settings.data.dir)
 
