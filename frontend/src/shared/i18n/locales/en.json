@@ -1,0 +1,61 @@
+{
+  "app": {
+    "title": "AI Airport Staff Assistant",
+    "subtitle": "Airport knowledge base · RAG assistant",
+    "subtitleRag": "Airport knowledge base · RAG assistant",
+    "subtitleLlm": "Open conversation · LLM without knowledge base"
+  },
+  "mode": {
+    "rag": "RAG",
+    "llm": "LLM"
+  },
+  "theme": {
+    "dark": "Dark",
+    "light": "Light"
+  },
+  "locale": {
+    "ru": "Russian",
+    "en": "English"
+  },
+  "panels": {
+    "chats": "Chats",
+    "dialog": "Dialog",
+    "trace": "Trace"
+  },
+  "chat": {
+    "new": "New chat",
+    "defaultTitle": "New chat",
+    "selectOrCreate": "Select a chat on the left or create a new one.",
+    "createFirst": "Create your first chat to start a conversation.",
+    "placeholderSelect": "Select a chat first",
+    "placeholderClosed": "Chat is closed",
+    "placeholderInput": "Ask a question about airport procedures...",
+    "placeholderLlm": "Ask anything..."
+  },
+  "roles": {
+    "user": "You",
+    "assistant": "Assistant",
+    "system": "System"
+  },
+  "common": {
+    "send": "Send"
+  },
+  "errors": {
+    "loadChats": "Failed to load chat list",
+    "loadChat": "Failed to load chat history"
+  },
+  "trace": {
+    "empty": "RAG pipeline steps will appear here in real time via SSE once the trace stream is connected.",
+    "requestId": "request_id: {{id}}",
+    "durationMs": "{{ms}} ms",
+    "steps": {
+      "retrieval": "Retrieval",
+      "generation": "Generation",
+      "router": "Router",
+      "rerank": "Rerank",
+      "hyde": "HyDE",
+      "faq_match": "FAQ match",
+      "guard": "Guard"
+    }
+  }
+}
