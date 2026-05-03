@@ -1,0 +1,61 @@
+{
+  "app": {
+    "title": "AI-помощник сотрудника аэропорта",
+    "subtitle": "База знаний аэропорта · RAG-ассистент",
+    "subtitleRag": "База знаний аэропорта · RAG-ассистент",
+    "subtitleLlm": "Свободный диалог · LLM без базы знаний"
+  },
+  "mode": {
+    "rag": "RAG",
+    "llm": "LLM"
+  },
+  "theme": {
+    "dark": "Тёмная",
+    "light": "Светлая"
+  },
+  "locale": {
+    "ru": "Русский",
+    "en": "English"
+  },
+  "panels": {
+    "chats": "Чаты",
+    "dialog": "Диалог",
+    "trace": "Трассировка"
+  },
+  "chat": {
+    "new": "Новый чат",
+    "defaultTitle": "Новый чат",
+    "selectOrCreate": "Выберите чат слева или создайте новый.",
+    "createFirst": "Создайте первый чат, чтобы начать диалог.",
+    "placeholderSelect": "Сначала выберите чат",
+    "placeholderClosed": "Чат закрыт",
+    "placeholderInput": "Введите вопрос по процедурам аэропорта...",
+    "placeholderLlm": "Задайте любой вопрос..."
+  },
+  "roles": {
+    "user": "Вы",
+    "assistant": "Ассистент",
+    "system": "Система"
+  },
+  "common": {
+    "send": "Отправить"
+  },
+  "errors": {
+    "loadChats": "Не удалось загрузить список чатов",
+    "loadChat": "Не удалось загрузить историю чата"
+  },
+  "trace": {
+    "empty": "Здесь появятся шаги RAG-пайплайна в реальном времени через SSE, когда будет подключён trace stream.",
+    "requestId": "request_id: {{id}}",
+    "durationMs": "{{ms}} мс",
+    "steps": {
+      "retrieval": "Поиск",
+      "generation": "Генерация",
+      "router": "Роутер",
+      "rerank": "Реранжирование",
+      "hyde": "HyDE",
+      "faq_match": "FAQ",
+      "guard": "Защита"
+    }
+  }
+}
