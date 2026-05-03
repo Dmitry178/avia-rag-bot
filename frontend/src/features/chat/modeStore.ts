@@ -1,34 +1,22 @@
-import { useEffect } from "react";
-import { PrimeReactProvider } from "primereact/api";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
-import { applyTheme } from "@/theme/applyTheme";
-import { useThemeStore } from "@/theme/store";
+export type ChatMode = "rag" | "llm";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      retry: 1,
-      refetchOnWindowFocus: false,
+interface ChatModeState {
+  mode: ChatMode;
+  setMode: (mode: ChatMode) => void;
+}
+
+export const useChatModeStore = create<ChatModeState>()(
+  persist(
+    (set) => ({
+      mode: "llm",
+      setMode: (mode) => set({ mode }),
+    }),
+    {
+      name: "avia-bot.chat-mode",
+      partialize: (state) => ({ mode: state.mode }),
     },
-  },
-});
-
-interface AppProvidersProps {
-  children: React.ReactNode;
-}
-
-export function AppProviders({ children }: AppProvidersProps) {
-  const theme = useThemeStore((state) => state.theme);
-
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
-
-  return (
-    <PrimeReactProvider value={{ ripple: true }}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    </PrimeReactProvider>
-  );
-}
+  ),
+);
