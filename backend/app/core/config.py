@@ -6,7 +6,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = _BACKEND_ROOT.parent
 
 
 class AppSettings(BaseModel):
@@ -37,8 +38,8 @@ class LogFormat(StrEnum):
     Log output format.
     """
 
-    JSON = "json"
-    TEXT = "text"
+    JSON = "JSON"
+    TEXT = "TEXT"
 
 
 class DBSettings(BaseModel):
@@ -174,7 +175,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=str(_REPO_ROOT / ".env"),
+        env_file=str(_BACKEND_ROOT / ".env"),
         env_file_encoding="utf-8",
         env_nested_delimiter="__",
         extra="ignore",
@@ -203,7 +204,7 @@ class Settings(BaseSettings):
         Backend package root (backend/).
         """
 
-        return Path(__file__).resolve().parents[2]
+        return _BACKEND_ROOT
 
 
 settings = Settings()
