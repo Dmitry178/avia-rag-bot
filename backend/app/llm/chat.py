@@ -16,7 +16,7 @@ _DEFAULT_SYSTEM_PROMPT = (
 
 class ChatCompletionClient:
     """
-    Synchronous (non-streaming) chat via /v1/chat/completions.
+    Synchronous (non-streaming) chat via {LLM__BASE_URL}/chat/completions.
     """
 
     def __init__(self, settings: LLMSettings) -> None:
@@ -60,7 +60,7 @@ class ChatCompletionClient:
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{base_url}/v1/chat/completions",
+                f"{base_url}/chat/completions",
                 headers=headers,
                 json={
                     "model": self._settings.model,
