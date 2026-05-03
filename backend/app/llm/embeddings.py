@@ -10,7 +10,7 @@ _EMBED_BATCH_SIZE = 32
 
 class EmbeddingClient:
     """
-    Batch embedding via OpenAI-compatible /v1/embeddings endpoint.
+    Batch embedding via {LLM__BASE_URL}/embeddings endpoint.
     """
 
     def __init__(self, settings: LLMSettings) -> None:
@@ -48,7 +48,7 @@ class EmbeddingClient:
             for offset in range(0, len(texts), _EMBED_BATCH_SIZE):
                 batch = texts[offset : offset + _EMBED_BATCH_SIZE]
                 response = await client.post(
-                    f"{base_url}/v1/embeddings",
+                    f"{base_url}/embeddings",
                     headers=headers,
                     json={"model": self._settings.embedding_model, "input": batch},
                 )
