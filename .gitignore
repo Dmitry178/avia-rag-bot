@@ -14,6 +14,7 @@ build/
 data/*.db
 data/manifest.json
 backend/faiss/*
+backend/data/*.db
 
 # Node
 node_modules/
