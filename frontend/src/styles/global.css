@@ -38,6 +38,19 @@ textarea {
   font-family: inherit;
 }
 
+.p-button:focus,
+.p-button.p-focus,
+.p-inputtext:enabled:focus,
+.p-inputtextarea:enabled:focus {
+  outline: none !important;
+  box-shadow: var(--color-focus-ring) !important;
+}
+
+.p-inputtext:enabled:focus,
+.p-inputtextarea:enabled:focus {
+  border-color: var(--color-focus-border) !important;
+}
+
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -84,10 +97,43 @@ textarea {
   line-height: 1.25;
   min-height: 1.75rem;
   overflow: hidden;
+  background: var(--color-background-elevated);
+  border-color: var(--color-header-select-border);
+  color: var(--color-text-primary);
+}
+
+.app-header__select .p-button:not(.p-disabled):not(.p-highlight):hover {
+  background: var(--color-background-hover);
+  border-color: var(--color-header-select-border);
+  color: var(--color-text-primary);
+}
+
+.app-header__select .p-button.p-highlight {
+  background: var(--color-brand-primaryMuted);
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+}
+
+.app-header__select .p-button.p-highlight:hover {
+  background: var(--color-background-active);
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
 }
 
 .app-header__select .p-button .p-button-label {
   line-height: 1.25;
+}
+
+.app-panel__header .p-button {
+  background: var(--color-brand-primaryMuted);
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+}
+
+.app-panel__header .p-button:not(:disabled):hover {
+  background: var(--color-background-active);
+  border-color: var(--color-brand-primaryHover);
+  color: var(--color-brand-primaryHover);
 }
 
 .app-main {
@@ -162,6 +208,11 @@ textarea {
   background: var(--color-background-hover);
 }
 
+.chat-list__item:focus-visible {
+  outline: 1px solid var(--color-focus-border);
+  outline-offset: 0;
+}
+
 .chat-list__item--active {
   background: var(--color-background-active);
   border-color: var(--color-border-subtle);
@@ -194,8 +245,8 @@ textarea {
 
 .chat-message--user {
   align-self: flex-end;
-  background: var(--color-brand-primary-muted);
-  border-color: transparent;
+  background: var(--color-chat-user-bubble);
+  border: 1px solid var(--color-chat-user-bubble-border);
 }
 
 .chat-message--assistant {
@@ -234,6 +285,17 @@ textarea {
 
 .chat-composer__input {
   flex: 1;
+  background: var(--color-background-input);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-subtle);
+}
+
+.chat-composer__input:enabled:hover {
+  border-color: var(--color-border-strong);
+}
+
+.chat-composer__input:enabled:focus {
+  border-color: var(--color-focus-border);
 }
 
 .trace-empty {
