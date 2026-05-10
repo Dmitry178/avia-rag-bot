@@ -2,9 +2,10 @@ import { Button } from "primereact/button";
 import { SelectButton } from "primereact/selectbutton";
 
 import { type ChatMode, useChatModeStore } from "@/features/chat/modeStore";
+import { useChatUiStore } from "@/features/chats/store";
 import { type Locale, useTranslation } from "@/shared/i18n";
 import { useThemeStore } from "@/theme/store";
-import type { ThemeName } from "@/theme/types";
+import type { ThemePreference } from "@/theme/types";
 
 export function AppHeader() {
   const { t, locale, setLocale } = useTranslation();
@@ -12,10 +13,12 @@ export function AppHeader() {
   const setTheme = useThemeStore((state) => state.setTheme);
   const chatMode = useChatModeStore((state) => state.mode);
   const setChatMode = useChatModeStore((state) => state.setMode);
+  const requestComposerFocus = useChatUiStore((state) => state.requestComposerFocus);
 
-  const themeOptions: { label: string; value: ThemeName }[] = [
-    { label: t("theme.dark"), value: "dark" },
+  const themeOptions: { label: string; value: ThemePreference }[] = [
+    { label: t("theme.system"), value: "system" },
     { label: t("theme.light"), value: "light" },
+    { label: t("theme.dark"), value: "dark" },
   ];
 
   const localeOptions: { label: string; value: Locale }[] = [
@@ -46,6 +49,7 @@ export function AppHeader() {
           onChange={(event) => {
             if (event.value) {
               setChatMode(event.value as ChatMode);
+              requestComposerFocus();
             }
           }}
           allowEmpty={false}
@@ -58,6 +62,7 @@ export function AppHeader() {
           onChange={(event) => {
             if (event.value) {
               setLocale(event.value as Locale);
+              requestComposerFocus();
             }
           }}
           allowEmpty={false}
@@ -69,7 +74,8 @@ export function AppHeader() {
           options={themeOptions}
           onChange={(event) => {
             if (event.value) {
-              setTheme(event.value as ThemeName);
+              setTheme(event.value as ThemePreference);
+              requestComposerFocus();
             }
           }}
           allowEmpty={false}
