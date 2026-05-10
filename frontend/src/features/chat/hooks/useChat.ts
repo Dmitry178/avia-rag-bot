@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getChat, sendMessage } from "@/shared/api/chats";
-import { chatsQueryKey } from "@/features/chats/hooks/useChats";
 import { useChatUiStore } from "@/features/chats/store";
 
 export function chatDetailQueryKey(chatId: number) {
@@ -33,7 +32,7 @@ export function useSendMessageMutation(chatId: number | null) {
         void queryClient.invalidateQueries({ queryKey: chatDetailQueryKey(chatId) });
       }
 
-      void queryClient.invalidateQueries({ queryKey: chatsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["chats"] });
     },
   });
 }
