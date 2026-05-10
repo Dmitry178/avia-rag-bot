@@ -2,6 +2,8 @@ import themesJson from "./themes.json";
 
 export type ThemeName = keyof typeof themesJson.themes;
 
+export type ThemePreference = ThemeName | "system";
+
 export type ColorTokenKey = keyof typeof themesJson.themes.dark;
 
 export type ThemeTokens = Record<ColorTokenKey, string>;
