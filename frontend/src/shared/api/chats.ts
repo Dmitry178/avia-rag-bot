@@ -1,16 +1,16 @@
 import { apiRequest } from "./client";
-import type { ChatDetail, ChatSummary, SendMessageResponse } from "./types";
+import type { ChatDetail, ChatMode, ChatSummary, SendMessageResponse } from "./types";
 
 const BASE = "/api/chats";
 
-export function listChats(): Promise<ChatSummary[]> {
-  return apiRequest<ChatSummary[]>(BASE);
+export function listChats(chatType: ChatMode): Promise<ChatSummary[]> {
+  return apiRequest<ChatSummary[]>(`${BASE}?chat_type=${chatType}`);
 }
 
-export function createChat(title: string): Promise<ChatSummary> {
+export function createChat(title: string, chatType: ChatMode): Promise<ChatSummary> {
   return apiRequest<ChatSummary>(BASE, {
     method: "POST",
-    body: { title },
+    body: { title, chat_type: chatType },
   });
 }
 
