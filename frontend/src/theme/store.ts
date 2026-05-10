@@ -1,26 +1,26 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { applyTheme, readStoredTheme } from "./applyTheme";
-import type { ThemeName } from "./types";
-import { themesConfig } from "./types";
+import { applyTheme, readStoredThemePreference, resolveTheme } from "./applyTheme";
+import type { ThemeName, ThemePreference } from "./types";
 
 interface ThemeState {
-  theme: ThemeName;
-  setTheme: (theme: ThemeName) => void;
+  theme: ThemePreference;
+  setTheme: (theme: ThemePreference) => void;
   toggleTheme: () => void;
 }
 
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      theme: readStoredTheme(),
+      theme: readStoredThemePreference(),
       setTheme: (theme) => {
-        applyTheme(theme);
+        applyTheme(resolveTheme(theme));
         set({ theme });
       },
       toggleTheme: () => {
-        const next: ThemeName = get().theme === "dark" ? "light" : "dark";
+        const resolved: ThemeName = resolveTheme(get().theme);
+        const next: ThemeName = resolved === "dark" ? "light" : "dark";
         applyTheme(next);
         set({ theme: next });
       },
@@ -29,8 +29,8 @@ export const useThemeStore = create<ThemeState>()(
       name: "avia-bot.theme",
       partialize: (state) => ({ theme: state.theme }),
       onRehydrateStorage: () => (state) => {
-        const theme = state?.theme ?? themesConfig.defaultTheme;
-        applyTheme(theme);
+        const preference = state?.theme ?? "system";
+        applyTheme(resolveTheme(preference));
       },
     },
   ),
