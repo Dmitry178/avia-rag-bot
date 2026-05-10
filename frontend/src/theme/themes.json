@@ -10,6 +10,8 @@
     "background.active": "Selected chat or active nav item",
     "border.subtle": "Panel dividers and separators",
     "border.strong": "Focused inputs and emphasized borders",
+    "focus.ring": "Focus ring shadow for interactive controls",
+    "focus.border": "Focus border color for inputs and buttons",
     "text.primary": "Primary body text",
     "text.secondary": "Metadata, timestamps, hints",
     "text.muted": "Disabled and placeholder text",
@@ -24,7 +26,10 @@
     "trace.retrieval": "Retrieval step in trace panel",
     "trace.generation": "Generation step in trace panel",
     "trace.router": "Router step in trace panel",
-    "shadow.overlay": "Modal and drawer overlays"
+    "shadow.overlay": "Modal and drawer overlays",
+    "chat.user.bubble": "User message bubble background",
+    "chat.user.bubble.border": "User message bubble border",
+    "header.select.border": "Header select button border"
   },
   "themes": {
     "dark": {
@@ -36,6 +41,8 @@
       "background.active": "#243044",
       "border.subtle": "#2a3544",
       "border.strong": "#3d4f66",
+      "focus.ring": "0 0 0 1px rgba(77, 163, 255, 0.18)",
+      "focus.border": "#3a4a5e",
       "text.primary": "#e8edf4",
       "text.secondary": "#9aa8ba",
       "text.muted": "#6b7a8f",
@@ -50,7 +57,10 @@
       "trace.retrieval": "#7c9cff",
       "trace.generation": "#5ec8ff",
       "trace.router": "#c49bff",
-      "shadow.overlay": "rgba(0, 0, 0, 0.55)"
+      "shadow.overlay": "rgba(0, 0, 0, 0.55)",
+      "chat.user.bubble": "#325a8a",
+      "chat.user.bubble.border": "#5a9ee0",
+      "header.select.border": "#4f6378"
     },
     "light": {
       "background.app": "#f4f6f9",
@@ -61,6 +71,8 @@
       "background.active": "#e3ebf5",
       "border.subtle": "#d8e0ea",
       "border.strong": "#b8c5d6",
+      "focus.ring": "0 0 0 1px rgba(26, 111, 209, 0.16)",
+      "focus.border": "#c5d3e3",
       "text.primary": "#1a2332",
       "text.secondary": "#5a6b7f",
       "text.muted": "#8a97a8",
@@ -75,7 +87,10 @@
       "trace.retrieval": "#4f6fd8",
       "trace.generation": "#1a8fc4",
       "trace.router": "#7b4fd8",
-      "shadow.overlay": "rgba(15, 23, 42, 0.35)"
+      "shadow.overlay": "rgba(15, 23, 42, 0.35)",
+      "chat.user.bubble": "#dceeff",
+      "chat.user.bubble.border": "#6aaee8",
+      "header.select.border": "#9aacbf"
     }
   },
   "primeReactMapping": {
