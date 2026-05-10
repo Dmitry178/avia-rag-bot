@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.chat import Chat
+from app.models.chat import Chat, ChatType
 
 
 class ChatRepository:
@@ -16,16 +16,17 @@ class ChatRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def list_active(self) -> list[Chat]:
+    async def list_active(self, chat_type: ChatType | None = None) -> list[Chat]:
         """
         Return non-deleted chats ordered by last activity.
         """
 
-        statement = (
-            select(Chat)
-            .where(Chat.is_deleted.is_(False))
-            .order_by(Chat.updated_at.desc())
-        )
+        statement = select(Chat).where(Chat.is_deleted.is_(False))
+
+        if chat_type is not None:
+            statement = statement.where(Chat.chat_type == chat_type.value)
+
+        statement = statement.order_by(Chat.updated_at.desc())
         result = await self.session.execute(statement)
 
         return list(result.scalars().all())
@@ -40,13 +41,13 @@ class ChatRepository:
 
         return result.scalar_one_or_none()
 
-    async def create(self, title: str = "New chat") -> Chat:
+    async def create(self, title: str = "New chat", chat_type: ChatType = ChatType.LLM) -> Chat:
         """
         Insert a new open chat.
         """
 
         now = datetime.now(UTC)
-        chat = Chat(title=title, created_at=now, updated_at=now)
+        chat = Chat(title=title, chat_type=chat_type.value, created_at=now, updated_at=now)
         self.session.add(chat)
         await self.session.flush()
         await self.session.refresh(chat)
