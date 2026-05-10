@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.models.chat_message import MessageRole
+from app.models.chat import ChatType
 
 
 class ChatSummaryResponse(BaseModel):
@@ -15,6 +16,7 @@ class ChatSummaryResponse(BaseModel):
 
     id: int
     title: str
+    chat_type: ChatType
     is_closed: bool
     created_at: datetime
     updated_at: datetime
@@ -44,6 +46,7 @@ class ChatDetailResponse(BaseModel):
 
     id: int
     title: str
+    chat_type: ChatType
     is_closed: bool
     created_at: datetime
     updated_at: datetime
@@ -57,6 +60,10 @@ class CreateChatRequest(BaseModel):
     """
 
     title: str = Field(default="New chat", min_length=1, max_length=200)
+    chat_type: ChatType = Field(
+        default=ChatType.LLM,
+        description="Chat pipeline mode: llm or rag.",
+    )
 
 
 class SendMessageRequest(BaseModel):
