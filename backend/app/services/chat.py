@@ -9,6 +9,7 @@ from app.core.sse_manager import sse_manager
 from app.exceptions import handle_basic_db_errors
 from app.exceptions.service import ServiceError
 from app.llm.chat import ChatCompletionClient
+from app.models.chat import ChatType
 from app.models.chat_message import MessageRole
 from app.schemas.chat import (
     ChatDetailResponse,
@@ -32,6 +33,18 @@ class ChatService:
     def __init__(self, db: DBManager, app_settings: Settings | None = None) -> None:
         self.db = db
         self.settings = app_settings or settings
+
+    @staticmethod
+    def _chat_to_summary(chat) -> ChatSummaryResponse:
+        return ChatSummaryResponse(
+            id=chat.id,
+            title=chat.title,
+            chat_type=ChatType(chat.chat_type),
+            is_closed=chat.is_closed,
+            created_at=chat.created_at,
+            updated_at=chat.updated_at,
+            closed_at=chat.closed_at,
+        )
 
     @staticmethod
     def _message_to_response(message) -> ChatMessageResponse:
@@ -79,23 +92,13 @@ class ChatService:
         return chat
 
     @handle_basic_db_errors
-    async def list_chats(self) -> list[ChatSummaryResponse]:
+    async def list_chats(self, chat_type: ChatType | None = None) -> list[ChatSummaryResponse]:
         """
         Return active (non-deleted) chats for the sidebar.
         """
 
-        chats = await self.db.chat.chats.list_active()
-        return [
-            ChatSummaryResponse(
-                id=chat.id,
-                title=chat.title,
-                is_closed=chat.is_closed,
-                created_at=chat.created_at,
-                updated_at=chat.updated_at,
-                closed_at=chat.closed_at,
-            )
-            for chat in chats
-        ]
+        chats = await self.db.chat.chats.list_active(chat_type=chat_type)
+        return [self._chat_to_summary(chat) for chat in chats]
 
     @handle_basic_db_errors
     async def create_chat(self, body: CreateChatRequest) -> ChatSummaryResponse:
@@ -103,17 +106,10 @@ class ChatService:
         Create a new chat thread.
         """
 
-        chat = await self.db.chat.chats.create(title=body.title)
+        chat = await self.db.chat.chats.create(title=body.title, chat_type=body.chat_type)
         await self.db.commit()
 
-        return ChatSummaryResponse(
-            id=chat.id,
-            title=chat.title,
-            is_closed=chat.is_closed,
-            created_at=chat.created_at,
-            updated_at=chat.updated_at,
-            closed_at=chat.closed_at,
-        )
+        return self._chat_to_summary(chat)
 
     @handle_basic_db_errors
     async def get_chat(self, chat_id: int) -> ChatDetailResponse:
@@ -134,6 +130,7 @@ class ChatService:
         return ChatDetailResponse(
             id=chat.id,
             title=chat.title,
+            chat_type=ChatType(chat.chat_type),
             is_closed=chat.is_closed,
             created_at=chat.created_at,
             updated_at=chat.updated_at,
@@ -171,14 +168,7 @@ class ChatService:
             )
         await self.db.commit()
 
-        return ChatSummaryResponse(
-            id=chat.id,
-            title=chat.title,
-            is_closed=chat.is_closed,
-            created_at=chat.created_at,
-            updated_at=chat.updated_at,
-            closed_at=chat.closed_at,
-        )
+        return self._chat_to_summary(chat)
 
     @handle_basic_db_errors
     async def send_message(self, chat_id: int, body: SendMessageRequest) -> SendMessageResponse:
