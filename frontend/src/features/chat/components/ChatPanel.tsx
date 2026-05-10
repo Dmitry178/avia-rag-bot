@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "primereact/button";
 import { InputTextarea } from "primereact/inputtextarea";
 import { Message } from "primereact/message";
@@ -10,6 +10,7 @@ import { useChatModeStore } from "@/features/chat/modeStore";
 import { useChatUiStore } from "@/features/chats/store";
 import { useTranslation } from "@/shared/i18n";
 import { useChatDetailQuery, useSendMessageMutation } from "../hooks/useChat";
+import { useComposerFocus } from "../hooks/useComposerFocus";
 
 function MessageBubble({
   role,
@@ -47,6 +48,18 @@ export function ChatPanel() {
   const chatQuery = useChatDetailQuery(selectedChatId);
   const sendMutation = useSendMessageMutation(selectedChatId);
   const [draft, setDraft] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const panelBodyRef = useRef<HTMLDivElement>(null);
+
+  const isComposerDisabled =
+    selectedChatId === null || chatQuery.data?.is_closed === true || sendMutation.isPending;
+
+  useComposerFocus({
+    textareaRef,
+    selectedChatId,
+    isComposerDisabled,
+    isSendPending: sendMutation.isPending,
+  });
 
   const inputPlaceholder =
     selectedChatId === null
@@ -60,6 +73,27 @@ export function ChatPanel() {
   useEffect(() => {
     setDraft("");
   }, [selectedChatId]);
+
+  useEffect(() => {
+    if (!chatQuery.isSuccess || selectedChatId === null) {
+      return;
+    }
+
+    const container = panelBodyRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const scrollToBottom = () => {
+      container.scrollTop = container.scrollHeight;
+    };
+
+    scrollToBottom();
+    const frameId = requestAnimationFrame(scrollToBottom);
+
+    return () => cancelAnimationFrame(frameId);
+  }, [selectedChatId, chatQuery.isSuccess, chatQuery.data?.messages.length]);
 
   const handleSend = () => {
     const content = draft.trim();
@@ -76,7 +110,7 @@ export function ChatPanel() {
     <>
       <PanelHeader title={t("panels.dialog")} />
 
-      <div className="app-panel__body">
+      <div className="app-panel__body" ref={panelBodyRef}>
         {selectedChatId === null ? (
           <p className="trace-empty">{t("chat.selectOrCreate")}</p>
         ) : null}
@@ -104,12 +138,13 @@ export function ChatPanel() {
 
       <div className="chat-composer">
         <InputTextarea
+          ref={textareaRef}
           className="chat-composer__input"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={3}
           autoResize
-          disabled={selectedChatId === null || chatQuery.data?.is_closed || sendMutation.isPending}
+          disabled={isComposerDisabled}
           placeholder={inputPlaceholder}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
