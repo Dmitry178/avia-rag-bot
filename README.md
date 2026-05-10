@@ -137,7 +137,7 @@ The same pipeline is available via API: `POST /api/etl/ingest`, `GET /api/etl/st
 
 Default source document: `backend/data/rag-document.md` (env var `ETL__DOCUMENT_PATH`).
 
-More on document format and chunking: [`backend/etl/README_RU.md`](backend/etl/README_RU.md) (Russian).
+More on document format and chunking: [`backend/etl/README.md`](backend/etl/README.md).
 
 Artifacts after ingest:
 
