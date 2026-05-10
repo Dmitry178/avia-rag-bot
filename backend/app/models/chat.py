@@ -1,8 +1,18 @@
 """Chat (conversation) SQLModel table."""
 
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from sqlmodel import Field, SQLModel
+
+
+class ChatType(StrEnum):
+    """
+    Chat pipeline mode: plain LLM or RAG.
+    """
+
+    LLM = "llm"
+    RAG = "rag"
 
 
 class Chat(SQLModel, table=True):
@@ -20,6 +30,10 @@ class Chat(SQLModel, table=True):
     title: str = Field(
         default="New chat",
         description="Display title in the chat list (may be auto-generated later).",
+    )
+    chat_type: str = Field(
+        default=ChatType.LLM.value,
+        description="Chat pipeline mode: llm (plain LLM) or rag (RAG assistant).",
     )
     is_closed: bool = Field(
         default=False,
