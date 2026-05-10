@@ -9,6 +9,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.core.db_manager import DBManager
 from app.db.deps import get_db
 from app.core.sse_manager import sse_manager
+from app.models.chat import ChatType
 from app.schemas.chat import (
     ChatDetailResponse,
     ChatMessageResponse,
@@ -52,12 +53,18 @@ async def chat_events(client_id: str = Query(..., min_length=1)) -> EventSourceR
     description="Return all non-deleted chats ordered by last activity.",
     response_model=list[ChatSummaryResponse],
 )
-async def list_chats(db: DBManager = Depends(get_db)) -> list[ChatSummaryResponse]:
+async def list_chats(
+    chat_type: ChatType | None = Query(
+        default=None,
+        description="Filter chats by pipeline mode: llm or rag.",
+    ),
+    db: DBManager = Depends(get_db),
+) -> list[ChatSummaryResponse]:
     """
     List chat threads for the sidebar.
     """
 
-    return await ChatService(db).list_chats()
+    return await ChatService(db).list_chats(chat_type=chat_type)
 
 
 @router.post(
