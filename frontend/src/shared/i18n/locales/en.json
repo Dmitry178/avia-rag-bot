@@ -10,6 +10,7 @@
     "llm": "LLM"
   },
   "theme": {
+    "system": "System",
     "dark": "Dark",
     "light": "Light"
   },
