@@ -3,6 +3,7 @@ _*
 .venv/
 .idea
 *.env
+*.db
 !backend/.env.example
 .ruff_cache/
 .mypy_cache/
@@ -11,10 +12,8 @@ dist/
 build/
 
 # Data artifacts
-data/*.db
 data/manifest.json
 backend/faiss/*
-backend/data/*.db
 
 # Node
 node_modules/
