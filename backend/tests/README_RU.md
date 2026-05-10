@@ -1,5 +1,7 @@
 # Тесты backend
 
+[English](README.md) · **Русский**
+
 Набор тестов для `avia-bot-backend`. Разделён на два слоя:
 
 | Слой | Каталог | Что проверяет |
@@ -13,7 +15,9 @@
 
 ```
 tests/
-├── README_RU.md          # этот файл
+├── README.md           # English version
+├── README_RU.md        # этот файл
+├── conftest.py           # изоляция БД для API-тестов (см. ниже)
 ├── paths.py              # общие пути к тестовым данным
 ├── api/
 │   ├── conftest.py       # фикстура client (lifespan + AsyncClient)
@@ -47,9 +51,23 @@ uv run pytest -k "soft_delete"   # по имени теста
 
 Конфигурация pytest — в `pyproject.toml` (`testpaths = ["tests"]`, `asyncio_mode = "auto"`).
 
+## Изоляция базы данных
+
+API-тесты **не используют** dev-базу `data/app.db`. Перед импортом приложения `tests/conftest.py`:
+
+1. задаёт `DB__URL` на отдельный файл `tests/.pytest_app.db`;
+2. удаляет его в начале сессии (если остался от прошлого прогона);
+3. удаляет после завершения всех тестов.
+
+Это важно: раньше API-тесты писали в `data/app.db`, и после `make backend-test` / `uv run pytest` в dev-окружении появлялись «лишние» чаты (`Test chat`, `Empty`, `LLM chat` и т.д.).
+
+Unit-тесты БД не трогают — `conftest.py` влияет только на API-слой, который поднимает `app.main:app`.
+
+Файл `tests/.pytest_app.db` добавлен в `.gitignore`.
+
 ## API-тесты (`tests/api/`)
 
-Поднимают полное приложение (`app.main:app`) с инициализацией lifespan (БД, зависимости). Запросы идут через in-process ASGI — отдельный сервер не нужен.
+Поднимают полное приложение (`app.main:app`) с инициализацией lifespan (создание таблиц, зависимости). Запросы идут через in-process ASGI — отдельный сервер не нужен.
 
 ### Общая фикстура
 
@@ -64,7 +82,7 @@ uv run pytest -k "soft_delete"   # по имени теста
 | Файл | Эндпоинты | Тесты |
 |------|-----------|-------|
 | `test_health.py` | `GET /api/healthz`, `GET /api/readyz` | liveness и readiness возвращают `{"status": "ok"}` |
-| `test_chat.py` | `POST/GET/DELETE /api/chats` | создание и листинг; детали нового чата с пустыми сообщениями; soft-delete → 404 |
+| `test_chat.py` | `POST/GET/DELETE /api/chats` | создание и листинг; поле `chat_type` (`llm` по умолчанию); фильтр `GET /api/chats?chat_type=llm\|rag`; детали нового чата с пустыми сообщениями; soft-delete → 404 |
 | `test_etl.py` | `GET /api/etl/stats`, `GET /api/etl/manifest` | статистика чанков; manifest без индекса → 404 |
 
 ## Unit-тесты (`tests/unit/`)
@@ -96,7 +114,7 @@ uv run pytest -k "soft_delete"   # по имени теста
 
 1. **Именование файлов** — `test_<модуль>.py`; функции — `test_<поведение>`.
 2. **Docstrings** — на английском, кратко описывают ожидаемое поведение (см. существующие тесты).
-3. **API-тесты** — только в `tests/api/`; общие фикстуры — в `tests/api/conftest.py`.
+3. **API-тесты** — только в `tests/api/`; HTTP-фикстуры — в `tests/api/conftest.py`; изоляция БД — в корневом `tests/conftest.py`.
 4. **Unit-тесты** — зеркалят структуру кода: `app/services/chat.py` → `tests/unit/services/test_chat.py`, `etl/parser.py` → `tests/unit/etl/test_parser.py`.
 5. **Новые API-роутеры** — добавляйте `tests/api/test_<router>.py`, не смешивайте с unit.
 6. **Асинхронность** — API-тесты помечайте `@pytest.mark.asyncio` (или полагайтесь на `asyncio_mode = "auto"`).
