@@ -1,19 +1,31 @@
+import { useEffect } from "react";
 import { Message } from "primereact/message";
 import { ProgressSpinner } from "primereact/progressspinner";
 
 import { NewChatButton, PanelHeader } from "@/app/layout/AppHeader";
 import { useTranslation } from "@/shared/i18n";
 import { formatDateTime } from "@/shared/lib/format";
-import { useChatUiStore } from "../store";
+import { useSelectedChatId, useChatUiStore } from "../store";
 import { useChatsQuery, useCreateChatMutation } from "../hooks/useChats";
 
 export function ChatSidebar() {
   const { t, locale } = useTranslation();
-  const selectedChatId = useChatUiStore((state) => state.selectedChatId);
-  const setSelectedChatId = useChatUiStore((state) => state.setSelectedChatId);
+  const [selectedChatId, setSelectedChatId] = useSelectedChatId();
   const requestComposerFocus = useChatUiStore((state) => state.requestComposerFocus);
   const chatsQuery = useChatsQuery();
   const createChatMutation = useCreateChatMutation();
+
+  useEffect(() => {
+    if (!chatsQuery.isSuccess || selectedChatId === null) {
+      return;
+    }
+
+    const chatExists = chatsQuery.data.some((chat) => chat.id === selectedChatId);
+
+    if (!chatExists) {
+      setSelectedChatId(null);
+    }
+  }, [chatsQuery.isSuccess, chatsQuery.data, selectedChatId, setSelectedChatId]);
 
   return (
     <>
