@@ -2,8 +2,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { readPersistedState } from "@/shared/persist";
+import type { ChatMode } from "@/shared/api/types";
 
-export type ChatMode = "rag" | "llm";
+export type { ChatMode };
 
 function readStoredChatMode(): ChatMode {
   const state = readPersistedState<{ mode?: unknown }>("avia-bot.chat-mode");
