@@ -1,5 +1,7 @@
+import { readPersistedState } from "@/shared/persist";
+
 import type { Locale, Messages } from "./config";
-import { messages } from "./config";
+import { DEFAULT_LOCALE, messages } from "./config";
 
 export type TranslationParams = Record<string, string | number>;
 
@@ -40,13 +42,13 @@ export function translate(locale: Locale, key: string, params?: TranslationParam
 }
 
 export function readStoredLocale(): Locale {
-  const stored = localStorage.getItem("avia-bot.locale");
+  const state = readPersistedState<{ locale?: unknown }>("avia-bot.locale");
 
-  if (stored === "ru" || stored === "en") {
-    return stored;
+  if (state?.locale === "ru" || state?.locale === "en") {
+    return state.locale;
   }
 
-  return "ru";
+  return DEFAULT_LOCALE;
 }
 
 export function applyDocumentLocale(locale: Locale): void {
