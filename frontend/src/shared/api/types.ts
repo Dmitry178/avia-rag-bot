@@ -1,8 +1,11 @@
 export type MessageRole = "user" | "assistant" | "system";
 
+export type ChatMode = "rag" | "llm";
+
 export interface ChatSummary {
   id: number;
   title: string;
+  chat_type: ChatMode;
   is_closed: boolean;
   created_at: string;
   updated_at: string;
