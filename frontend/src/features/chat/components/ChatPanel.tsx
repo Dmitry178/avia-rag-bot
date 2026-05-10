@@ -7,7 +7,7 @@ import ReactMarkdown from "react-markdown";
 
 import { PanelHeader } from "@/app/layout/AppHeader";
 import { useChatModeStore } from "@/features/chat/modeStore";
-import { useChatUiStore } from "@/features/chats/store";
+import { useSelectedChatId } from "@/features/chats/store";
 import { useTranslation } from "@/shared/i18n";
 import { useChatDetailQuery, useSendMessageMutation } from "../hooks/useChat";
 import { useComposerFocus } from "../hooks/useComposerFocus";
@@ -44,7 +44,7 @@ function MessageBubble({
 export function ChatPanel() {
   const { t } = useTranslation();
   const chatMode = useChatModeStore((state) => state.mode);
-  const selectedChatId = useChatUiStore((state) => state.selectedChatId);
+  const [selectedChatId] = useSelectedChatId();
   const chatQuery = useChatDetailQuery(selectedChatId);
   const sendMutation = useSendMessageMutation(selectedChatId);
   const [draft, setDraft] = useState("");
