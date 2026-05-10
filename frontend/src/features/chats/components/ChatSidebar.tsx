@@ -11,6 +11,7 @@ export function ChatSidebar() {
   const { t, locale } = useTranslation();
   const selectedChatId = useChatUiStore((state) => state.selectedChatId);
   const setSelectedChatId = useChatUiStore((state) => state.setSelectedChatId);
+  const requestComposerFocus = useChatUiStore((state) => state.requestComposerFocus);
   const chatsQuery = useChatsQuery();
   const createChatMutation = useCreateChatMutation();
 
@@ -21,7 +22,11 @@ export function ChatSidebar() {
         action={
           <NewChatButton
             label={t("chat.new")}
-            onClick={() => createChatMutation.mutate(t("chat.defaultTitle"))}
+            onClick={() => {
+              createChatMutation.mutate(t("chat.defaultTitle"), {
+                onSuccess: () => requestComposerFocus(),
+              });
+            }}
             loading={createChatMutation.isPending}
           />
         }
@@ -52,7 +57,10 @@ export function ChatSidebar() {
                 className={`chat-list__item${
                   selectedChatId === chat.id ? " chat-list__item--active" : ""
                 }`}
-                onClick={() => setSelectedChatId(chat.id)}
+                onClick={() => {
+                  setSelectedChatId(chat.id);
+                  requestComposerFocus();
+                }}
               >
                 <span className="chat-list__title">{chat.title}</span>
                 <span className="chat-list__meta">{formatDateTime(chat.updated_at, locale)}</span>
