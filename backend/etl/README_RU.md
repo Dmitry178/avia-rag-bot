@@ -1,5 +1,7 @@
 # ETL: парсинг и индексация базы знаний
 
+[English](README.md) · **Русский**
+
 Модуль `backend/etl/` — **чистый bounded context** для преобразования markdown-документа `backend/data/rag-document.md` в набор retrieval-чанков. Он не знает о FastAPI, SQLite и FAISS: только парсинг, классификация и нарезка текста.
 
 Оркестрация полного pipeline (embeddings → БД → FAISS → manifest) выполняется в `app/services/etl.py` (`ETLService`). HTTP-эндпоинты — в `app/api/routers/etl.py`.
@@ -87,6 +89,7 @@ flowchart TB
 
 ```
 backend/etl/
+├── README.md       # English version
 ├── README_RU.md    # этот файл
 ├── __init__.py
 ├── types.py        # ContentType, DocumentNode, ChunkDraft
