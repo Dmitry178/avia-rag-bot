@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { PrimeReactProvider } from "primereact/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import { applyTheme } from "@/theme/applyTheme";
+import { applyTheme, resolveTheme } from "@/theme/applyTheme";
 import { useThemeStore } from "@/theme/store";
 
 const queryClient = new QueryClient({
@@ -20,11 +20,24 @@ interface AppProvidersProps {
 }
 
 export function AppProviders({ children }: AppProvidersProps) {
-  const theme = useThemeStore((state) => state.theme);
+  const themePreference = useThemeStore((state) => state.theme);
 
   useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
+    applyTheme(resolveTheme(themePreference));
+  }, [themePreference]);
+
+  useEffect(() => {
+    if (themePreference !== "system") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const onSystemThemeChange = () => applyTheme(resolveTheme("system"));
+
+    mediaQuery.addEventListener("change", onSystemThemeChange);
+
+    return () => mediaQuery.removeEventListener("change", onSystemThemeChange);
+  }, [themePreference]);
 
   return (
     <PrimeReactProvider value={{ ripple: true }}>
