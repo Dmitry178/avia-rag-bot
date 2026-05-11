@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { chatDetailQueryKey } from "@/features/chat/hooks/useChat";
 import { useChatModeStore } from "@/features/chat/modeStore";
-import { createChat, deleteChat, listChats } from "@/shared/api/chats";
+import { useRagSettingsStore } from "@/features/rag/ragSettingsStore";
+import { createChat, deleteChat, listChats, updateChat } from "@/shared/api/chats";
 import type { ChatMode, ChatSummary } from "@/shared/api/types";
 import { useChatUiStore } from "../store";
 
@@ -21,9 +22,17 @@ export function useCreateChatMutation() {
   const queryClient = useQueryClient();
   const chatType = useChatModeStore((state) => state.mode);
   const setSelectedChatId = useChatUiStore((state) => state.setSelectedChatId);
+  const toPayload = useRagSettingsStore((state) => state.toPayload);
 
   return useMutation({
-    mutationFn: (title: string) => createChat(title, chatType),
+    mutationFn: (title: string) => {
+      const ragPayload = chatType === "rag" ? toPayload() : null;
+
+      return createChat(title, chatType, {
+        ragConfig: ragPayload?.rag_config,
+        useHistory: ragPayload?.use_history,
+      });
+    },
     onSuccess: (chat) => {
       setSelectedChatId(chatType, chat.id);
 
@@ -107,6 +116,38 @@ export function useDeleteChatMutation() {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: chatsQueryKey(chatType) });
+    },
+  });
+}
+
+export function useUpdateChatSettingsMutation(chatId: number | null) {
+  const queryClient = useQueryClient();
+  const chatType = useChatModeStore((state) => state.mode);
+  const toPayload = useRagSettingsStore((state) => state.toPayload);
+
+  return useMutation({
+    mutationFn: () => {
+      if (chatId === null) {
+        throw new Error("Chat is not selected");
+      }
+
+      const payload = toPayload();
+
+      return updateChat(chatId, {
+        rag_config: payload.rag_config,
+        use_history: payload.use_history,
+      });
+    },
+    onSuccess: (chat) => {
+      if (chatId !== null) {
+        queryClient.setQueryData(chatDetailQueryKey(chatId), (current) =>
+          current ? { ...current, ...chat } : current,
+        );
+      }
+
+      queryClient.setQueryData<ChatSummary[]>(chatsQueryKey(chatType), (current) =>
+        current?.map((item) => (item.id === chat.id ? { ...item, ...chat } : item)),
+      );
     },
   });
 }
