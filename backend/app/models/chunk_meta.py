@@ -33,6 +33,10 @@ class ChunkMeta(SQLModel, table=True):
         default="",
         description="Stable id of the source node in the parsed document tree.",
     )
+    content_hash: str = Field(
+        default="",
+        description="SHA-256 hex digest of content; used for incremental re-indexing.",
+    )
     parent_id: int | None = Field(
         default=None,
         foreign_key="chunk_meta.id",
