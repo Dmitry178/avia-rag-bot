@@ -1,0 +1,18 @@
+{
+  "hyde": {
+    "title": "HyDE (Hypothetical Document Embeddings)",
+    "description": "One of the best-known RAG techniques. Instead of searching with the raw query, the LLM first generates a hypothetical ideal answer. Retrieval then uses the embedding of that “imagined document”, not the original question. This bridges the semantic gap between a short user question and full, detailed knowledge-base documents (SOP, FAQ) and often improves search quality significantly."
+  },
+  "multi_query": {
+    "title": "Multi-Query (multiple queries)",
+    "description": "The LLM generates several different phrasings or paraphrases of the original query. Search runs for each variant and the results are merged (e.g. via RRF). This helps surface more relevant information (higher recall), but can sometimes reduce precision because the result set may include more noise."
+  },
+  "query_rewriting": {
+    "title": "Query Rewriting (rewriting the query)",
+    "description": "The LLM does not merely paraphrase the query—it rewrites it to better match the language and structure of documents in the knowledge base, using airport terminology and chat history. Unlike Multi-Query, this usually produces a single, more precise query. Useful for follow-ups such as “what’s next?” or “how do I handle this for PRM?”"
+  },
+  "rerank": {
+    "title": "Rerank (re-ranking)",
+    "description": "A classic two-stage approach. First, a fast, inexpensive retriever (e.g. vector search with FAISS) finds a large pool of candidates (say, top-100). Then a stronger, slower model (a cross-encoder) re-scores each document in that pool and selects the best (top-5 or top-10) to pass to the LLM. This significantly improves precision and final answer quality."
+  }
+}
