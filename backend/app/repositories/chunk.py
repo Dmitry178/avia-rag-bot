@@ -31,6 +31,24 @@ class ChunkRepository:
 
         await self.session.flush()
 
+    async def list_all_ordered(self) -> list[ChunkMeta]:
+        """
+        Return all chunks ordered by FAISS row id (primary key).
+        """
+
+        statement = select(ChunkMeta).order_by(ChunkMeta.id)
+        result = await self.session.execute(statement)
+
+        return list(result.scalars().all())
+
+    async def replace_all(self, chunks: list[ChunkMeta]) -> None:
+        """
+        Replace the full chunk set (delete all, then insert).
+        """
+
+        await self.delete_all()
+        await self.insert_many(chunks)
+
     async def count_by_content_type(self) -> dict[str, int]:
         """
         Return chunk counts grouped by content_type.
