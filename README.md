@@ -102,6 +102,18 @@ The header switch sets the **UI mode**. The choice is stored in `localStorage`.
 
 Currently the backend always responds via a simple LLM call (`ChatService.send_message`), regardless of the mode selected in the UI. RAG mode in the interface is prepared in advance: layout, trace placeholder, and copy are ready for retrieval and SSE integration.
 
+## Prompt injection protection
+
+Basic defense-in-depth for LLM chat lives in `backend/app/llm/`:
+
+| Layer | Module | What it does |
+|-------|--------|-------------|
+| System prompt | `prompts.py` | Instructs the model to treat user messages as untrusted data, stay within aviation topics, refuse jailbreaks and manipulation, not reveal the system prompt or underlying model name/version/provider/architecture, and decline off-topic requests. |
+| Message hardening | `prompt_guard.py` | Wraps each user message in `USER MESSAGE START` / `USER MESSAGE END` delimiters before the API call; strips control characters that could hide injection text. |
+| Pre-flight block | `ChatService` + `prompt_guard.py` | Obvious injection patterns (EN/RU) — e.g. “ignore previous instructions”, “reveal system prompt”, “jailbreak” — are blocked **without** calling the LLM; a fixed refusal is returned (`blocked_prompt_injection: true` in message metadata). |
+
+This is **basic** protection, not a guarantee: novel phrasing may still reach the model, where the hardened system prompt is the second line of defense. Unit tests: `backend/tests/unit/llm/test_prompt_guard.py`.
+
 ## Theme and language
 
 Settings are in the header and **persist across reloads** (`localStorage` via Zustand persist).
@@ -176,7 +188,7 @@ Full command list: `make help`.
 ## Current status
 
 **Done:**
-- Backend: health-check, ETL, FAISS indexing, chat CRUD, synchronous LLM replies
+- Backend: health-check, ETL, FAISS indexing, chat CRUD, synchronous LLM replies, basic prompt-injection protection
 - Frontend: layout (chats · dialog · trace), send messages, markdown replies, LLM/RAG switches, theme, i18n
 
 **In development:**
