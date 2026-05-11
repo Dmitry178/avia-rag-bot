@@ -1,17 +1,14 @@
 """OpenAI-compatible chat completions client."""
 
-import time
-from typing import Any
-
 import httpx
+import time
+
+from typing import Any
 
 from app.core.config import LLMSettings
 from app.exceptions.service import ServiceError
-
-_DEFAULT_SYSTEM_PROMPT = (
-    "You are an AI assistant for airport staff. "
-    "Answer clearly and professionally in the same language as the user."
-)
+from app.llm.prompt_guard import harden_messages_for_llm
+from app.llm.prompts import SYSTEM_PROMPT
 
 
 class ChatCompletionClient:
@@ -48,8 +45,9 @@ class ChatCompletionClient:
 
         self._validate_config()
 
-        payload_messages = [{"role": "system", "content": system_prompt or _DEFAULT_SYSTEM_PROMPT}]
-        payload_messages.extend(messages)
+        resolved_system_prompt = system_prompt or SYSTEM_PROMPT
+        payload_messages = [{"role": "system", "content": resolved_system_prompt}]
+        payload_messages.extend(harden_messages_for_llm(messages))
 
         headers: dict[str, str] = {}
         if self._settings.api_key:
