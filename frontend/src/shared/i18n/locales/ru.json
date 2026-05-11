@@ -46,11 +46,23 @@
   },
   "common": {
     "send": "Отправить",
-    "cancel": "Отмена"
+    "cancel": "Отмена",
+    "ok": "ОК"
   },
   "errors": {
     "loadChats": "Не удалось загрузить список чатов",
     "loadChat": "Не удалось загрузить историю чата"
+  },
+  "rag": {
+    "settingsTitle": "Настройки RAG",
+    "methodHelpAria": "Что такое {{method}}",
+    "useHistory": "Использовать историю",
+    "methods": {
+      "hyde": "HyDE",
+      "multi_query": "Multi-Query",
+      "query_rewriting": "Query Rewriting",
+      "rerank": "Rerank"
+    }
   },
   "trace": {
     "empty": "Здесь появятся шаги RAG-пайплайна в реальном времени через SSE, когда будет подключён trace stream.",

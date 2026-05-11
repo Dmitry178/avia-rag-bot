@@ -46,11 +46,23 @@
   },
   "common": {
     "send": "Send",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "ok": "OK"
   },
   "errors": {
     "loadChats": "Failed to load chat list",
     "loadChat": "Failed to load chat history"
+  },
+  "rag": {
+    "settingsTitle": "RAG settings",
+    "methodHelpAria": "What is {{method}}",
+    "useHistory": "Use chat history",
+    "methods": {
+      "hyde": "HyDE",
+      "multi_query": "Multi-Query",
+      "query_rewriting": "Query Rewriting",
+      "rerank": "Rerank"
+    }
   },
   "trace": {
     "empty": "RAG pipeline steps will appear here in real time via SSE once the trace stream is connected.",
