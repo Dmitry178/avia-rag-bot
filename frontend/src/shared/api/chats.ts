@@ -39,3 +39,7 @@ export function sendMessage(
     },
   });
 }
+
+export function deleteMessage(chatId: number, messageId: number): Promise<void> {
+  return apiRequest<void>(`${BASE}/${chatId}/messages/${messageId}`, { method: "DELETE" });
+}
