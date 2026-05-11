@@ -13,7 +13,7 @@ router = APIRouter(prefix="/etl", tags=["etl"])
 @router.post(
     "/ingest",
     summary="Ingest knowledge document",
-    description="Parse rag-document.md, embed chunks, and rebuild SQLite + FAISS index.",
+    description="Parse rag-document.md, embed chunks, and update SQLite + FAISS index (incremental by default).",
     response_model=IngestResponse,
 )
 async def ingest_document(
