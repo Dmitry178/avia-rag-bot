@@ -27,7 +27,9 @@ from app.schemas.chat import (
     SendMessageRequest,
     SendMessageResponse,
     SetRatingRequest,
+    UpdateChatRequest,
 )
+from app.schemas.rag import RagConfig
 
 
 class ChatService:
@@ -42,12 +44,37 @@ class ChatService:
         self.settings = app_settings or settings
 
     @staticmethod
+    def _parse_rag_config(data: dict | None) -> RagConfig | None:
+        if not data:
+            return None
+
+        return RagConfig.model_validate(data)
+
+    @staticmethod
+    def _rag_message_metadata(
+        rag_config: RagConfig | None,
+        use_history: bool | None,
+    ) -> dict:
+        metadata: dict = {}
+
+        if rag_config is not None:
+            metadata["rag_config"] = rag_config.model_dump()
+
+        if use_history is not None:
+            metadata["use_history"] = use_history
+
+        return metadata
+
+    @staticmethod
     def _chat_to_summary(chat) -> ChatSummaryResponse:
         return ChatSummaryResponse(
             id=chat.id,
             title=chat.title,
             chat_type=ChatType(chat.chat_type),
             is_closed=chat.is_closed,
+            message_count=chat.message_count,
+            rag_config=ChatService._parse_rag_config(chat.rag_config),
+            use_history=chat.use_history,
             created_at=chat.created_at,
             updated_at=chat.updated_at,
             closed_at=chat.closed_at,
@@ -113,7 +140,12 @@ class ChatService:
         Create a new chat thread.
         """
 
-        chat = await self.db.chat.chats.create(title=body.title, chat_type=body.chat_type)
+        chat = await self.db.chat.chats.create(
+            title=body.title,
+            chat_type=body.chat_type,
+            rag_config=body.rag_config.model_dump() if body.rag_config else None,
+            use_history=body.use_history,
+        )
         await self.db.commit()
 
         return self._chat_to_summary(chat)
@@ -139,11 +171,40 @@ class ChatService:
             title=chat.title,
             chat_type=ChatType(chat.chat_type),
             is_closed=chat.is_closed,
+            message_count=chat.message_count,
+            rag_config=self._parse_rag_config(chat.rag_config),
+            use_history=chat.use_history,
             created_at=chat.created_at,
             updated_at=chat.updated_at,
             closed_at=chat.closed_at,
             messages=[self._message_to_response(message) for message in messages],
         )
+
+    @handle_basic_db_errors
+    async def update_chat(self, chat_id: int, body: UpdateChatRequest) -> ChatSummaryResponse:
+        """
+        Update chat-level RAG settings (toggles, use_history).
+        """
+
+        fields_set = body.model_fields_set
+        chat = await self.db.chat.chats.update_settings(
+            chat_id,
+            rag_config=body.rag_config.model_dump() if body.rag_config else None,
+            use_history=body.use_history,
+            update_rag_config="rag_config" in fields_set,
+            update_use_history="use_history" in fields_set,
+        )
+
+        if chat is None:
+            raise ServiceError(
+                detail="Chat not found",
+                error_code="chat_not_found",
+                status_code=404,
+            )
+
+        await self.db.commit()
+
+        return self._chat_to_summary(chat)
 
     @handle_basic_db_errors
     async def delete_chat(self, chat_id: int) -> None:
@@ -186,11 +247,32 @@ class ChatService:
         """
 
         await self._get_open_chat(chat_id)
+        chat = await self.db.chat.chats.get_by_id(chat_id)
+        assert chat is not None
+
+        rag_snapshot: RagConfig | None = None
+        use_history_value: bool | None = None
+
+        if ChatType(chat.chat_type) == ChatType.RAG:
+            rag_snapshot = body.rag_config or self._parse_rag_config(chat.rag_config)
+            use_history_value = body.use_history if "use_history" in body.model_fields_set else chat.use_history
+
+            if body.rag_config is not None or "use_history" in body.model_fields_set:
+                await self.db.chat.chats.update_settings(
+                    chat_id,
+                    rag_config=rag_snapshot.model_dump() if rag_snapshot else None,
+                    use_history=use_history_value,
+                    update_rag_config=body.rag_config is not None,
+                    update_use_history="use_history" in body.model_fields_set,
+                )
+
+        rag_metadata = self._rag_message_metadata(rag_snapshot, use_history_value)
 
         user_message = await self.db.chat.messages.create(
             chat_id=chat_id,
             role=MessageRole.USER,
             content=body.content,
+            message_metadata=rag_metadata,
         )
 
         history = await self.db.chat.messages.list_by_chat(chat_id)
@@ -227,7 +309,7 @@ class ChatService:
                 await self.db.rollback()
                 raise
 
-        assistant_metadata = {**llm_metadata, "requested_at": requested_at}
+        assistant_metadata = {**llm_metadata, "requested_at": requested_at, **rag_metadata}
 
         assistant_message = await self.db.chat.messages.create(
             chat_id=chat_id,
@@ -240,6 +322,8 @@ class ChatService:
             await self.db.chat.chats.close(chat_id)
         else:
             await self.db.chat.chats.touch(chat_id)
+
+        await self.db.chat.chats.adjust_message_count(chat_id, 2)
 
         await self.db.commit()
 
@@ -340,5 +424,6 @@ class ChatService:
             )
 
         await self.db.chat.messages.soft_delete(message)
+        await self.db.chat.chats.adjust_message_count(chat_id, -1)
         await self.db.chat.chats.touch(chat_id)
         await self.db.commit()
