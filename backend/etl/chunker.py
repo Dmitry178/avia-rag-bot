@@ -3,6 +3,7 @@
 import re
 
 from etl.parser import parse_markdown
+from etl.hashing import content_hash
 from etl.types import ChunkDraft, ContentType, DocumentNode
 
 # Matches **Вопрос:**/**Ответ:** and list variant: * **Вопрос:**
@@ -322,5 +323,8 @@ def chunk_document(text: str, source_path: str = "") -> list[ChunkDraft]:
 
     for node in nodes:
         chunks.extend(chunk_node(node, source_path))
+
+    for chunk in chunks:
+        chunk.content_hash = content_hash(chunk.content)
 
     return chunks
