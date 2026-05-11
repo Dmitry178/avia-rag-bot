@@ -2,6 +2,8 @@
 
 import httpx
 
+from collections.abc import Callable
+
 from app.core.config import LLMSettings
 from app.exceptions.service import ServiceError
 
@@ -30,7 +32,12 @@ class EmbeddingClient:
                 status_code=400,
             )
 
-    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+    async def embed_texts(
+        self,
+        texts: list[str],
+        *,
+        on_batch_complete: Callable[[int, int], None] | None = None,
+    ) -> list[list[float]]:
         """
         Embed texts in batches and return vectors in the same order.
         """
@@ -43,6 +50,7 @@ class EmbeddingClient:
         vectors: list[list[float]] = []
         headers = {"Authorization": f"Bearer {self._settings.api_key}"} if self._settings.api_key else {}
         base_url = self._settings.base_url.rstrip("/")
+        total = len(texts)
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             for offset in range(0, len(texts), _EMBED_BATCH_SIZE):
@@ -64,5 +72,8 @@ class EmbeddingClient:
                 payload = response.json()
                 data = sorted(payload["data"], key=lambda item: item["index"])
                 vectors.extend(item["embedding"] for item in data)
+
+                if on_batch_complete is not None:
+                    on_batch_complete(min(offset + len(batch), total), total)
 
         return vectors
