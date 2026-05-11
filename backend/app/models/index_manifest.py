@@ -26,6 +26,10 @@ class IndexManifest(SQLModel, table=True):
     embedding_model: str = Field(
         description="LLM embedding model name (LLM__EMBEDDING_MODEL) used to build the index.",
     )
+    chunker_version: str = Field(
+        default="",
+        description="ETL chunker version at build time; mismatch triggers full re-embed.",
+    )
     chunk_count: int = Field(
         description="Number of chunks written to chunk_meta and FAISS in this build.",
     )
