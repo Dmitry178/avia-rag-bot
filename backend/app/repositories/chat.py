@@ -41,13 +41,71 @@ class ChatRepository:
 
         return result.scalar_one_or_none()
 
-    async def create(self, title: str = "New chat", chat_type: ChatType = ChatType.LLM) -> Chat:
+    async def create(
+        self,
+        title: str = "New chat",
+        chat_type: ChatType = ChatType.LLM,
+        *,
+        rag_config: dict | None = None,
+        use_history: bool | None = None,
+    ) -> Chat:
         """
         Insert a new open chat.
         """
 
         now = datetime.now(UTC)
-        chat = Chat(title=title, chat_type=chat_type.value, created_at=now, updated_at=now)
+        chat = Chat(
+            title=title,
+            chat_type=chat_type.value,
+            message_count=0,
+            rag_config=rag_config,
+            use_history=use_history,
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(chat)
+        await self.session.flush()
+        await self.session.refresh(chat)
+
+        return chat
+
+    async def adjust_message_count(self, chat_id: int, delta: int) -> None:
+        """
+        Increment or decrement denormalized message_count (floored at zero).
+        """
+
+        chat = await self.get_by_id(chat_id)
+        if chat is None:
+            return
+
+        chat.message_count = max(0, chat.message_count + delta)
+        chat.updated_at = datetime.now(UTC)
+        self.session.add(chat)
+        await self.session.flush()
+
+    async def update_settings(
+        self,
+        chat_id: int,
+        *,
+        rag_config: dict | None = None,
+        use_history: bool | None = None,
+        update_rag_config: bool = False,
+        update_use_history: bool = False,
+    ) -> Chat | None:
+        """
+        Update chat-level RAG settings.
+        """
+
+        chat = await self.get_by_id(chat_id)
+        if chat is None:
+            return None
+
+        if update_rag_config:
+            chat.rag_config = rag_config
+        if update_use_history:
+            chat.use_history = use_history
+
+        chat.updated_at = datetime.now(UTC)
         self.session.add(chat)
         await self.session.flush()
         await self.session.refresh(chat)
