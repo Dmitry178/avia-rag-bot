@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.models.chat_message import MessageRole
 from app.models.chat import ChatType
+from app.schemas.rag import RagConfig
 
 
 class ChatSummaryResponse(BaseModel):
@@ -18,6 +19,9 @@ class ChatSummaryResponse(BaseModel):
     title: str
     chat_type: ChatType
     is_closed: bool
+    message_count: int
+    rag_config: RagConfig | None = None
+    use_history: bool | None = None
     created_at: datetime
     updated_at: datetime
     closed_at: datetime | None = None
@@ -48,6 +52,9 @@ class ChatDetailResponse(BaseModel):
     title: str
     chat_type: ChatType
     is_closed: bool
+    message_count: int
+    rag_config: RagConfig | None = None
+    use_history: bool | None = None
     created_at: datetime
     updated_at: datetime
     closed_at: datetime | None = None
@@ -64,6 +71,29 @@ class CreateChatRequest(BaseModel):
         default=ChatType.LLM,
         description="Chat pipeline mode: llm or rag.",
     )
+    rag_config: RagConfig | None = Field(
+        default=None,
+        description="Initial RAG toggles for rag chats; ignored for llm.",
+    )
+    use_history: bool | None = Field(
+        default=None,
+        description="Whether to include chat history in RAG context.",
+    )
+
+
+class UpdateChatRequest(BaseModel):
+    """
+    Update chat-level settings (RAG toggles, history flag).
+    """
+
+    rag_config: RagConfig | None = Field(
+        default=None,
+        description="Replace RAG pipeline toggles; null leaves unchanged when omitted.",
+    )
+    use_history: bool | None = Field(
+        default=None,
+        description="Toggle chat history in RAG context; null leaves unchanged when omitted.",
+    )
 
 
 class SendMessageRequest(BaseModel):
@@ -75,6 +105,14 @@ class SendMessageRequest(BaseModel):
     client_id: str | None = Field(
         default=None,
         description="Optional SSE client id to receive error sideband events",
+    )
+    rag_config: RagConfig | None = Field(
+        default=None,
+        description="RAG pipeline toggles for this request; updates chat when provided.",
+    )
+    use_history: bool | None = Field(
+        default=None,
+        description="Whether to include chat history in RAG context for this request.",
     )
 
 
