@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
 
 
@@ -54,4 +55,17 @@ class Chat(SQLModel, table=True):
     closed_at: datetime | None = Field(
         default=None,
         description="UTC timestamp when the chat was closed; null while open.",
+    )
+    message_count: int = Field(
+        default=0,
+        description="Number of non-deleted messages in the chat (denormalized for list UI).",
+    )
+    rag_config: dict | None = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Last RAG pipeline toggles for this chat; null for LLM chats or unset.",
+    )
+    use_history: bool | None = Field(
+        default=None,
+        description="Whether to include chat history in RAG context; null until configured.",
     )
