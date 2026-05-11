@@ -3,6 +3,18 @@
 import pytest
 
 from httpx import AsyncClient
+from unittest.mock import AsyncMock, patch
+
+LLM_MOCK_RETURN = (
+    "Test reply",
+    {
+        "model": "test-model",
+        "latency_ms": 1,
+        "prompt_tokens": 1,
+        "completion_tokens": 1,
+        "total_tokens": 2,
+    },
+)
 
 
 @pytest.mark.asyncio
@@ -15,11 +27,65 @@ async def test_create_and_list_chats(client: AsyncClient) -> None:
     assert create.status_code == 200
     chat_id = create.json()["id"]
     assert create.json()["chat_type"] == "llm"
+    assert create.json()["message_count"] == 0
 
     listing = await client.get("/api/chats")
     assert listing.status_code == 200
     ids = [item["id"] for item in listing.json()]
     assert chat_id in ids
+
+
+@pytest.mark.asyncio
+async def test_create_chat_includes_message_count_and_rag_fields(client: AsyncClient) -> None:
+    """
+    New chat should expose message_count and nullable RAG settings.
+    """
+
+    create = await client.post(
+        "/api/chats",
+        json={
+            "title": "RAG settings",
+            "chat_type": "rag",
+            "rag_config": {
+                "use_hyde": True,
+                "use_rerank": False,
+            },
+            "use_history": True,
+        },
+    )
+
+    assert create.status_code == 200
+    data = create.json()
+    assert data["message_count"] == 0
+    assert data["rag_config"]["use_hyde"] is True
+    assert data["rag_config"]["use_rerank"] is False
+    assert data["use_history"] is True
+
+
+@pytest.mark.asyncio
+async def test_patch_chat_settings(client: AsyncClient) -> None:
+    """
+    PATCH should update chat-level RAG toggles and use_history.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Patch me", "chat_type": "rag"})
+    chat_id = create.json()["id"]
+
+    patched = await client.patch(
+        f"/api/chats/{chat_id}",
+        json={
+            "rag_config": {
+                "use_multi_query": True,
+                "use_query_rewriting": True,
+            },
+            "use_history": False,
+        },
+    )
+    assert patched.status_code == 200
+    data = patched.json()
+    assert data["rag_config"]["use_multi_query"] is True
+    assert data["rag_config"]["use_query_rewriting"] is True
+    assert data["use_history"] is False
 
 
 @pytest.mark.asyncio
@@ -60,6 +126,77 @@ async def test_get_chat_returns_empty_messages(client: AsyncClient) -> None:
     data = detail.json()
     assert data["title"] == "Empty"
     assert data["messages"] == []
+    assert data["message_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_send_message_persists_rag_metadata_and_message_count(client: AsyncClient) -> None:
+    """
+    Sending a message should snapshot RAG settings on both messages and bump message_count.
+    """
+
+    create = await client.post("/api/chats", json={"title": "RAG send", "chat_type": "rag"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        return_value=LLM_MOCK_RETURN,
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={
+                "content": "What is the baggage allowance?",
+                "rag_config": {
+                    "use_hyde": True,
+                    "use_rerank": True,
+                },
+                "use_history": True,
+            },
+        )
+    assert send.status_code == 200
+
+    user_meta = send.json()["user_message"]["metadata"]
+    assistant_meta = send.json()["assistant_message"]["metadata"]
+    assert user_meta["rag_config"]["use_hyde"] is True
+    assert user_meta["use_history"] is True
+    assert assistant_meta["rag_config"]["use_hyde"] is True
+    assert assistant_meta["use_history"] is True
+
+    detail = await client.get(f"/api/chats/{chat_id}")
+    assert detail.status_code == 200
+    assert detail.json()["message_count"] == 2
+    assert detail.json()["rag_config"]["use_hyde"] is True
+    assert detail.json()["use_history"] is True
+
+
+@pytest.mark.asyncio
+async def test_delete_message_decrements_message_count(client: AsyncClient) -> None:
+    """
+    Soft-deleting a message should decrement chat message_count.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Delete msg"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        return_value=LLM_MOCK_RETURN,
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "Hello"},
+        )
+
+    message_id = send.json()["user_message"]["id"]
+
+    deleted = await client.delete(f"/api/chats/{chat_id}/messages/{message_id}")
+    assert deleted.status_code == 204
+
+    detail = await client.get(f"/api/chats/{chat_id}")
+    assert detail.status_code == 200
+    assert detail.json()["message_count"] == 1
 
 
 @pytest.mark.asyncio
