@@ -19,6 +19,7 @@ from app.schemas.chat import (
     SendMessageRequest,
     SendMessageResponse,
     SetRatingRequest,
+    UpdateChatRequest,
 )
 from app.services.chat import ChatService
 
@@ -96,6 +97,24 @@ async def get_chat(chat_id: int, db: DBManager = Depends(get_db)) -> ChatDetailR
     """
 
     return await ChatService(db).get_chat(chat_id)
+
+
+@router.patch(
+    "/{chat_id}",
+    summary="Update chat settings",
+    description="Update RAG toggles and use_history for a chat thread.",
+    response_model=ChatSummaryResponse,
+)
+async def update_chat(
+    chat_id: int,
+    body: UpdateChatRequest,
+    db: DBManager = Depends(get_db),
+) -> ChatSummaryResponse:
+    """
+    Update chat-level RAG settings.
+    """
+
+    return await ChatService(db).update_chat(chat_id, body)
 
 
 @router.delete(
