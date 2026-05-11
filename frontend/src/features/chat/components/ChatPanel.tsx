@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import { PanelHeader } from "@/app/layout/AppHeader";
 import { DeleteConfirmDialog } from "@/shared/components/DeleteConfirmDialog";
 import { useChatModeStore } from "@/features/chat/modeStore";
+import { useRagSettingsStore } from "@/features/rag/ragSettingsStore";
 import { useSelectedChatId } from "@/features/chats/store";
 import { useTranslation } from "@/shared/i18n";
 import { useChatDetailQuery, useDeleteMessageMutation, useSendMessageMutation } from "../hooks/useChat";
@@ -86,6 +87,7 @@ function MessageBubble({
 export function ChatPanel() {
   const { t } = useTranslation();
   const chatMode = useChatModeStore((state) => state.mode);
+  const toRagConfig = useRagSettingsStore((state) => state.toConfig);
   const [selectedChatId] = useSelectedChatId();
   const chatQuery = useChatDetailQuery(selectedChatId);
   const sendMutation = useSendMessageMutation(selectedChatId);
@@ -158,9 +160,15 @@ export function ChatPanel() {
       return;
     }
 
-    sendMutation.mutate(content, {
-      onSuccess: () => clearDraft(),
-    });
+    sendMutation.mutate(
+      {
+        content,
+        rag_config: chatMode === "rag" ? toRagConfig() : undefined,
+      },
+      {
+        onSuccess: () => clearDraft(),
+      },
+    );
   };
 
   return (
