@@ -110,6 +110,13 @@ export function NewChatButton({
   loading?: boolean;
 }) {
   return (
-    <Button label={label} icon="pi pi-plus" size="small" onClick={onClick} loading={loading} />
+    <Button
+      label={label}
+      icon="pi pi-plus"
+      iconPos="left"
+      size="small"
+      onClick={onClick}
+      loading={loading}
+    />
   );
 }
