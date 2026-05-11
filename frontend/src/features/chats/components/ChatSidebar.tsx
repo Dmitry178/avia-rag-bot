@@ -58,9 +58,10 @@ export function ChatSidebar() {
         }}
       />
 
-      <PanelHeader
-        title={t("panels.chats")}
-        action={
+      <PanelHeader title={t("panels.chats")} />
+
+      <div className="app-panel__body">
+        <div className="chat-sidebar__toolbar">
           <NewChatButton
             label={t("chat.new")}
             onClick={() => {
@@ -70,10 +71,8 @@ export function ChatSidebar() {
             }}
             loading={createChatMutation.isPending}
           />
-        }
-      />
+        </div>
 
-      <div className="app-panel__body">
         {chatsQuery.isLoading ? (
           <div className="trace-empty">
             <ProgressSpinner style={{ width: "2rem", height: "2rem" }} />
@@ -129,6 +128,12 @@ export function ChatSidebar() {
                 disabled={deleteChatMutation.isPending}
                 onClick={(event) => {
                   event.stopPropagation();
+
+                  if (chat.message_count === 0) {
+                    deleteChatMutation.mutate(chat.id);
+                    return;
+                  }
+
                   setChatToDelete(chat);
                 }}
               >
