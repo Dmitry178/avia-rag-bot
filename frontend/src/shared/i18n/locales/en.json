@@ -31,7 +31,13 @@
     "placeholderSelect": "Select a chat first",
     "placeholderClosed": "Chat is closed",
     "placeholderInput": "Ask a question about airport procedures...",
-    "placeholderLlm": "Ask anything..."
+    "placeholderLlm": "Ask anything...",
+    "delete": "Delete chat",
+    "deleteMessage": "Delete message",
+    "deleteMessageConfirmTitle": "Delete this message?",
+    "deleteMessageConfirmMessage": "The message will be removed from the chat history.",
+    "deleteConfirmTitle": "Delete chat \"{{title}}\"?",
+    "deleteConfirmMessage": "The full chat history will be deleted."
   },
   "roles": {
     "user": "You",
@@ -39,7 +45,8 @@
     "system": "System"
   },
   "common": {
-    "send": "Send"
+    "send": "Send",
+    "cancel": "Cancel"
   },
   "errors": {
     "loadChats": "Failed to load chat list",

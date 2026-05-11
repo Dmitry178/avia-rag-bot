@@ -31,7 +31,13 @@
     "placeholderSelect": "Сначала выберите чат",
     "placeholderClosed": "Чат закрыт",
     "placeholderInput": "Введите вопрос по процедурам аэропорта...",
-    "placeholderLlm": "Задайте любой вопрос..."
+    "placeholderLlm": "Задайте любой вопрос...",
+    "delete": "Удалить чат",
+    "deleteMessage": "Удалить сообщение",
+    "deleteMessageConfirmTitle": "Удалить сообщение?",
+    "deleteMessageConfirmMessage": "Сообщение будет удалено из истории чата.",
+    "deleteConfirmTitle": "Удалить чат «{{title}}»?",
+    "deleteConfirmMessage": "Вся история чата будет удалена."
   },
   "roles": {
     "user": "Вы",
@@ -39,7 +45,8 @@
     "system": "Система"
   },
   "common": {
-    "send": "Отправить"
+    "send": "Отправить",
+    "cancel": "Отмена"
   },
   "errors": {
     "loadChats": "Не удалось загрузить список чатов",
