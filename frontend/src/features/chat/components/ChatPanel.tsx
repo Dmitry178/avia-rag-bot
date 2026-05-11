@@ -6,18 +6,26 @@ import { ProgressSpinner } from "primereact/progressspinner";
 import ReactMarkdown from "react-markdown";
 
 import { PanelHeader } from "@/app/layout/AppHeader";
+import { DeleteConfirmDialog } from "@/shared/components/DeleteConfirmDialog";
 import { useChatModeStore } from "@/features/chat/modeStore";
 import { useSelectedChatId } from "@/features/chats/store";
 import { useTranslation } from "@/shared/i18n";
-import { useChatDetailQuery, useSendMessageMutation } from "../hooks/useChat";
+import { useChatDetailQuery, useDeleteMessageMutation, useSendMessageMutation } from "../hooks/useChat";
+import { useComposerDraft } from "../hooks/useComposerDraft";
 import { useComposerFocus } from "../hooks/useComposerFocus";
 
 function MessageBubble({
+  messageId,
   role,
   content,
+  onDelete,
+  isDeleteDisabled,
 }: {
+  messageId: number;
   role: "user" | "assistant" | "system";
   content: string;
+  onDelete: (messageId: number) => void;
+  isDeleteDisabled: boolean;
 }) {
   const { t } = useTranslation();
   const label =
@@ -27,18 +35,51 @@ function MessageBubble({
         ? t("roles.assistant")
         : t("roles.system");
 
-  return (
+  const showDelete = role === "user" || role === "assistant";
+
+  const bubble = (
     <article
       className={`chat-message${
         role === "user" ? " chat-message--user" : role === "assistant" ? " chat-message--assistant" : ""
       }`}
     >
+      {showDelete ? (
+        <button
+          type="button"
+          className="chat-message__delete"
+          aria-label={t("chat.deleteMessage")}
+          disabled={isDeleteDisabled}
+          onClick={() => onDelete(messageId)}
+        >
+          <i className="pi pi-trash" aria-hidden="true" />
+        </button>
+      ) : null}
       <p className="chat-message__role">{label}</p>
       <div className="chat-message__content">
         {role === "assistant" ? <ReactMarkdown>{content}</ReactMarkdown> : <p>{content}</p>}
       </div>
     </article>
   );
+
+  if (role === "assistant") {
+    return (
+      <div className="chat-message-row chat-message-row--assistant">
+        <i className="pi pi-sparkles chat-message__avatar chat-message__avatar--assistant" aria-hidden="true" />
+        {bubble}
+      </div>
+    );
+  }
+
+  if (role === "user") {
+    return (
+      <div className="chat-message-row chat-message-row--user">
+        {bubble}
+        <i className="pi pi-user chat-message__avatar chat-message__avatar--user" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  return bubble;
 }
 
 export function ChatPanel() {
@@ -47,12 +88,18 @@ export function ChatPanel() {
   const [selectedChatId] = useSelectedChatId();
   const chatQuery = useChatDetailQuery(selectedChatId);
   const sendMutation = useSendMessageMutation(selectedChatId);
-  const [draft, setDraft] = useState("");
+  const deleteMessageMutation = useDeleteMessageMutation(selectedChatId);
+  const [messageToDelete, setMessageToDelete] = useState<number | null>(null);
+  const { draft, setDraft, clearDraft } = useComposerDraft(selectedChatId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelBodyRef = useRef<HTMLDivElement>(null);
+  const prevChatIdRef = useRef<number | null>(null);
+  const prevMessageCountRef = useRef(0);
+
+  const isChatClosed = chatQuery.data?.is_closed === true;
 
   const isComposerDisabled =
-    selectedChatId === null || chatQuery.data?.is_closed === true || sendMutation.isPending;
+    selectedChatId === null || isChatClosed || sendMutation.isPending;
 
   useComposerFocus({
     textareaRef,
@@ -64,15 +111,9 @@ export function ChatPanel() {
   const inputPlaceholder =
     selectedChatId === null
       ? t("chat.placeholderSelect")
-      : chatQuery.data?.is_closed
-        ? t("chat.placeholderClosed")
-        : chatMode === "llm"
-          ? t("chat.placeholderLlm")
-          : t("chat.placeholderInput");
-
-  useEffect(() => {
-    setDraft("");
-  }, [selectedChatId]);
+      : chatMode === "llm"
+        ? t("chat.placeholderLlm")
+        : t("chat.placeholderInput");
 
   useEffect(() => {
     if (!chatQuery.isSuccess || selectedChatId === null) {
@@ -84,6 +125,19 @@ export function ChatPanel() {
     if (!container) {
       return;
     }
+
+    const messageCount = chatQuery.data?.messages.length ?? 0;
+    const chatChanged = prevChatIdRef.current !== selectedChatId;
+
+    if (chatChanged) {
+      prevChatIdRef.current = selectedChatId;
+      prevMessageCountRef.current = messageCount;
+    } else if (messageCount <= prevMessageCountRef.current) {
+      prevMessageCountRef.current = messageCount;
+      return;
+    }
+
+    prevMessageCountRef.current = messageCount;
 
     const scrollToBottom = () => {
       container.scrollTop = container.scrollHeight;
@@ -102,12 +156,31 @@ export function ChatPanel() {
     }
 
     sendMutation.mutate(content, {
-      onSuccess: () => setDraft(""),
+      onSuccess: () => clearDraft(),
     });
   };
 
   return (
     <>
+      <DeleteConfirmDialog
+        visible={messageToDelete !== null}
+        header={t("chat.deleteMessageConfirmTitle")}
+        message={t("chat.deleteMessageConfirmMessage")}
+        confirmLabel={t("chat.deleteMessage")}
+        cancelLabel={t("common.cancel")}
+        isPending={deleteMessageMutation.isPending}
+        onHide={() => setMessageToDelete(null)}
+        onConfirm={() => {
+          if (messageToDelete === null) {
+            return;
+          }
+
+          deleteMessageMutation.mutate(messageToDelete, {
+            onSuccess: () => setMessageToDelete(null),
+          });
+        }}
+      />
+
       <PanelHeader title={t("panels.dialog")} />
 
       <div className="app-panel__body" ref={panelBodyRef}>
@@ -130,36 +203,49 @@ export function ChatPanel() {
         {chatQuery.data ? (
           <div className="chat-messages">
             {chatQuery.data.messages.map((message) => (
-              <MessageBubble key={message.id} role={message.role} content={message.content} />
+              <MessageBubble
+                key={message.id}
+                messageId={message.id}
+                role={message.role}
+                content={message.content}
+                onDelete={setMessageToDelete}
+                isDeleteDisabled={deleteMessageMutation.isPending || messageToDelete !== null}
+              />
             ))}
           </div>
         ) : null}
       </div>
 
-      <div className="chat-composer">
-        <InputTextarea
-          ref={textareaRef}
-          className="chat-composer__input"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          rows={3}
-          autoResize
-          disabled={isComposerDisabled}
-          placeholder={inputPlaceholder}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              handleSend();
-            }
-          }}
-        />
-        <Button
-          icon="pi pi-send"
-          label={t("common.send")}
-          onClick={handleSend}
-          loading={sendMutation.isPending}
-          disabled={selectedChatId === null || !draft.trim() || chatQuery.data?.is_closed}
-        />
+      <div className={`chat-composer${isChatClosed ? " chat-composer--closed" : ""}`}>
+        {isChatClosed ? (
+          <p className="chat-composer__closed">{t("chat.placeholderClosed")}</p>
+        ) : (
+          <>
+            <InputTextarea
+              ref={textareaRef}
+              className="chat-composer__input"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              rows={3}
+              autoResize
+              disabled={isComposerDisabled}
+              placeholder={inputPlaceholder}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSend();
+                }
+              }}
+            />
+            <Button
+              icon="pi pi-send"
+              label={t("common.send")}
+              onClick={handleSend}
+              loading={sendMutation.isPending}
+              disabled={selectedChatId === null || !draft.trim()}
+            />
+          </>
+        )}
       </div>
 
       {sendMutation.isError ? (
