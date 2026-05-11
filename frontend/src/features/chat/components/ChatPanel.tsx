@@ -11,6 +11,7 @@ import { useChatModeStore } from "@/features/chat/modeStore";
 import { useSelectedChatId } from "@/features/chats/store";
 import { useTranslation } from "@/shared/i18n";
 import { useChatDetailQuery, useDeleteMessageMutation, useSendMessageMutation } from "../hooks/useChat";
+import { useComposerAutoResize } from "../hooks/useComposerAutoResize";
 import { useComposerDraft } from "../hooks/useComposerDraft";
 import { useComposerFocus } from "../hooks/useComposerFocus";
 
@@ -107,6 +108,8 @@ export function ChatPanel() {
     isComposerDisabled,
     isSendPending: sendMutation.isPending,
   });
+
+  useComposerAutoResize({ textareaRef, value: draft });
 
   const inputPlaceholder =
     selectedChatId === null
@@ -226,8 +229,7 @@ export function ChatPanel() {
               className="chat-composer__input"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              rows={3}
-              autoResize
+              rows={1}
               disabled={isComposerDisabled}
               placeholder={inputPlaceholder}
               onKeyDown={(event) => {
@@ -238,6 +240,7 @@ export function ChatPanel() {
               }}
             />
             <Button
+              className="chat-composer__send"
               icon="pi pi-send"
               label={t("common.send")}
               onClick={handleSend}
