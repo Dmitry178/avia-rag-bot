@@ -9,6 +9,13 @@ from app.core.sse_manager import sse_manager
 from app.exceptions import handle_basic_db_errors
 from app.exceptions.service import ServiceError
 from app.llm.chat import ChatCompletionClient
+from app.llm.prompts import build_system_prompt
+from app.llm.prompt_guard import (
+    BlockReason,
+    blocked_refusal,
+    evaluate_user_message,
+    reply_language_for_user_text,
+)
 from app.models.chat import ChatType
 from app.models.chat_message import MessageRole
 from app.schemas.chat import (
@@ -194,15 +201,32 @@ class ChatService:
         ]
 
         client = ChatCompletionClient(self.settings.llm)
-
-        try:
-            assistant_text, llm_metadata = await client.complete(llm_messages)
-        except Exception as exc:
-            await self._publish_error(body.client_id, chat_id, exc)
-            await self.db.rollback()
-            raise
-
         requested_at = datetime.now(UTC).isoformat()
+        block_reason = evaluate_user_message(body.content)
+
+        if block_reason is not None:
+            assistant_text = blocked_refusal(body.content)
+            llm_metadata: dict = {
+                "model": self.settings.llm.model,
+                "latency_ms": 0,
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "total_tokens": None,
+                "blocked_reason": block_reason.value,
+            }
+        else:
+            try:
+                assistant_text, llm_metadata = await client.complete(
+                    llm_messages,
+                    system_prompt=build_system_prompt(
+                        reply_language=reply_language_for_user_text(body.content),
+                    ),
+                )
+            except Exception as exc:
+                await self._publish_error(body.client_id, chat_id, exc)
+                await self.db.rollback()
+                raise
+
         assistant_metadata = {**llm_metadata, "requested_at": requested_at}
 
         assistant_message = await self.db.chat.messages.create(
@@ -212,7 +236,11 @@ class ChatService:
             message_metadata=assistant_metadata,
         )
 
-        await self.db.chat.chats.touch(chat_id)
+        if block_reason is BlockReason.INJECTION:
+            await self.db.chat.chats.close(chat_id)
+        else:
+            await self.db.chat.chats.touch(chat_id)
+
         await self.db.commit()
 
         logger.info(
