@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { getChat, sendMessage } from "@/shared/api/chats";
+import { getChat, deleteMessage, sendMessage } from "@/shared/api/chats";
 import { useChatUiStore } from "@/features/chats/store";
 
 export function chatDetailQueryKey(chatId: number) {
@@ -26,6 +26,27 @@ export function useSendMessageMutation(chatId: number | null) {
       }
 
       return sendMessage(chatId, content, clientId);
+    },
+    onSuccess: () => {
+      if (chatId !== null) {
+        void queryClient.invalidateQueries({ queryKey: chatDetailQueryKey(chatId) });
+      }
+
+      void queryClient.invalidateQueries({ queryKey: ["chats"] });
+    },
+  });
+}
+
+export function useDeleteMessageMutation(chatId: number | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (messageId: number) => {
+      if (chatId === null) {
+        throw new Error("Chat is not selected");
+      }
+
+      return deleteMessage(chatId, messageId);
     },
     onSuccess: () => {
       if (chatId !== null) {
