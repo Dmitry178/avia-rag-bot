@@ -48,3 +48,4 @@ class ChunkDraft:
     parent_chunk_index: int | None = None
     token_count: int = 0
     source_path: str = ""
+    content_hash: str = ""
