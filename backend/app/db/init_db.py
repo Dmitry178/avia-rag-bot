@@ -29,6 +29,39 @@ async def _ensure_chat_type_column() -> None:
         )
 
 
+async def _ensure_etl_columns() -> None:
+    """
+    Add incremental ETL columns to existing SQLite dev DBs.
+    """
+
+    async with engine.begin() as conn:
+        def _missing_columns(sync_conn) -> list[tuple[str, str]]:
+            inspector = inspect(sync_conn)
+            missing: list[tuple[str, str]] = []
+
+            if "chunk_meta" in inspector.get_table_names():
+                chunk_columns = {column["name"] for column in inspector.get_columns("chunk_meta")}
+                if "content_hash" not in chunk_columns:
+                    missing.append(
+                        ("chunk_meta", "ALTER TABLE chunk_meta ADD COLUMN content_hash VARCHAR NOT NULL DEFAULT ''")
+                    )
+
+            if "index_manifest" in inspector.get_table_names():
+                manifest_columns = {column["name"] for column in inspector.get_columns("index_manifest")}
+                if "chunker_version" not in manifest_columns:
+                    missing.append(
+                        (
+                            "index_manifest",
+                            "ALTER TABLE index_manifest ADD COLUMN chunker_version VARCHAR NOT NULL DEFAULT ''",
+                        )
+                    )
+
+            return missing
+
+        for _table, statement in await conn.run_sync(_missing_columns):
+            await conn.execute(text(statement))
+
+
 async def init_db() -> None:
     """
     Create all SQLModel tables if they do not exist.
@@ -38,3 +71,4 @@ async def init_db() -> None:
         await conn.run_sync(SQLModel.metadata.create_all)
 
     await _ensure_chat_type_column()
+    await _ensure_etl_columns()
