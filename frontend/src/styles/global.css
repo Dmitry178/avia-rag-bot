@@ -491,6 +491,7 @@ textarea {
 
 .chat-composer {
   display: flex;
+  align-items: flex-end;
   gap: 0.75rem;
   padding: 1rem;
   border-top: 1px solid var(--color-border-subtle);
@@ -511,6 +512,10 @@ textarea {
 
 .chat-composer__input {
   flex: 1;
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.5;
   background: var(--color-background-input);
   color: var(--color-text-primary);
   border-color: var(--color-border-subtle);
@@ -522,6 +527,11 @@ textarea {
 
 .chat-composer__input:enabled:focus {
   border-color: var(--color-focus-border);
+}
+
+.chat-composer__send {
+  flex-shrink: 0;
+  align-self: flex-end;
 }
 
 .trace-empty {
