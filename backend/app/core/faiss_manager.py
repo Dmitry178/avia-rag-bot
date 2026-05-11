@@ -54,5 +54,27 @@ class FaissManager:
 
         await asyncio.to_thread(self.build_and_save, vectors, path)
 
+    @staticmethod
+    def reconstruct_vectors(path: Path) -> list[list[float]]:
+        """
+        Load a persisted index and reconstruct all stored vectors.
+        """
+
+        if not path.is_file():
+            return []
+
+        index = faiss.read_index(str(path))
+        if index.ntotal == 0:
+            return []
+
+        return [index.reconstruct(row).tolist() for row in range(index.ntotal)]
+
+    async def reconstruct_vectors_async(self, path: Path) -> list[list[float]]:
+        """
+        Run FAISS vector reconstruction in a worker thread.
+        """
+
+        return await asyncio.to_thread(self.reconstruct_vectors, path)
+
 
 faiss_manager = FaissManager()
