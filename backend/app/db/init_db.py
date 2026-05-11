@@ -62,6 +62,51 @@ async def _ensure_etl_columns() -> None:
             await conn.execute(text(statement))
 
 
+async def _ensure_chat_rag_columns() -> None:
+    """
+    Add RAG settings and message_count columns to existing chat tables.
+    """
+
+    async with engine.begin() as conn:
+        def _missing_chat_columns(sync_conn) -> list[str]:
+            inspector = inspect(sync_conn)
+            if "chat" not in inspector.get_table_names():
+                return []
+
+            existing = {column["name"] for column in inspector.get_columns("chat")}
+            statements: list[str] = []
+
+            if "message_count" not in existing:
+                statements.append("ALTER TABLE chat ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0")
+
+            if "rag_config" not in existing:
+                statements.append("ALTER TABLE chat ADD COLUMN rag_config JSON")
+
+            if "use_history" not in existing:
+                statements.append("ALTER TABLE chat ADD COLUMN use_history BOOLEAN")
+
+            return statements
+
+        statements = await conn.run_sync(_missing_chat_columns)
+        for statement in statements:
+            await conn.execute(text(statement))
+
+        if any("message_count" in statement for statement in statements):
+            await conn.execute(
+                text(
+                    """
+                    UPDATE chat
+                    SET message_count = (
+                        SELECT COUNT(*)
+                        FROM chat_message
+                        WHERE chat_message.chat_id = chat.id
+                          AND chat_message.is_deleted = 0
+                    )
+                    """
+                )
+            )
+
+
 async def init_db() -> None:
     """
     Create all SQLModel tables if they do not exist.
@@ -72,3 +117,4 @@ async def init_db() -> None:
 
     await _ensure_chat_type_column()
     await _ensure_etl_columns()
+    await _ensure_chat_rag_columns()
