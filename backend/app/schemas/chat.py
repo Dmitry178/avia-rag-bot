@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.models.chat_message import MessageRole
 from app.models.chat import ChatType
+from app.schemas.llm import LlmConfig
 from app.schemas.rag import RagConfig
 
 
@@ -21,6 +22,7 @@ class ChatSummaryResponse(BaseModel):
     is_closed: bool
     message_count: int
     rag_config: RagConfig | None = None
+    llm_config: LlmConfig | None = None
     use_history: bool | None = None
     created_at: datetime
     updated_at: datetime
@@ -54,6 +56,7 @@ class ChatDetailResponse(BaseModel):
     is_closed: bool
     message_count: int
     rag_config: RagConfig | None = None
+    llm_config: LlmConfig | None = None
     use_history: bool | None = None
     created_at: datetime
     updated_at: datetime
@@ -75,24 +78,32 @@ class CreateChatRequest(BaseModel):
         default=None,
         description="Initial RAG toggles for rag chats; ignored for llm.",
     )
+    llm_config: LlmConfig | None = Field(
+        default=None,
+        description="Initial LLM settings for llm chats; ignored for rag.",
+    )
     use_history: bool | None = Field(
         default=None,
-        description="Whether to include chat history in RAG context.",
+        description="Whether to include chat history in context.",
     )
 
 
 class UpdateChatRequest(BaseModel):
     """
-    Update chat-level settings (RAG toggles, history flag).
+    Update chat-level settings (RAG/LLM toggles, history flag).
     """
 
     rag_config: RagConfig | None = Field(
         default=None,
         description="Replace RAG pipeline toggles; null leaves unchanged when omitted.",
     )
+    llm_config: LlmConfig | None = Field(
+        default=None,
+        description="Replace LLM settings; null leaves unchanged when omitted.",
+    )
     use_history: bool | None = Field(
         default=None,
-        description="Toggle chat history in RAG context; null leaves unchanged when omitted.",
+        description="Toggle chat history in context; null leaves unchanged when omitted.",
     )
 
 
@@ -110,9 +121,13 @@ class SendMessageRequest(BaseModel):
         default=None,
         description="RAG pipeline toggles for this request; updates chat when provided.",
     )
+    llm_config: LlmConfig | None = Field(
+        default=None,
+        description="LLM settings for this request; updates chat when provided.",
+    )
     use_history: bool | None = Field(
         default=None,
-        description="Whether to include chat history in RAG context for this request.",
+        description="Whether to include chat history in context for this request.",
     )
 
 
