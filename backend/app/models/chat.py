@@ -67,5 +67,10 @@ class Chat(SQLModel, table=True):
     )
     use_history: bool | None = Field(
         default=None,
-        description="Whether to include chat history in RAG context; null until configured.",
+        description="Whether to include chat history in context; null until configured.",
+    )
+    llm_config: dict | None = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="LLM mode settings (custom prompt toggles); null for RAG chats or unset.",
     )
