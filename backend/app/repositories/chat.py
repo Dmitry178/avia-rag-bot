@@ -47,6 +47,7 @@ class ChatRepository:
         chat_type: ChatType = ChatType.LLM,
         *,
         rag_config: dict | None = None,
+        llm_config: dict | None = None,
         use_history: bool | None = None,
     ) -> Chat:
         """
@@ -59,6 +60,7 @@ class ChatRepository:
             chat_type=chat_type.value,
             message_count=0,
             rag_config=rag_config,
+            llm_config=llm_config,
             use_history=use_history,
             created_at=now,
             updated_at=now,
@@ -88,12 +90,14 @@ class ChatRepository:
         chat_id: int,
         *,
         rag_config: dict | None = None,
+        llm_config: dict | None = None,
         use_history: bool | None = None,
         update_rag_config: bool = False,
+        update_llm_config: bool = False,
         update_use_history: bool = False,
     ) -> Chat | None:
         """
-        Update chat-level RAG settings.
+        Update chat-level RAG/LLM settings.
         """
 
         chat = await self.get_by_id(chat_id)
@@ -102,6 +106,10 @@ class ChatRepository:
 
         if update_rag_config:
             chat.rag_config = rag_config
+
+        if update_llm_config:
+            chat.llm_config = llm_config
+
         if update_use_history:
             chat.use_history = use_history
 
