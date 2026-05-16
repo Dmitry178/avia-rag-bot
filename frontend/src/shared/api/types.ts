@@ -9,6 +9,11 @@ export interface RagConfig {
   use_rerank?: boolean | null;
 }
 
+export interface LlmConfig {
+  use_custom_prompt?: boolean | null;
+  custom_prompt?: string | null;
+}
+
 export interface ChatSummary {
   id: number;
   title: string;
@@ -16,6 +21,7 @@ export interface ChatSummary {
   is_closed: boolean;
   message_count: number;
   rag_config: RagConfig | null;
+  llm_config: LlmConfig | null;
   use_history: boolean | null;
   created_at: string;
   updated_at: string;
@@ -41,11 +47,13 @@ export interface ChatDetail extends ChatSummary {
 export interface SendMessagePayload {
   content: string;
   rag_config?: RagConfig;
+  llm_config?: LlmConfig;
   use_history?: boolean | null;
 }
 
 export interface UpdateChatPayload {
   rag_config?: RagConfig;
+  llm_config?: LlmConfig;
   use_history?: boolean | null;
 }
 
