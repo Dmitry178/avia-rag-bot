@@ -3,6 +3,7 @@ import type {
   ChatDetail,
   ChatMode,
   ChatSummary,
+  LlmConfig,
   RagConfig,
   SendMessageResponse,
   UpdateChatPayload,
@@ -17,12 +18,20 @@ export function listChats(chatType: ChatMode): Promise<ChatSummary[]> {
 export function createChat(
   title: string,
   chatType: ChatMode,
-  options?: { ragConfig?: RagConfig | null; useHistory?: boolean | null },
+  options?: {
+    ragConfig?: RagConfig | null;
+    llmConfig?: LlmConfig | null;
+    useHistory?: boolean | null;
+  },
 ): Promise<ChatSummary> {
   const body: Record<string, unknown> = { title, chat_type: chatType };
 
   if (options?.ragConfig) {
     body.rag_config = options.ragConfig;
+  }
+
+  if (options?.llmConfig) {
+    body.llm_config = options.llmConfig;
   }
 
   if (options?.useHistory !== undefined) {
@@ -60,6 +69,7 @@ export function sendMessage(
   options?: {
     clientId?: string;
     ragConfig?: RagConfig;
+    llmConfig?: LlmConfig;
     useHistory?: boolean | null;
   },
 ): Promise<SendMessageResponse> {
@@ -70,6 +80,10 @@ export function sendMessage(
 
   if (options?.ragConfig) {
     body.rag_config = options.ragConfig;
+  }
+
+  if (options?.llmConfig) {
+    body.llm_config = options.llmConfig;
   }
 
   if (options?.useHistory !== undefined) {
