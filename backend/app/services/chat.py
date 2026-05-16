@@ -29,6 +29,7 @@ from app.schemas.chat import (
     SetRatingRequest,
     UpdateChatRequest,
 )
+from app.schemas.llm import LlmConfig
 from app.schemas.rag import RagConfig
 
 
@@ -51,19 +52,60 @@ class ChatService:
         return RagConfig.model_validate(data)
 
     @staticmethod
-    def _rag_message_metadata(
+    def _parse_llm_config(data: dict | None) -> LlmConfig | None:
+        if not data:
+            return None
+
+        return LlmConfig.model_validate(data)
+
+    @staticmethod
+    def _resolve_use_history(body: SendMessageRequest, chat) -> bool:
+        if "use_history" in body.model_fields_set:
+            value = body.use_history
+        else:
+            value = chat.use_history
+
+        return True if value is None else value
+
+    @staticmethod
+    def _settings_message_metadata(
         rag_config: RagConfig | None,
-        use_history: bool | None,
+        llm_config: LlmConfig | None,
+        use_history: bool,
     ) -> dict:
-        metadata: dict = {}
+        metadata: dict = {"use_history": use_history}
 
         if rag_config is not None:
             metadata["rag_config"] = rag_config.model_dump()
 
-        if use_history is not None:
-            metadata["use_history"] = use_history
+        if llm_config is not None:
+            metadata["llm_config"] = llm_config.model_dump()
 
         return metadata
+
+    @staticmethod
+    def _build_llm_messages(history, current_content: str, use_history: bool) -> list[dict[str, str]]:
+        if use_history:
+            return [
+                {"role": message.role, "content": message.content}
+                for message in history
+                if message.role in {MessageRole.USER.value, MessageRole.ASSISTANT.value}
+            ]
+
+        return [{"role": MessageRole.USER.value, "content": current_content}]
+
+    @staticmethod
+    def _is_llm_free_mode(llm_config: LlmConfig | None) -> bool:
+        return llm_config is not None and llm_config.use_custom_prompt is True
+
+    @staticmethod
+    def _resolve_custom_system_prompt(llm_config: LlmConfig | None) -> str | None:
+        if llm_config is None or not llm_config.use_custom_prompt:
+            return None
+
+        custom_prompt = (llm_config.custom_prompt or "").strip()
+
+        return custom_prompt or None
 
     @staticmethod
     def _chat_to_summary(chat) -> ChatSummaryResponse:
@@ -74,6 +116,7 @@ class ChatService:
             is_closed=chat.is_closed,
             message_count=chat.message_count,
             rag_config=ChatService._parse_rag_config(chat.rag_config),
+            llm_config=ChatService._parse_llm_config(chat.llm_config),
             use_history=chat.use_history,
             created_at=chat.created_at,
             updated_at=chat.updated_at,
@@ -144,6 +187,7 @@ class ChatService:
             title=body.title,
             chat_type=body.chat_type,
             rag_config=body.rag_config.model_dump() if body.rag_config else None,
+            llm_config=body.llm_config.model_dump() if body.llm_config else None,
             use_history=body.use_history,
         )
         await self.db.commit()
@@ -173,6 +217,7 @@ class ChatService:
             is_closed=chat.is_closed,
             message_count=chat.message_count,
             rag_config=self._parse_rag_config(chat.rag_config),
+            llm_config=self._parse_llm_config(chat.llm_config),
             use_history=chat.use_history,
             created_at=chat.created_at,
             updated_at=chat.updated_at,
@@ -183,15 +228,17 @@ class ChatService:
     @handle_basic_db_errors
     async def update_chat(self, chat_id: int, body: UpdateChatRequest) -> ChatSummaryResponse:
         """
-        Update chat-level RAG settings (toggles, use_history).
+        Update chat-level RAG/LLM settings (toggles, use_history).
         """
 
         fields_set = body.model_fields_set
         chat = await self.db.chat.chats.update_settings(
             chat_id,
             rag_config=body.rag_config.model_dump() if body.rag_config else None,
+            llm_config=body.llm_config.model_dump() if body.llm_config else None,
             use_history=body.use_history,
             update_rag_config="rag_config" in fields_set,
+            update_llm_config="llm_config" in fields_set,
             update_use_history="use_history" in fields_set,
         )
 
@@ -250,41 +297,55 @@ class ChatService:
         chat = await self.db.chat.chats.get_by_id(chat_id)
         assert chat is not None
 
+        chat_type = ChatType(chat.chat_type)
+        use_history_value = self._resolve_use_history(body, chat)
+
         rag_snapshot: RagConfig | None = None
-        use_history_value: bool | None = None
+        llm_snapshot: LlmConfig | None = None
 
-        if ChatType(chat.chat_type) == ChatType.RAG:
+        update_rag_config = False
+        update_llm_config = False
+        update_use_history = "use_history" in body.model_fields_set
+
+        if chat_type == ChatType.RAG:
             rag_snapshot = body.rag_config or self._parse_rag_config(chat.rag_config)
-            use_history_value = body.use_history if "use_history" in body.model_fields_set else chat.use_history
+            update_rag_config = body.rag_config is not None
 
-            if body.rag_config is not None or "use_history" in body.model_fields_set:
-                await self.db.chat.chats.update_settings(
-                    chat_id,
-                    rag_config=rag_snapshot.model_dump() if rag_snapshot else None,
-                    use_history=use_history_value,
-                    update_rag_config=body.rag_config is not None,
-                    update_use_history="use_history" in body.model_fields_set,
-                )
+        if chat_type == ChatType.LLM:
+            llm_snapshot = body.llm_config or self._parse_llm_config(chat.llm_config)
+            update_llm_config = body.llm_config is not None
 
-        rag_metadata = self._rag_message_metadata(rag_snapshot, use_history_value)
+        if update_rag_config or update_llm_config or update_use_history:
+            await self.db.chat.chats.update_settings(
+                chat_id,
+                rag_config=rag_snapshot.model_dump() if rag_snapshot else None,
+                llm_config=llm_snapshot.model_dump() if llm_snapshot else None,
+                use_history=use_history_value,
+                update_rag_config=update_rag_config,
+                update_llm_config=update_llm_config,
+                update_use_history=update_use_history,
+            )
+
+        settings_metadata = self._settings_message_metadata(
+            rag_snapshot,
+            llm_snapshot,
+            use_history_value,
+        )
 
         user_message = await self.db.chat.messages.create(
             chat_id=chat_id,
             role=MessageRole.USER,
             content=body.content,
-            message_metadata=rag_metadata,
+            message_metadata=settings_metadata,
         )
 
         history = await self.db.chat.messages.list_by_chat(chat_id)
-        llm_messages = [
-            {"role": message.role, "content": message.content}
-            for message in history
-            if message.role in {MessageRole.USER.value, MessageRole.ASSISTANT.value}
-        ]
+        llm_messages = self._build_llm_messages(history, body.content, use_history_value)
 
         client = ChatCompletionClient(self.settings.llm)
         requested_at = datetime.now(UTC).isoformat()
-        block_reason = evaluate_user_message(body.content)
+        free_mode = chat_type == ChatType.LLM and self._is_llm_free_mode(llm_snapshot)
+        block_reason = None if free_mode else evaluate_user_message(body.content)
 
         if block_reason is not None:
             assistant_text = blocked_refusal(body.content)
@@ -298,18 +359,25 @@ class ChatService:
             }
         else:
             try:
-                assistant_text, llm_metadata = await client.complete(
-                    llm_messages,
-                    system_prompt=build_system_prompt(
-                        reply_language=reply_language_for_user_text(body.content),
-                    ),
-                )
+                if free_mode:
+                    assistant_text, llm_metadata = await client.complete(
+                        llm_messages,
+                        system_prompt=self._resolve_custom_system_prompt(llm_snapshot),
+                        harden_user_messages=False,
+                    )
+                else:
+                    assistant_text, llm_metadata = await client.complete(
+                        llm_messages,
+                        system_prompt=build_system_prompt(
+                            reply_language=reply_language_for_user_text(body.content),
+                        ),
+                    )
             except Exception as exc:
                 await self._publish_error(body.client_id, chat_id, exc)
                 await self.db.rollback()
                 raise
 
-        assistant_metadata = {**llm_metadata, "requested_at": requested_at, **rag_metadata}
+        assistant_metadata = {**llm_metadata, "requested_at": requested_at, **settings_metadata}
 
         assistant_message = await self.db.chat.messages.create(
             chat_id=chat_id,
