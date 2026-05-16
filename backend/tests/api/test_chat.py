@@ -130,6 +130,72 @@ async def test_get_chat_returns_empty_messages(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_patch_llm_settings(client: AsyncClient) -> None:
+    """
+    PATCH should update chat-level LLM settings and use_history.
+    """
+
+    create = await client.post("/api/chats", json={"title": "LLM patch", "chat_type": "llm"})
+    chat_id = create.json()["id"]
+
+    patched = await client.patch(
+        f"/api/chats/{chat_id}",
+        json={
+            "llm_config": {
+                "use_custom_prompt": True,
+                "custom_prompt": "You are an aviation expert.",
+            },
+            "use_history": False,
+        },
+    )
+    assert patched.status_code == 200
+    data = patched.json()
+    assert data["llm_config"]["use_custom_prompt"] is True
+    assert data["llm_config"]["custom_prompt"] == "You are an aviation expert."
+    assert data["use_history"] is False
+
+
+@pytest.mark.asyncio
+async def test_send_llm_message_persists_metadata_and_skips_guards_in_free_mode(
+    client: AsyncClient,
+) -> None:
+    """
+    Custom prompt mode should persist LLM settings and skip prompt guards.
+    """
+
+    create = await client.post("/api/chats", json={"title": "LLM free", "chat_type": "llm"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        return_value=LLM_MOCK_RETURN,
+    ) as complete_mock:
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={
+                "content": "как приготовить куриный суп?",
+                "llm_config": {
+                    "use_custom_prompt": True,
+                    "custom_prompt": "You are helpful.",
+                },
+                "use_history": False,
+            },
+        )
+
+    assert send.status_code == 200
+    assert "blocked_reason" not in send.json()["assistant_message"]["metadata"]
+    assert send.json()["user_message"]["metadata"]["llm_config"]["use_custom_prompt"] is True
+    assert send.json()["user_message"]["metadata"]["use_history"] is False
+    complete_mock.assert_awaited_once()
+    assert complete_mock.await_args.kwargs["harden_user_messages"] is False
+    assert complete_mock.await_args.kwargs["system_prompt"] == "You are helpful."
+    assert complete_mock.await_args.args[0] == [
+        {"role": "user", "content": "как приготовить куриный суп?"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_send_message_persists_rag_metadata_and_message_count(client: AsyncClient) -> None:
     """
     Sending a message should snapshot RAG settings on both messages and bump message_count.
