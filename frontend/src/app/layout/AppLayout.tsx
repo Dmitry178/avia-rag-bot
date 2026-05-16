@@ -2,6 +2,7 @@ import { AppHeader } from "./AppHeader";
 import { ChatPanel } from "@/features/chat/components/ChatPanel";
 import { useChatModeStore } from "@/features/chat/modeStore";
 import { ChatSidebar } from "@/features/chats/components/ChatSidebar";
+import { LlmParametersPanel } from "@/features/llm/components/LlmParametersPanel";
 import { TracePanel } from "@/features/trace/components/TracePanel";
 
 export function AppLayout() {
@@ -11,7 +12,7 @@ export function AppLayout() {
     <div className="app-shell">
       <AppHeader />
 
-      <main className={`app-main${chatMode === "llm" ? " app-main--llm" : ""}`}>
+      <main className="app-main">
         <section className="app-panel app-panel--sidebar">
           <ChatSidebar />
         </section>
@@ -24,7 +25,11 @@ export function AppLayout() {
           <section className="app-panel app-panel--trace">
             <TracePanel />
           </section>
-        ) : null}
+        ) : (
+          <section className="app-panel app-panel--trace">
+            <LlmParametersPanel />
+          </section>
+        )}
       </main>
     </div>
   );
