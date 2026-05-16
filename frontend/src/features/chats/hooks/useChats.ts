@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { chatDetailQueryKey } from "@/features/chat/hooks/useChat";
 import { useChatModeStore } from "@/features/chat/modeStore";
+import { useLlmSettingsStore } from "@/features/llm/llmSettingsStore";
 import { useRagSettingsStore } from "@/features/rag/ragSettingsStore";
 import { createChat, deleteChat, listChats, updateChat } from "@/shared/api/chats";
 import type { ChatMode, ChatSummary } from "@/shared/api/types";
@@ -22,15 +23,25 @@ export function useCreateChatMutation() {
   const queryClient = useQueryClient();
   const chatType = useChatModeStore((state) => state.mode);
   const setSelectedChatId = useChatUiStore((state) => state.setSelectedChatId);
-  const toPayload = useRagSettingsStore((state) => state.toPayload);
+  const ragToPayload = useRagSettingsStore((state) => state.toPayload);
+  const llmToPayload = useLlmSettingsStore((state) => state.toPayload);
 
   return useMutation({
     mutationFn: (title: string) => {
-      const ragPayload = chatType === "rag" ? toPayload() : null;
+      if (chatType === "rag") {
+        const payload = ragToPayload();
+
+        return createChat(title, chatType, {
+          ragConfig: payload.rag_config,
+          useHistory: payload.use_history,
+        });
+      }
+
+      const payload = llmToPayload();
 
       return createChat(title, chatType, {
-        ragConfig: ragPayload?.rag_config,
-        useHistory: ragPayload?.use_history,
+        llmConfig: payload.llm_config,
+        useHistory: payload.use_history,
       });
     },
     onSuccess: (chat) => {
@@ -123,7 +134,8 @@ export function useDeleteChatMutation() {
 export function useUpdateChatSettingsMutation(chatId: number | null) {
   const queryClient = useQueryClient();
   const chatType = useChatModeStore((state) => state.mode);
-  const toPayload = useRagSettingsStore((state) => state.toPayload);
+  const ragToPayload = useRagSettingsStore((state) => state.toPayload);
+  const llmToPayload = useLlmSettingsStore((state) => state.toPayload);
 
   return useMutation({
     mutationFn: () => {
@@ -131,10 +143,19 @@ export function useUpdateChatSettingsMutation(chatId: number | null) {
         throw new Error("Chat is not selected");
       }
 
-      const payload = toPayload();
+      if (chatType === "rag") {
+        const payload = ragToPayload();
+
+        return updateChat(chatId, {
+          rag_config: payload.rag_config,
+          use_history: payload.use_history,
+        });
+      }
+
+      const payload = llmToPayload();
 
       return updateChat(chatId, {
-        rag_config: payload.rag_config,
+        llm_config: payload.llm_config,
         use_history: payload.use_history,
       });
     },
