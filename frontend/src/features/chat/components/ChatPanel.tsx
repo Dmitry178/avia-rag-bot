@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import { PanelHeader } from "@/app/layout/AppHeader";
 import { DeleteConfirmDialog } from "@/shared/components/DeleteConfirmDialog";
 import { useChatModeStore } from "@/features/chat/modeStore";
+import { useLlmSettingsStore } from "@/features/llm/llmSettingsStore";
 import { useRagSettingsStore } from "@/features/rag/ragSettingsStore";
 import { useSelectedChatId } from "@/features/chats/store";
 import { useTranslation } from "@/shared/i18n";
@@ -88,6 +89,7 @@ export function ChatPanel() {
   const { t } = useTranslation();
   const chatMode = useChatModeStore((state) => state.mode);
   const toRagConfig = useRagSettingsStore((state) => state.toConfig);
+  const useCustomPrompt = useLlmSettingsStore((state) => state.use_custom_prompt ?? false);
   const [selectedChatId] = useSelectedChatId();
   const chatQuery = useChatDetailQuery(selectedChatId);
   const sendMutation = useSendMessageMutation(selectedChatId);
@@ -117,7 +119,9 @@ export function ChatPanel() {
     selectedChatId === null
       ? t("chat.placeholderSelect")
       : chatMode === "llm"
-        ? t("chat.placeholderLlm")
+        ? useCustomPrompt
+          ? t("chat.placeholderLlm")
+          : t("chat.placeholderLlmAviation")
         : t("chat.placeholderInput");
 
   useEffect(() => {
