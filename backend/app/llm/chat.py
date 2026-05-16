@@ -38,6 +38,7 @@ class ChatCompletionClient:
         messages: list[dict[str, str]],
         *,
         system_prompt: str | None = None,
+        harden_user_messages: bool = True,
     ) -> tuple[str, dict[str, Any]]:
         """
         Run a chat completion and return (assistant_text, metadata dict).
@@ -45,9 +46,17 @@ class ChatCompletionClient:
 
         self._validate_config()
 
-        resolved_system_prompt = system_prompt or SYSTEM_PROMPT
-        payload_messages = [{"role": "system", "content": resolved_system_prompt}]
-        payload_messages.extend(harden_messages_for_llm(messages))
+        payload_messages: list[dict[str, str]] = []
+        
+        if system_prompt is not None:
+            payload_messages.append({"role": "system", "content": system_prompt})
+        elif harden_user_messages:
+            payload_messages.append({"role": "system", "content": SYSTEM_PROMPT})
+
+        if harden_user_messages:
+            payload_messages.extend(harden_messages_for_llm(messages))
+        else:
+            payload_messages.extend(messages)
 
         headers: dict[str, str] = {}
         if self._settings.api_key:
