@@ -21,7 +21,8 @@
   "panels": {
     "chats": "Чаты",
     "dialog": "Диалог",
-    "trace": "Трассировка"
+    "trace": "Трассировка",
+    "parameters": "Параметры"
   },
   "chat": {
     "new": "Новый чат",
@@ -32,6 +33,7 @@
     "placeholderClosed": "Чат закрыт",
     "placeholderInput": "Введите вопрос по процедурам аэропорта...",
     "placeholderLlm": "Задайте любой вопрос...",
+    "placeholderLlmAviation": "Задайте любой вопрос по авиации...",
     "delete": "Удалить чат",
     "deleteMessage": "Удалить сообщение",
     "deleteMessageConfirmTitle": "Удалить сообщение?",
@@ -63,6 +65,13 @@
       "query_rewriting": "Query Rewriting",
       "rerank": "Rerank"
     }
+  },
+  "llm": {
+    "settingsTitle": "Настройки LLM",
+    "useHistory": "Использовать историю",
+    "useCustomPrompt": "Свой системный промпт",
+    "customPromptPlaceholder": "Введите системный промпт для модели...",
+    "customPromptAria": "Текст системного промпта"
   },
   "trace": {
     "empty": "Здесь появятся шаги RAG-пайплайна в реальном времени через SSE, когда будет подключён trace stream.",

@@ -21,7 +21,8 @@
   "panels": {
     "chats": "Chats",
     "dialog": "Dialog",
-    "trace": "Trace"
+    "trace": "Trace",
+    "parameters": "Parameters"
   },
   "chat": {
     "new": "New chat",
@@ -32,6 +33,7 @@
     "placeholderClosed": "Chat is closed",
     "placeholderInput": "Ask a question about airport procedures...",
     "placeholderLlm": "Ask anything...",
+    "placeholderLlmAviation": "Ask any aviation-related question...",
     "delete": "Delete chat",
     "deleteMessage": "Delete message",
     "deleteMessageConfirmTitle": "Delete this message?",
@@ -63,6 +65,13 @@
       "query_rewriting": "Query Rewriting",
       "rerank": "Rerank"
     }
+  },
+  "llm": {
+    "settingsTitle": "LLM settings",
+    "useHistory": "Use chat history",
+    "useCustomPrompt": "Custom system prompt",
+    "customPromptPlaceholder": "Enter a system prompt for the model...",
+    "customPromptAria": "System prompt text"
   },
   "trace": {
     "empty": "RAG pipeline steps will appear here in real time via SSE once the trace stream is connected.",
