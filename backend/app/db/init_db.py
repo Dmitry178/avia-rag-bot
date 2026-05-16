@@ -85,6 +85,9 @@ async def _ensure_chat_rag_columns() -> None:
             if "use_history" not in existing:
                 statements.append("ALTER TABLE chat ADD COLUMN use_history BOOLEAN")
 
+            if "llm_config" not in existing:
+                statements.append("ALTER TABLE chat ADD COLUMN llm_config JSON")
+
             return statements
 
         statements = await conn.run_sync(_missing_chat_columns)
