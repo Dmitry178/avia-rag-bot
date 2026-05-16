@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useChatModeStore } from "@/features/chat/modeStore";
+import { useLlmSettingsStore } from "@/features/llm/llmSettingsStore";
 import { useRagSettingsStore } from "@/features/rag/ragSettingsStore";
 import { getChat, deleteMessage, sendMessage } from "@/shared/api/chats";
 import type { SendMessagePayload } from "@/shared/api/types";
@@ -22,7 +23,8 @@ export function useSendMessageMutation(chatId: number | null) {
   const queryClient = useQueryClient();
   const clientId = useChatUiStore((state) => state.clientId);
   const chatMode = useChatModeStore((state) => state.mode);
-  const toPayload = useRagSettingsStore((state) => state.toPayload);
+  const ragToPayload = useRagSettingsStore((state) => state.toPayload);
+  const llmToPayload = useLlmSettingsStore((state) => state.toPayload);
 
   return useMutation({
     mutationFn: (payload: SendMessagePayload) => {
@@ -30,12 +32,16 @@ export function useSendMessageMutation(chatId: number | null) {
         throw new Error("Chat is not selected");
       }
 
-      const ragPayload = chatMode === "rag" ? toPayload() : null;
+      const ragPayload = chatMode === "rag" ? ragToPayload() : null;
+      const llmPayload = chatMode === "llm" ? llmToPayload() : null;
 
       return sendMessage(chatId, payload.content, {
         clientId,
         ragConfig: chatMode === "rag" ? payload.rag_config ?? ragPayload?.rag_config : undefined,
-        useHistory: chatMode === "rag" ? payload.use_history ?? ragPayload?.use_history : undefined,
+        llmConfig: chatMode === "llm" ? payload.llm_config ?? llmPayload?.llm_config : undefined,
+        useHistory:
+          payload.use_history ??
+          (chatMode === "rag" ? ragPayload?.use_history : llmPayload?.use_history),
       });
     },
     onSuccess: () => {
