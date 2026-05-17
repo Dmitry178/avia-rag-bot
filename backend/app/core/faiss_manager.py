@@ -76,5 +76,46 @@ class FaissManager:
 
         return await asyncio.to_thread(self.reconstruct_vectors, path)
 
+    @staticmethod
+    def search(path: Path, query_vector: list[float], top_k: int) -> tuple[list[int], list[float]]:
+        """
+        Search the persisted index; returns (row_ids, similarity_scores).
+        """
+
+        if not path.is_file():
+            return [], []
+
+        index = faiss.read_index(str(path))
+        if index.ntotal == 0:
+            return [], []
+
+        matrix = np.asarray([query_vector], dtype=np.float32)
+        faiss.normalize_L2(matrix)
+        k = min(top_k, index.ntotal)
+        scores, indices = index.search(matrix, k)
+
+        row_ids: list[int] = []
+        row_scores: list[float] = []
+
+        for row_id, score in zip(indices[0].tolist(), scores[0].tolist(), strict=True):
+            if row_id < 0:
+                continue
+            row_ids.append(int(row_id))
+            row_scores.append(float(score))
+
+        return row_ids, row_scores
+
+    async def search_async(
+        self,
+        path: Path,
+        query_vector: list[float],
+        top_k: int,
+    ) -> tuple[list[int], list[float]]:
+        """
+        Run FAISS search in a worker thread.
+        """
+
+        return await asyncio.to_thread(self.search, path, query_vector, top_k)
+
 
 faiss_manager = FaissManager()
