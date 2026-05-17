@@ -2,8 +2,11 @@
 
 import pytest
 
+from contextlib import contextmanager
 from httpx import AsyncClient
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from app.rag.types import RagPipelineResult, RagTraceStep
 
 LLM_MOCK_RETURN = (
     "Test reply",
@@ -15,6 +18,23 @@ LLM_MOCK_RETURN = (
         "total_tokens": 2,
     },
 )
+
+
+@contextmanager
+def mock_rag_pipeline():
+    pipeline = MagicMock()
+    pipeline.run = AsyncMock(
+        return_value=RagPipelineResult(
+            context="[1] Baggage rules",
+            chunks=[],
+            trace=[RagTraceStep(step="retrieval", duration_ms=1, data={"candidate_count": 1})],
+            search_queries=["baggage allowance"],
+        ),
+    )
+    pipeline.build_generation_prompt = MagicMock(return_value="RAG system prompt")
+
+    with patch("app.services.chat.RagPipeline", return_value=pipeline):
+        yield pipeline
 
 
 @pytest.mark.asyncio
@@ -204,10 +224,13 @@ async def test_send_message_persists_rag_metadata_and_message_count(client: Asyn
     create = await client.post("/api/chats", json={"title": "RAG send", "chat_type": "rag"})
     chat_id = create.json()["id"]
 
-    with patch(
-        "app.services.chat.ChatCompletionClient.complete",
-        new_callable=AsyncMock,
-        return_value=LLM_MOCK_RETURN,
+    with (
+        mock_rag_pipeline(),
+        patch(
+            "app.services.chat.ChatCompletionClient.complete",
+            new_callable=AsyncMock,
+            return_value=LLM_MOCK_RETURN,
+        ),
     ):
         send = await client.post(
             f"/api/chats/{chat_id}/messages",
@@ -228,6 +251,8 @@ async def test_send_message_persists_rag_metadata_and_message_count(client: Asyn
     assert user_meta["use_history"] is True
     assert assistant_meta["rag_config"]["use_hyde"] is True
     assert assistant_meta["use_history"] is True
+    assert assistant_meta["search_queries"] == ["baggage allowance"]
+    assert assistant_meta["rag_trace"][0]["step"] == "retrieval"
 
     detail = await client.get(f"/api/chats/{chat_id}")
     assert detail.status_code == 200
