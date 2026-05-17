@@ -12,7 +12,7 @@ from app.core.faiss_manager import faiss_manager
 from app.core.logs import logger
 from app.exceptions import handle_basic_db_errors
 from app.exceptions.service import ServiceError
-from app.llm.embeddings import EmbeddingClient
+from app.llm.embeddings import EMBED_BATCH_SIZE, EmbeddingClient
 from app.models.chunk_meta import ChunkMeta
 from app.models.index_manifest import IndexManifest
 from app.schemas.etl import ChunkStatsResponse, IngestResponse, ManifestResponse
@@ -67,6 +67,10 @@ class ETLService:
         current: int,
         total: int,
         overall_percent: int,
+        section: str | None = None,
+        item_title: str | None = None,
+        section_current: int | None = None,
+        section_total: int | None = None,
     ) -> None:
         if callback is None:
             return
@@ -77,8 +81,35 @@ class ETLService:
                 current=current,
                 total=total,
                 overall_percent=overall_percent,
+                section=section,
+                item_title=item_title,
+                section_current=section_current,
+                section_total=section_total,
             )
         )
+
+    @staticmethod
+    def _chunk_progress_context(
+        drafts: list[ChunkDraft],
+        ordered_indices: list[int],
+        completed_count: int,
+    ) -> tuple[str | None, str | None, int | None, int | None]:
+        """
+        Return section, item title, and per-section progress for the last completed chunk.
+        """
+
+        if completed_count <= 0 or not ordered_indices:
+            return None, None, None, None
+
+        draft_index = ordered_indices[completed_count - 1]
+        draft = drafts[draft_index]
+        section = draft.section
+        section_total = sum(1 for index in ordered_indices if drafts[index].section == section)
+        section_current = sum(
+            1 for index in ordered_indices[:completed_count] if drafts[index].section == section
+        )
+
+        return section, draft.title, section_current, section_total
 
     def _can_reuse_existing_vectors(
         self,
@@ -106,7 +137,7 @@ class ETLService:
         on_progress: IngestProgressCallback | None,
     ) -> list[list[float]]:
         """
-        Embed drafts that still lack vectors; persist checkpoint after each batch.
+        Embed drafts that still lack vectors; persist checkpoint in batches.
         """
 
         total_chunks = len(drafts)
@@ -126,12 +157,21 @@ class ETLService:
         def on_batch_complete(done: int, batch_total: int) -> None:
             current_embedded = embedded_count + done
             overall = 5 + int(85 * current_embedded / max(total_chunks, 1))
+            section, item_title, section_current, section_total = self._chunk_progress_context(
+                drafts,
+                pending_indices,
+                done,
+            )
             self._report_progress(
                 on_progress,
                 phase="embedding",
                 current=current_embedded,
                 total=total_chunks,
                 overall_percent=overall,
+                section=section,
+                item_title=item_title,
+                section_current=section_current,
+                section_total=section_total,
             )
 
         new_vectors = await embedder.embed_texts(texts, on_batch_complete=on_batch_complete)
@@ -143,10 +183,34 @@ class ETLService:
                 status_code=502,
             )
 
-        for draft_index, vector in zip(pending_indices, new_vectors, strict=True):
+        checkpoint_total = len(pending_indices)
+
+        for item_index, (draft_index, vector) in enumerate(
+            zip(pending_indices, new_vectors, strict=True),
+            start=1,
+        ):
             vectors_by_index[draft_index] = vector
             checkpoint.vectors_by_hash[drafts[draft_index].content_hash] = vector
-            checkpoint_store.save(checkpoint)
+
+            section, item_title, section_current, section_total = self._chunk_progress_context(
+                drafts,
+                pending_indices,
+                item_index,
+            )
+            self._report_progress(
+                on_progress,
+                phase="checkpoint",
+                current=item_index,
+                total=checkpoint_total,
+                overall_percent=90 + int(2 * item_index / max(checkpoint_total, 1)),
+                section=section,
+                item_title=item_title,
+                section_current=section_current,
+                section_total=section_total,
+            )
+
+            if item_index % EMBED_BATCH_SIZE == 0 or item_index == checkpoint_total:
+                checkpoint_store.save(checkpoint)
 
         return [vectors_by_index[i] for i in range(total_chunks)]  # type: ignore[misc]
 
@@ -264,6 +328,8 @@ class ETLService:
             current=0,
             total=total_chunks,
             overall_percent=92,
+            section="SQLite",
+            item_title="chunk metadata",
         )
 
         built_at = datetime.now(UTC)
@@ -302,6 +368,16 @@ class ETLService:
         await self.db.commit()
 
         # --- Phase 4: FAISS + manifest.json (after DB commit) ---
+        self._report_progress(
+            on_progress,
+            phase="faiss",
+            current=0,
+            total=total_chunks,
+            overall_percent=95,
+            section="FAISS",
+            item_title="vector index",
+        )
+
         data_dir = Path(self.settings.data.dir)
         data_dir.mkdir(parents=True, exist_ok=True)
         self.settings.faiss.ensure_exists(self.settings.backend_root)
