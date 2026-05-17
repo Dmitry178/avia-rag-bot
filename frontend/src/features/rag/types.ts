@@ -9,6 +9,13 @@ export const RAG_METHOD_KEYS: RagMethodKey[] = [
   "rerank",
 ];
 
+/** Retrieval methods where only one may be active at a time (rerank is independent). */
+export const RAG_EXCLUSIVE_METHOD_KEYS = [
+  "hyde",
+  "multi_query",
+  "query_rewriting",
+] as const satisfies readonly RagMethodKey[];
+
 export const DEFAULT_RAG_CONFIG: Required<{
   use_hyde: boolean;
   use_multi_query: boolean;
@@ -18,7 +25,7 @@ export const DEFAULT_RAG_CONFIG: Required<{
   use_hyde: false,
   use_multi_query: false,
   use_query_rewriting: false,
-  use_rerank: true,
+  use_rerank: false,
 };
 
 export const RAG_CONFIG_TO_METHOD: Record<
