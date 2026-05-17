@@ -17,17 +17,38 @@ from app.services.etl import ETLService
 from app.services.etl_progress import IngestProgress
 
 
+def _truncate(text: str, max_len: int = 55) -> str:
+    """
+    Shorten long titles for terminal progress lines.
+    """
+
+    stripped = text.strip()
+    if len(stripped) <= max_len:
+        return stripped
+
+    return stripped[: max_len - 3] + "..."
+
+
 def _print_progress(progress: IngestProgress) -> None:
     """
     Render ingest progress to stderr (single updating line).
     """
 
-    print(
-        f"\r[{progress.overall_percent:3d}%] {progress.phase}: {progress.current}/{progress.total}",
-        end="",
-        flush=True,
-        file=sys.stderr,
+    line = (
+        f"\r[{progress.overall_percent:3d}%] {progress.phase}: "
+        f"{progress.current}/{progress.total}"
     )
+
+    if progress.section:
+        if progress.section_current is not None and progress.section_total is not None:
+            line += f" | {progress.section} ({progress.section_current}/{progress.section_total})"
+        else:
+            line += f" | {progress.section}"
+
+    if progress.item_title:
+        line += f" — {_truncate(progress.item_title)}"
+
+    print(line, end="", flush=True, file=sys.stderr)
 
 
 async def _with_db[T](handler: Callable[[DBManager], Coroutine[Any, Any, T]]) -> T:
