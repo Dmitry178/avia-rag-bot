@@ -125,7 +125,7 @@ class ETLSettings(BaseModel):
     ETL pipeline settings.
     """
 
-    document_path: str = "docs/rag-document.md"
+    document_path: str = "backend/data/rag-document.md"
 
     def resolve_document_path(self, repo_root: Path) -> Path:
         """
