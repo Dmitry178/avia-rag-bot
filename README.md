@@ -2,17 +2,18 @@
 
 **English** · [Русский](README_RU.md)
 
-Educational project — a RAG bot for airport staff: answers questions from an internal knowledge base (SOP, FAQ, scenarios, decision trees). The UI lets you chat with the assistant, manage conversations, and (in RAG mode) watch the pipeline trace.
+Educational project — a RAG bot for airport staff: answers questions from an internal knowledge base (SOP, FAQ, scenarios, decision trees). The UI lets you chat with the assistant, manage conversations, configure LLM/RAG parameters, and (in RAG mode) watch the pipeline trace.
 
-Monorepo: **backend** (FastAPI, indexing, chat API) + **frontend** (React SPA). Telegram and Docker are planned for later stages.
+Monorepo: **backend** (FastAPI, indexing, RAG, chat API) + **frontend** (React SPA). Telegram and Docker are planned for later stages.
 
 ## What the app does
 
 - **Knowledge base indexing** — a markdown document is split into chunks; embeddings are built for each and stored in SQLite + FAISS.
-- **Chats** — create, select, close, and delete conversations; message history is stored on the backend.
+- **Chats** — create, select, close, and delete conversations; message history and settings are stored on the backend.
 - **Two operating modes** (switched in the header):
-  - **LLM** — direct dialogue with the language model, no knowledge base search. **Works now.**
-  - **RAG** — answers grounded in indexed documents plus a trace panel. **In development** (UI ready, backend retrieval not wired yet).
+  - **LLM** — direct dialogue with the language model, no knowledge base search. **Parameters** panel: chat history, custom system prompt (free mode without guards).
+  - **RAG** — answers grounded in indexed documents. **Trace** panel: retrieval settings and pipeline steps.
+- **Per-chat settings** — RAG/LLM parameters are saved on the chat and snapshotted in each message’s metadata.
 - **Theme** — light, dark, or system (follows OS settings).
 - **UI language** — Russian and English; the choice persists across sessions.
 
@@ -29,36 +30,40 @@ Monorepo: **backend** (FastAPI, indexing, chat API) + **frontend** (React SPA). 
 
 ```
 avia-bot/
-├── backend/                    # API and business logic
-│   ├── app/                    # FastAPI application
-│   │   ├── api/routers/        # HTTP routes (health, etl, chats)
-│   │   ├── services/           # use cases (ETLService, ChatService)
-│   │   ├── repositories/       # SQLite access
-│   │   ├── models/             # SQLModel tables
-│   │   ├── schemas/            # Pydantic DTOs for API
-│   │   ├── llm/                # chat completions and embeddings clients
-│   │   ├── core/               # config, logging, faiss_manager, sse_manager
-│   │   ├── db/                 # sessions, DBManager, init
-│   │   └── exceptions/         # error handling
-│   ├── etl/                    # markdown parser and chunker (no I/O)
-│   ├── faiss/                  # vector index artifact (faiss.index)
-│   ├── data/                   # SQLite, manifest.json, source document
-│   ├── scripts/                # ETL CLI
-│   └── tests/                  # API and unit tests
-├── frontend/                   # web UI (React SPA)
+├── backend/
+│   ├── app/
+│   │   ├── api/routers/        # health, etl, chats
+│   │   ├── services/           # ETLService, ChatService
+│   │   ├── repositories/
+│   │   ├── models/
+│   │   ├── schemas/            # chat, rag, llm DTOs
+│   │   ├── rag/                # RAG pipeline
+│   │   │   ├── pipeline.py
+│   │   │   ├── retrieval.py    # FAISS + RRF fusion
+│   │   │   └── methods/        # HyDE, Multi-Query, Query Rewriting, Rerank
+│   │   ├── llm/                # chat, embeddings, prompts, guard
+│   │   ├── core/               # config, faiss_manager, sse_manager
+│   │   ├── db/
+│   │   └── exceptions/
+│   ├── etl/                    # markdown parser and chunker
+│   ├── faiss/                  # faiss.index
+│   ├── data/                   # SQLite, manifest, source document
+│   ├── scripts/
+│   └── tests/
+├── frontend/
 │   ├── src/
-│   │   ├── app/                # app root, layout, providers
+│   │   ├── app/                # layout, providers
 │   │   ├── features/
-│   │   │   ├── chats/          # chat list sidebar
-│   │   │   ├── chat/           # dialog, composer, LLM/RAG mode
-│   │   │   └── trace/          # RAG trace panel (placeholder)
-│   │   ├── shared/             # API client, i18n, persist, utilities
-│   │   ├── theme/              # light/dark theme, CSS variables
-│   │   └── styles/             # global styles
-│   ├── index.html
-│   ├── vite.config.ts          # dev proxy /api → backend :8000
+│   │   │   ├── chats/          # chat list
+│   │   │   ├── chat/           # dialog, composer
+│   │   │   ├── rag/            # RAG settings
+│   │   │   ├── llm/            # LLM parameters
+│   │   │   └── trace/          # trace panel (RAG mode)
+│   │   ├── shared/             # API, i18n
+│   │   ├── theme/
+│   │   └── styles/
 │   └── package.json
-├── Makefile                    # commands for backend, frontend, and ETL
+├── Makefile
 ├── README.md
 └── README_RU.md
 ```
@@ -66,15 +71,14 @@ avia-bot/
 ### Backend (`backend/app/`)
 
 Dependency flow: **API → Service → Repository → Model**.  
-External integrations (LLM, FAISS, SSE) live in `llm/` and `core/`, not directly in services.
+External integrations (LLM, FAISS, SSE) live in `llm/`, `core/`, and `rag/`.
 
 | Directory | Purpose |
 |-----------|---------|
-| `api/routers/` | HTTP routes: `/api/healthz`, `/api/etl/*`, `/api/chats/*` |
-| `services/` | Use cases: `ETLService`, `ChatService` |
-| `repositories/` | CRUD and SQLite queries |
-| `models/` | SQLModel tables (`ChunkMeta`, `Chat`, `ChatMessage`, …) |
-| `llm/` | Chat completions and embeddings via OpenAI-compatible API |
+| `api/routers/` | `/api/healthz`, `/api/etl/*`, `/api/chats/*` |
+| `services/` | `ETLService`, `ChatService` |
+| `rag/` | Modular RAG: query transform → FAISS → rerank → LLM context |
+| `llm/` | Chat completions, embeddings, system prompts, prompt guard |
 | `core/` | Config, logging, `faiss_manager`, `sse_manager` |
 
 ### Frontend (`frontend/src/`)
@@ -83,75 +87,102 @@ React + Vite SPA. In dev mode, requests to `/api` are proxied to the backend (`h
 
 | Directory | Purpose |
 |-----------|---------|
-| `app/` | `AppLayout` — three-column layout; `AppHeader` — mode, language, and theme switches |
-| `features/chats/` | Chat list, create new, select active |
-| `features/chat/` | Dialog panel, send messages, markdown-rendered replies |
-| `features/trace/` | RAG pipeline trace panel (shown only in RAG mode) |
-| `shared/api/` | HTTP client and types for `/api/chats/*` |
-| `shared/i18n/` | `ru` / `en` translations, persisted locale |
-| `theme/` | Color tokens (`themes.json`), CSS variable application |
+| `features/chats/` | Chat list, create, delete (empty chats — no confirmation) |
+| `features/chat/` | Dialog, send messages, markdown replies |
+| `features/rag/` | RAG settings panel (HyDE, Multi-Query, Query Rewriting, Rerank, history) |
+| `features/llm/` | LLM parameters panel (history, custom system prompt) |
+| `features/trace/` | RAG pipeline trace (RAG mode) |
+| `shared/api/` | HTTP client for `/api/chats/*` |
 
 ## LLM and RAG modes
 
-The header switch sets the **UI mode**. The choice is stored in `localStorage`.
+The header switch sets the **UI mode** and chat type. Chat lists are separate per mode.
 
-| Mode | Description | Status |
-|------|-------------|--------|
-| **LLM** | Free-form dialogue with the language model. The backend sends chat history to the chat completions API and returns the reply. The knowledge base is not used. | Working |
-| **RAG** | Airport procedure questions with FAISS chunk retrieval, routing, and guard checks. A **Trace** panel on the right shows pipeline steps and timings. | In development |
+| Mode | Description | Right panel |
+|------|-------------|-------------|
+| **LLM** | Free-form LLM dialogue. Knowledge base is not used. Guards and aviation system prompt apply by default; **custom system prompt** disables guards. | **Parameters** |
+| **RAG** | FAISS retrieval, optional retrieval methods, answer with knowledge-base context. | **Trace** (settings + pipeline steps) |
 
-Currently the backend always responds via a simple LLM call (`ChatService.send_message`), regardless of the mode selected in the UI. RAG mode in the interface is prepared in advance: layout, trace placeholder, and copy are ready for retrieval and SSE integration.
+On send, the frontend passes current settings (`rag_config` / `llm_config`, `use_history`). The backend stores them on the chat and in user/assistant message metadata.
+
+### RAG settings
+
+| Setting | Group | Description |
+|---------|-------|-------------|
+| **HyDE** | Query transform (pick one) | LLM generates a hypothetical answer; search by its embedding |
+| **Multi-Query** | Query transform | Several query variants → search each → fusion (RRF) |
+| **Query Rewriting** | Query transform | Rewrite query using conversation history |
+| **Rerank** | Independent | LLM reranking of top candidates after vector search |
+| **Use chat history** | Shared | Affects LLM context and query rewriting |
+
+HyDE, Multi-Query, and Query Rewriting are **mutually exclusive** (only one can be on in the UI). **Rerank** can be combined with any of them.
+
+If no query transform is selected — direct vector search on the user question.
+
+### LLM settings
+
+| Setting | Description |
+|---------|-------------|
+| **Use chat history** | Whether to pass previous messages to the LLM (on by default) |
+| **Custom system prompt** | Custom system prompt; guards disabled. Empty prompt = no system prompt |
+
+### RAG pipeline (backend)
+
+```
+[HyDE | Multi-Query | Query Rewriting | direct query]
+        → embed → FAISS search (top-30)
+        → [optional Rerank → top-5]
+        → context in system prompt → LLM → answer
+```
+
+Method classes: `backend/app/rag/methods/` (`HyDEQueryMethod`, `MultiQueryMethod`, `QueryRewritingMethod`, `LlmRerankMethod`). Orchestrator: `RagPipeline` in `rag/pipeline.py`.
+
+Trace steps are published via SSE (`GET /api/chats/events?client_id=…`, event `trace`) and stored in `metadata.rag_trace` on the assistant message.
+
+**Requirement:** build the index before using RAG (`make etl-ingest`). Without it, the API returns `503 rag_index_missing`.
 
 ## Prompt injection protection
 
-Basic defense-in-depth for LLM chat lives in `backend/app/llm/`:
+Implemented in `backend/app/llm/` for **LLM** (default) and **RAG** modes:
 
 | Layer | Module | What it does |
-|-------|--------|-------------|
-| System prompt | `prompts.py` | Instructs the model to treat user messages as untrusted data, stay within aviation topics, refuse jailbreaks and manipulation, not reveal the system prompt or underlying model name/version/provider/architecture, and decline off-topic requests. |
-| Message hardening | `prompt_guard.py` | Wraps each user message in `USER MESSAGE START` / `USER MESSAGE END` delimiters before the API call; strips control characters that could hide injection text. |
-| Pre-flight block | `ChatService` + `prompt_guard.py` | Obvious injection patterns (EN/RU) — e.g. “ignore previous instructions”, “reveal system prompt”, “jailbreak” — are blocked **without** calling the LLM; a fixed refusal is returned (`blocked_prompt_injection: true` in message metadata). |
+|-------|--------|--------------|
+| System prompt | `prompts.py` | Aviation scope, refuse jailbreaks, do not reveal prompt or model |
+| Message hardening | `prompt_guard.py` | `<<USER>>` / `<</USER>>` delimiters, sanitization |
+| Pre-flight block | `ChatService` | Obvious injection/off-topic patterns — no LLM call |
 
-This is **basic** protection, not a guarantee: novel phrasing may still reach the model, where the hardened system prompt is the second line of defense. Unit tests: `backend/tests/unit/llm/test_prompt_guard.py`.
+**Not applied** when **custom system prompt** is enabled in LLM mode (free mode).
+
+Unit tests: `backend/tests/unit/llm/test_prompt_guard.py`.
 
 ## Theme and language
 
-Settings are in the header and **persist across reloads** (`localStorage` via Zustand persist).
+Settings in the header, **persisted in `localStorage`**.
 
-**Theme** (`theme/`):
-- **System** — follows browser/OS `prefers-color-scheme`.
-- **Light** / **Dark** — fixed palette from `themes.json`, CSS variables on `:root`.
+- **Theme:** system / light / dark (`theme/themes.json`)
+- **Language:** Russian (default) / English (`shared/i18n/locales/`)
 
-**UI language** (`shared/i18n/`):
-- **Russian** (default) and **English**.
-- Strings in `locales/ru.json` and `locales/en.json`; the document `lang` attribute updates when the language changes.
+RAG method help texts: `rag-methods.ru.json` / `rag-methods.en.json`.
 
 ## ETL
 
-Knowledge base indexing pipeline:
-
-1. **Parse** markdown → section tree (`etl/parser.py`)
-2. **Chunk** with content-type awareness (`etl/chunker.py`)
+1. **Parse** markdown → section tree
+2. **Chunk** with content-type awareness
 3. **Embeddings** via LLM provider
-4. **Persist** metadata in SQLite + vectors in FAISS
-
-Run from the repository root:
+4. **Persist** to SQLite + FAISS
 
 ```bash
 cp backend/.env.example backend/.env   # fill in LLM__*
 make backend-install
-make etl-ingest                        # full index rebuild
-make etl-stats                         # chunk statistics
-make etl-manifest                      # latest manifest
+make etl-ingest                        # required for RAG
+make etl-stats
+make etl-manifest
 ```
 
-The same pipeline is available via API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
+API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 
-Default source document: `backend/data/rag-document.md` (env var `ETL__DOCUMENT_PATH`).
-
-More on document format and chunking: [`backend/etl/README.md`](backend/etl/README.md).
-
-Artifacts after ingest:
+Default document: `backend/data/rag-document.md` (`ETL__DOCUMENT_PATH`).  
+Details: [`backend/etl/README.md`](backend/etl/README.md).
 
 | Path | Purpose |
 |------|---------|
@@ -159,41 +190,47 @@ Artifacts after ingest:
 | `backend/faiss/faiss.index` | FAISS index |
 | `backend/data/manifest.json` | manifest copy for tooling |
 
+## Chat API (summary)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/chats?chat_type=rag\|llm` | List chats |
+| POST | `/api/chats` | Create chat (with initial settings) |
+| PATCH | `/api/chats/{id}` | Update `rag_config` / `llm_config` / `use_history` |
+| POST | `/api/chats/{id}/messages` | Send message (+ settings in body) |
+| GET | `/api/chats/events?client_id=…` | SSE: errors and trace |
+
 ## Quick start (dev)
 
 Requirements: Python 3.13 + [uv](https://docs.astral.sh/uv/), Node.js 20+.
 
 ```bash
 # 1. Backend
-cp backend/.env.example backend/.env   # set LLM__BASE_URL, LLM__API_KEY, LLM__MODEL
+cp backend/.env.example backend/.env
+# LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
 make backend-install
+make etl-ingest                        # for RAG mode
 make backend-dev                       # http://127.0.0.1:8000
 
 # 2. Frontend (separate terminal)
-cp frontend/.env.example frontend/.env # change VITE_API_URL if needed
+cp frontend/.env.example frontend/.env
 make frontend-install
 make frontend-dev                      # http://127.0.0.1:5173
 ```
 
 Open `http://127.0.0.1:5173`. Vite proxies `/api` to the backend.
 
-Optional — rebuild the index before using RAG mode (once retrieval is connected):
-
-```bash
-make etl-ingest
-```
-
 Full command list: `make help`.
 
 ## Current status
 
 **Done:**
-- Backend: health-check, ETL, FAISS indexing, chat CRUD, synchronous LLM replies, basic prompt-injection protection
-- Frontend: layout (chats · dialog · trace), send messages, markdown replies, LLM/RAG switches, theme, i18n
+- Backend: ETL, FAISS, modular RAG pipeline, chat CRUD, LLM/RAG replies, settings in chat and metadata, SSE trace events
+- Frontend: layout (chats · dialog · trace/parameters), RAG/LLM settings, settings sent with each message, i18n, theme
 
 **In development:**
-- RAG retrieval on the backend (FAISS search, router/guard, streaming)
-- Wiring trace to SSE and populating the Trace panel in the UI
+- Frontend SSE trace subscription (steps are in metadata today; Trace panel is a placeholder until EventSource is wired)
+- Response streaming
 
 **Planned:**
 - Telegram bot, Docker, production build
