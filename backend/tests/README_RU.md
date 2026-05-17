@@ -7,9 +7,11 @@
 | Слой | Каталог | Что проверяет |
 |------|---------|---------------|
 | **API** (интеграционные) | `tests/api/` | HTTP-эндпоинты FastAPI через `httpx.AsyncClient` |
-| **Unit** (модульные) | `tests/unit/` | Бизнес-логика без HTTP: парсеры, чанкеры, сервисы и т.д. |
+| **Unit** (модульные) | `tests/unit/` | Бизнес-логика без HTTP: парсеры, чанкеры, RAG-хелперы, сервисы и т.д. |
 
 Стек: **pytest**, **pytest-asyncio** (режим `auto`), **httpx** (ASGI-транспорт).
+
+Сейчас **65 тестов** в обоих слоях.
 
 ## Дерево каталогов
 
@@ -17,16 +19,24 @@
 tests/
 ├── README.md           # English version
 ├── README_RU.md        # этот файл
-├── conftest.py           # изоляция БД для API-тестов (см. ниже)
-├── paths.py              # общие пути к тестовым данным
+├── conftest.py         # изоляция БД для API-тестов (см. ниже)
+├── paths.py            # общие пути к тестовым данным
 ├── api/
-│   ├── conftest.py       # фикстура client (lifespan + AsyncClient)
-│   ├── test_chat.py      # CRUD чатов
-│   ├── test_etl.py       # ETL-эндпоинты
-│   └── test_health.py    # healthz / readyz
+│   ├── conftest.py     # фикстура client (lifespan + AsyncClient)
+│   ├── test_chat.py    # CRUD чатов, настройки, сообщения, guards
+│   ├── test_etl.py     # ETL-эндпоинты
+│   └── test_health.py  # healthz / readyz
 └── unit/
-    └── etl/
-        └── test_chunker.py   # parser + chunker
+    ├── etl/
+    │   └── test_chunker.py       # parser + chunker
+    ├── llm/
+    │   ├── test_prompts.py       # сборка system prompt
+    │   └── test_prompt_guard.py  # защита от injection / off-topic
+    ├── rag/
+    │   └── test_pipeline.py      # RRF, registry query-transform / rerank
+    └── services/
+        ├── test_etl_plan.py      # планирование инкрементального ingest
+        └── test_etl_progress.py   # хелперы прогресса ETL
 ```
 
 ## Запуск
@@ -82,8 +92,10 @@ Unit-тесты БД не трогают — `conftest.py` влияет толь
 | Файл | Эндпоинты | Тесты |
 |------|-----------|-------|
 | `test_health.py` | `GET /api/healthz`, `GET /api/readyz` | liveness и readiness возвращают `{"status": "ok"}` |
-| `test_chat.py` | `POST/GET/DELETE /api/chats` | создание и листинг; поле `chat_type` (`llm` по умолчанию); фильтр `GET /api/chats?chat_type=llm\|rag`; детали нового чата с пустыми сообщениями; soft-delete → 404 |
+| `test_chat.py` | `POST/GET/PATCH/DELETE /api/chats`, `POST/DELETE /api/chats/{id}/messages` | создание, листинг, фильтр по `chat_type`; `rag_config` / `llm_config` / `use_history` при создании и PATCH; пустые сообщения у нового чата; отправка LLM-сообщения (мок `ChatCompletionClient`) в режиме custom prompt без guards; отправка RAG-сообщения (мок `RagPipeline`) с сохранением metadata, trace и `message_count`; soft-delete чата и сообщения; prompt injection закрывает чат → 409 на follow-up; off-topic блокируется без закрытия |
 | `test_etl.py` | `GET /api/etl/stats`, `GET /api/etl/manifest` | статистика чанков; manifest без индекса → 404 |
+
+Тесты сообщений патчат внешний I/O (`ChatCompletionClient.complete`, `RagPipeline`) — LLM и FAISS-индекс не нужны.
 
 ## Unit-тесты (`tests/unit/`)
 
@@ -98,6 +110,52 @@ Unit-тесты БД не трогают — `conftest.py` влияет толь
 | `test_parse_markdown_finds_all_main_sections` | парсер находит вводный раздел, FAQ и глоссарий |
 | `test_chunk_document_produces_expected_types` | чанкер выдаёт SOP, FAQ, GLOSSARY, DECISION_TREE, SCENARIO; ≥ 200 чанков |
 | `test_chunks_have_retrieval_prefix` | у каждого чанка есть префиксы `[Раздел:` и `[Тип:` |
+
+### `unit/services/test_etl_plan.py`
+
+Планирование инкрементального ingest (`app/services/etl_plan.py`):
+
+| Тест | Проверка |
+|------|----------|
+| `test_plan_reuses_unchanged_chunks_from_faiss` | неизменённые чанки переиспользуют векторы из FAISS |
+| `test_plan_embeds_changed_and_new_chunks` | изменение content-hash запускает переэмбеддинг |
+| `test_plan_marks_removed_chunks` | чанки, отсутствующие в источнике, помечаются как removed |
+| `test_plan_uses_checkpoint_vectors_before_existing` | checkpoint-векторы приоритетнее FAISS |
+| `test_plan_rebuild_embeds_everything` | режим rebuild переиспользует только checkpoint-векторы |
+
+### `unit/services/test_etl_progress.py`
+
+| Тест | Проверка |
+|------|----------|
+| `test_chunk_progress_context_returns_section_counters` | `_chunk_progress_context` отдаёт имя H1-секции и счётчики прогресса по секции |
+
+### `unit/rag/test_pipeline.py`
+
+| Тест | Проверка |
+|------|----------|
+| `test_reciprocal_rank_fusion_merges_ranked_lists` | RRF повышает score чанков из нескольких списков |
+| `test_resolve_exclusive_query_method_prefers_first_enabled_flag` | активен только один query-transform (HyDE важнее multi-query / rewriting) |
+| `test_resolve_rerank_method_when_enabled` | rerank резолвится независимо от query-transform |
+
+### `unit/llm/test_prompts.py`
+
+| Тест | Проверка |
+|------|----------|
+| `test_build_system_prompt_adds_russian_language_hint` | добавляется подсказка отвечать по-русски |
+| `test_build_system_prompt_adds_english_language_hint` | добавляется подсказка отвечать по-английски |
+| `test_build_system_prompt_without_language_returns_base` | без `reply_language` подсказка не добавляется |
+
+### `unit/llm/test_prompt_guard.py`
+
+Параметризованные тесты детекции prompt-injection и off-topic (`app/llm/prompt_guard.py`), плюс:
+
+| Тест | Проверка |
+|------|----------|
+| `test_evaluate_user_message_prioritizes_injection_over_off_topic` | injection проверяется раньше off-topic |
+| `test_wrap_user_message_adds_boundaries` | разделители `<<USER>>` / `<</USER>>` |
+| `test_harden_messages_for_llm_wraps_only_latest_user_message` | оборачивается только последний user-turn |
+| `test_reply_language_for_user_text` | кириллица → `ru`, латиница → `en` |
+| `test_blocked_refusal_matches_user_language` | текст отказа совпадает с языком пользователя |
 
 ## Общие модули
 
@@ -118,14 +176,15 @@ Unit-тесты БД не трогают — `conftest.py` влияет толь
 4. **Unit-тесты** — зеркалят структуру кода: `app/services/chat.py` → `tests/unit/services/test_chat.py`, `etl/parser.py` → `tests/unit/etl/test_parser.py`.
 5. **Новые API-роутеры** — добавляйте `tests/api/test_<router>.py`, не смешивайте с unit.
 6. **Асинхронность** — API-тесты помечайте `@pytest.mark.asyncio` (или полагайтесь на `asyncio_mode = "auto"`).
+7. **Внешний I/O в API-тестах** — патчите LLM, RAG и FAISS на границе сервиса (`unittest.mock.patch`), чтобы тесты оставались быстрыми и офлайн.
 
 ## Что добавить дальше
 
 По мере развития проекта:
 
-- `tests/unit/services/` — сервисный слой (моки репозиториев);
 - `tests/unit/etl/test_parser.py` — отдельные кейсы парсера на синтетическом markdown;
-- `tests/api/test_chat_message.py` — отправка сообщений и RAG-ответов, когда появится эндпоинт.
+- `tests/unit/services/test_chat.py` — chat service с моками репозиториев;
+- `tests/api/test_rag.py` — отдельные RAG-эндпоинты, когда появятся.
 
 ## Маркеры pytest
 
