@@ -39,7 +39,7 @@ Full pipeline orchestration (embeddings → DB → FAISS → manifest) lives in 
 Benefits of the split:
 
 - unit tests for parser/chunker do not require FastAPI or a database;
-- CLI (`scripts/etl.py`, `make etl-ingest`) reuses the same `ETLService` as the HTTP API;
+- CLI (`scripts/run_etl.py`, `make etl-ingest`) reuses the same `ETLService` as the HTTP API;
 - the service layer stays a thin orchestrator.
 
 ---
@@ -361,15 +361,15 @@ make etl-manifest
 make etl-ingest SOURCE=backend/data/rag-document.md
 ```
 
-**CLI** (`scripts/etl.py` — same pipeline as `POST /api/etl/ingest`):
+**CLI** (`scripts/run_etl.py` — same pipeline as `POST /api/etl/ingest`):
 
 ```bash
 cd backend
 uv sync
-uv run python scripts/etl.py ingest
-uv run python scripts/etl.py ingest --source backend/data/rag-document.md
-uv run python scripts/etl.py stats
-uv run python scripts/etl.py manifest
+uv run python scripts/run_etl.py ingest
+uv run python scripts/run_etl.py ingest --source backend/data/rag-document.md
+uv run python scripts/run_etl.py stats
+uv run python scripts/run_etl.py manifest
 ```
 
 **HTTP** (via FastAPI):
@@ -449,7 +449,7 @@ API tests: `tests/api/test_etl.py` (`/api/etl/stats`, `/api/etl/manifest`); mark
 3. **FAQ outside section 14** — embedded Q/A in SOP sections stay inside SOP chunks, not extracted as `faq`.
 4. **Parser tied to `rag-document.md` structure** — headers `# NN.`, pairs `**Вопрос:**/**Ответ:**`, glossary `**Термин:**`.
 5. **SOP level=3 nodes** are created by the parser but skipped by the chunker — splitting goes through H2 split on `###`.
-6. **CLI** — `python scripts/etl.py ingest|stats|manifest` or `make etl-ingest|etl-stats|etl-manifest`.
+6. **CLI** — `python scripts/run_etl.py ingest|stats|manifest` or `make etl-ingest|etl-stats|etl-manifest`.
 
 ---
 
@@ -478,6 +478,6 @@ flowchart LR
 - `app/models/chunk_meta.py` — chunk table schema
 - `app/core/faiss_manager.py` — FAISS index build and save
 - `app/llm/embeddings.py` — embeddings client
-- `scripts/etl.py` — CLI ingest/stats/manifest
+- `scripts/run_etl.py` — CLI ingest/stats/manifest
 - `backend/data/rag-document.md` — source knowledge base
 - `.cursor/rules/backend-layered-architecture.mdc` — backend layer rules

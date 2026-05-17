@@ -39,7 +39,7 @@
 Преимущества разделения:
 
 - unit-тесты parser/chunker не требуют поднятия FastAPI и БД;
-- CLI (`scripts/etl.py`, `make etl-ingest`) переиспользует тот же `ETLService`, что и HTTP API;
+- CLI (`scripts/run_etl.py`, `make etl-ingest`) переиспользует тот же `ETLService`, что и HTTP API;
 - сервисный слой остаётся тонким оркестратором.
 
 ---
@@ -359,15 +359,15 @@ make etl-manifest
 make etl-ingest SOURCE=backend/data/rag-document.md
 ```
 
-**CLI** (`scripts/etl.py` — тот же pipeline, что `POST /api/etl/ingest`):
+**CLI** (`scripts/run_etl.py` — тот же pipeline, что `POST /api/etl/ingest`):
 
 ```bash
 cd backend
 uv sync
-uv run python scripts/etl.py ingest
-uv run python scripts/etl.py ingest --source backend/data/rag-document.md
-uv run python scripts/etl.py stats
-uv run python scripts/etl.py manifest
+uv run python scripts/run_etl.py ingest
+uv run python scripts/run_etl.py ingest --source backend/data/rag-document.md
+uv run python scripts/run_etl.py stats
+uv run python scripts/run_etl.py manifest
 ```
 
 **HTTP** (через FastAPI):
@@ -447,7 +447,7 @@ API-тесты: `tests/api/test_etl.py` (`/api/etl/stats`, `/api/etl/manifest`);
 3. **FAQ вне раздела 14** — встроенные Q/A в SOP-разделах остаются внутри SOP-чанков, не выделяются как `faq`.
 4. **Парсер завязан на структуру `rag-document.md`** — заголовки `# NN.`, пары `**Вопрос:**/**Ответ:**`, глоссарий `**Термин:**`.
 5. **Узлы level=3 в SOP** создаются парсером, но чанкер их пропускает — нарезка идёт через split H2 по `###`.
-6. **CLI** — `python scripts/etl.py ingest|stats|manifest` или `make etl-ingest|etl-stats|etl-manifest`.
+6. **CLI** — `python scripts/run_etl.py ingest|stats|manifest` или `make etl-ingest|etl-stats|etl-manifest`.
 
 ---
 
@@ -476,6 +476,6 @@ flowchart LR
 - `app/models/chunk_meta.py` — схема таблицы чанков
 - `app/core/faiss_manager.py` — построение и сохранение FAISS-индекса
 - `app/llm/embeddings.py` — клиент embeddings
-- `scripts/etl.py` — CLI ingest/stats/manifest
+- `scripts/run_etl.py` — CLI ingest/stats/manifest
 - `backend/data/rag-document.md` — исходная база знаний
 - `.cursor/rules/backend-layered-architecture.mdc` — правила слоёв backend
