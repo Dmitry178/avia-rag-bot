@@ -7,7 +7,7 @@ from collections.abc import Callable
 from app.core.config import LLMSettings
 from app.exceptions.service import ServiceError
 
-_EMBED_BATCH_SIZE = 32
+EMBED_BATCH_SIZE = 32
 
 
 class EmbeddingClient:
@@ -33,10 +33,10 @@ class EmbeddingClient:
             )
 
     async def embed_texts(
-        self,
-        texts: list[str],
-        *,
-        on_batch_complete: Callable[[int, int], None] | None = None,
+            self,
+            texts: list[str],
+            *,
+            on_batch_complete: Callable[[int, int], None] | None = None,
     ) -> list[list[float]]:
         """
         Embed texts in batches and return vectors in the same order.
@@ -53,8 +53,8 @@ class EmbeddingClient:
         total = len(texts)
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            for offset in range(0, len(texts), _EMBED_BATCH_SIZE):
-                batch = texts[offset : offset + _EMBED_BATCH_SIZE]
+            for offset in range(0, len(texts), EMBED_BATCH_SIZE):
+                batch = texts[offset: offset + EMBED_BATCH_SIZE]
                 response = await client.post(
                     f"{base_url}/embeddings",
                     headers=headers,
