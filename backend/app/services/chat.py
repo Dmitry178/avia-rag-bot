@@ -1,4 +1,4 @@
-"""Chat use cases: CRUD, messaging, ratings (simple LLM, no RAG yet)."""
+"""Chat use cases: CRUD, messaging, and RAG/LLM replies."""
 
 from datetime import UTC, datetime
 
@@ -31,13 +31,13 @@ from app.schemas.chat import (
 )
 from app.schemas.llm import LlmConfig
 from app.schemas.rag import RagConfig
+from app.rag.pipeline import RagPipeline
+from app.rag.types import RagQueryContext, RagTraceStep
 
 
 class ChatService:
     """
-    Orchestrates chat list, history, and synchronous LLM replies.
-
-    RAG, streaming, and trace SSE are planned for later stages.
+    Orchestrates chat list, history, RAG retrieval, and synchronous LLM replies.
     """
 
     def __init__(self, db: DBManager, app_settings: Settings | None = None) -> None:
@@ -93,6 +93,57 @@ class ChatService:
             ]
 
         return [{"role": MessageRole.USER.value, "content": current_content}]
+
+    @staticmethod
+    def _rag_history_messages(history, *, use_history: bool) -> list[dict[str, str]]:
+        if not use_history or len(history) <= 1:
+            return []
+
+        return [
+            {"role": message.role, "content": message.content}
+            for message in history[:-1]
+            if message.role in {MessageRole.USER.value, MessageRole.ASSISTANT.value}
+        ]
+
+    @staticmethod
+    def _serialize_rag_trace(trace: list[RagTraceStep]) -> list[dict]:
+        requested_at = datetime.now(UTC).isoformat()
+
+        return [
+            {
+                "step": step.step,
+                "timestamp": requested_at,
+                "duration_ms": step.duration_ms,
+                "data": step.data,
+            }
+            for step in trace
+        ]
+
+    @staticmethod
+    async def _publish_rag_trace(client_id: str | None, trace: list[RagTraceStep]) -> None:
+        if not client_id:
+            return
+
+        for step in trace:
+            await sse_manager.publish(
+                client_id,
+                "trace",
+                {
+                    "step": step.step,
+                    "duration_ms": step.duration_ms,
+                    "data": step.data,
+                },
+            )
+
+    @staticmethod
+    def _rag_retrieval_metadata(rag_result) -> dict:
+        return {
+            "search_queries": rag_result.search_queries,
+            "retrieved_chunk_ids": [
+                item.chunk.id for item in rag_result.chunks if item.chunk.id is not None
+            ],
+            "rag_trace": ChatService._serialize_rag_trace(rag_result.trace),
+        }
 
     @staticmethod
     def _is_llm_free_mode(llm_config: LlmConfig | None) -> bool:
@@ -359,7 +410,30 @@ class ChatService:
             }
         else:
             try:
-                if free_mode:
+                reply_language = reply_language_for_user_text(body.content)
+
+                if chat_type == ChatType.RAG:
+                    rag_config = rag_snapshot or RagConfig()
+                    pipeline = RagPipeline(self.db, self.settings)
+                    rag_result = await pipeline.run(
+                        RagQueryContext(
+                            query=body.content,
+                            history=self._rag_history_messages(history, use_history=use_history_value),
+                            rag_config=rag_config,
+                            reply_language=reply_language,
+                        ),
+                    )
+                    await self._publish_rag_trace(body.client_id, rag_result.trace)
+                    settings_metadata.update(self._rag_retrieval_metadata(rag_result))
+
+                    assistant_text, llm_metadata = await client.complete(
+                        llm_messages,
+                        system_prompt=pipeline.build_generation_prompt(
+                            context=rag_result.context,
+                            reply_language=reply_language,
+                        ),
+                    )
+                elif free_mode:
                     assistant_text, llm_metadata = await client.complete(
                         llm_messages,
                         system_prompt=self._resolve_custom_system_prompt(llm_snapshot),
@@ -368,9 +442,7 @@ class ChatService:
                 else:
                     assistant_text, llm_metadata = await client.complete(
                         llm_messages,
-                        system_prompt=build_system_prompt(
-                            reply_language=reply_language_for_user_text(body.content),
-                        ),
+                        system_prompt=build_system_prompt(reply_language=reply_language),
                     )
             except Exception as exc:
                 await self._publish_error(body.client_id, chat_id, exc)
