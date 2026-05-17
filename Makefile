@@ -30,14 +30,14 @@ help:
 
 # Parse, embed, and rebuild SQLite + FAISS (same as POST /api/etl/ingest).
 etl-ingest:
-	cd $(BACKEND_DIR) && uv run python scripts/etl.py ingest \
+	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest \
 		$(if $(SOURCE),--source $(SOURCE),)
 
 etl-stats:
-	cd $(BACKEND_DIR) && uv run python scripts/etl.py stats
+	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py stats
 
 etl-manifest:
-	cd $(BACKEND_DIR) && uv run python scripts/etl.py manifest
+	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py manifest
 
 backend-install:
 	cd $(BACKEND_DIR) && uv sync
