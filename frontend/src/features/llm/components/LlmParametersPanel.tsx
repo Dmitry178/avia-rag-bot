@@ -1,6 +1,7 @@
 import { InputTextarea } from "primereact/inputtextarea";
 
 import { useChatDetailQuery } from "@/features/chat/hooks/useChat";
+import { useChatsQuery } from "@/features/chats/hooks/useChats";
 import { useSelectedChatId } from "@/features/chats/store";
 import { useUpdateChatSettingsMutation } from "@/features/chats/hooks/useChats";
 import { PanelHeader } from "@/app/layout/AppHeader";
@@ -12,11 +13,17 @@ import { LlmSettingsPanel } from "./LlmSettingsPanel";
 export function LlmParametersPanel() {
   const { t } = useTranslation();
   const [selectedChatId] = useSelectedChatId();
+  const chatsQuery = useChatsQuery();
   const chatQuery = useChatDetailQuery(selectedChatId);
   const updateSettingsMutation = useUpdateChatSettingsMutation(selectedChatId);
   const settings = useLlmSettingsStore();
 
-  useHydrateLlmSettings(chatQuery.data);
+  const selectedChatSummary =
+    selectedChatId === null
+      ? null
+      : chatsQuery.data?.find((chat) => chat.id === selectedChatId) ?? null;
+
+  useHydrateLlmSettings(chatQuery.data ?? selectedChatSummary);
 
   const persistSettings = () => {
     if (selectedChatId === null) {
