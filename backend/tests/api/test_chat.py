@@ -150,6 +150,37 @@ async def test_get_chat_returns_empty_messages(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_rag_chat_applies_default_settings(client: AsyncClient) -> None:
+    """
+    New RAG chats should start with all methods off, five chunks, and no history.
+    """
+
+    create = await client.post("/api/chats", json={"title": "RAG defaults", "chat_type": "rag"})
+    assert create.status_code == 200
+    data = create.json()
+    assert data["use_history"] is False
+    assert data["rag_config"]["use_hyde"] is False
+    assert data["rag_config"]["use_multi_query"] is False
+    assert data["rag_config"]["use_query_rewriting"] is False
+    assert data["rag_config"]["use_rerank"] is False
+    assert data["rag_config"]["top_chunks"] == 5
+
+
+@pytest.mark.asyncio
+async def test_create_llm_chat_applies_default_settings(client: AsyncClient) -> None:
+    """
+    New LLM chats should start with history enabled and no custom prompt.
+    """
+
+    create = await client.post("/api/chats", json={"title": "LLM defaults", "chat_type": "llm"})
+    assert create.status_code == 200
+    data = create.json()
+    assert data["use_history"] is True
+    assert data["llm_config"]["use_custom_prompt"] is False
+    assert data["llm_config"]["custom_prompt"] is None
+
+
+@pytest.mark.asyncio
 async def test_patch_llm_settings(client: AsyncClient) -> None:
     """
     PATCH should update chat-level LLM settings and use_history.
@@ -253,6 +284,7 @@ async def test_send_message_persists_rag_metadata_and_message_count(client: Asyn
     assert assistant_meta["use_history"] is True
     assert assistant_meta["search_queries"] == ["baggage allowance"]
     assert assistant_meta["rag_trace"][0]["step"] == "retrieval"
+    assert assistant_meta["retrieved_chunks"] == []
 
     detail = await client.get(f"/api/chats/{chat_id}")
     assert detail.status_code == 200
