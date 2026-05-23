@@ -7,6 +7,7 @@ export interface RagConfig {
   use_multi_query?: boolean | null;
   use_query_rewriting?: boolean | null;
   use_rerank?: boolean | null;
+  top_chunks?: number | null;
 }
 
 export interface LlmConfig {
