@@ -6,15 +6,15 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.core.db_manager import DBManager
+from app.core.rag_constants import RETRIEVAL_TOP_K
 from app.exceptions.service import ServiceError
 from app.llm.chat import ChatCompletionClient
 from app.llm.embeddings import EmbeddingClient
 from app.models.chunk_meta import ChunkMeta
-from app.rag.constants import RERANK_TOP_N, RETRIEVAL_TOP_K
 from app.rag.generation import build_context_block, build_rag_system_prompt
 from app.rag.methods.registry import resolve_query_transform_method, resolve_rerank_method
 from app.rag.retrieval import VectorRetriever
-from app.rag.types import RagPipelineResult, RagQueryContext, RagTraceStep
+from app.rag.types import RagPipelineResult, RagQueryContext, RagTraceStep, RetrievedChunk
 from app.schemas.rag import RagConfig
 
 
@@ -37,6 +37,33 @@ class RagPipeline:
         return {chunk.id: chunk for chunk in chunks if chunk.id is not None}
 
     @staticmethod
+    def _chunk_similarity(item: RetrievedChunk) -> float:
+        if item.vector_similarity is not None:
+            return item.vector_similarity
+
+        return item.score
+
+    @staticmethod
+    def _serialize_trace_hits(items: list[RetrievedChunk]) -> list[dict]:
+        hits: list[dict] = []
+
+        for item in items:
+            chunk_id = item.chunk.id
+            if chunk_id is None:
+                continue
+
+            hits.append(
+                {
+                    "id": chunk_id,
+                    "title": item.chunk.title or "",
+                    "section": item.chunk.section or "",
+                    "similarity": round(RagPipeline._chunk_similarity(item), 4),
+                },
+            )
+
+        return hits
+
+    @staticmethod
     def _normalized_config(rag_config: RagConfig | None) -> RagConfig:
         if rag_config is None:
             return RagConfig()
@@ -46,6 +73,7 @@ class RagPipeline:
             use_multi_query=bool(rag_config.use_multi_query),
             use_query_rewriting=bool(rag_config.use_query_rewriting),
             use_rerank=bool(rag_config.use_rerank),
+            top_chunks=rag_config.top_chunks,
         )
 
     async def run(self, ctx: RagQueryContext) -> RagPipelineResult:
@@ -55,6 +83,7 @@ class RagPipeline:
 
         trace: list[RagTraceStep] = []
         rag_config = self._normalized_config(ctx.rag_config)
+        top_chunks = rag_config.top_chunks
         index_path = self._index_path()
 
         if not index_path.is_file():
@@ -105,28 +134,27 @@ class RagPipeline:
                 data={
                     "query_count": len(search_queries),
                     "candidate_count": len(candidates),
-                    "chunk_ids": [item.chunk.id for item in candidates if item.chunk.id is not None],
+                    "hits": RagPipeline._serialize_trace_hits(candidates),
                 },
             ),
         )
 
-        final_chunks = candidates
         reranker = resolve_rerank_method(rag_config, self._llm)
 
         if reranker is not None and candidates:
             rerank_started = time.perf_counter()
-            final_chunks = await reranker.rerank(ctx.query, candidates, top_n=RERANK_TOP_N)
+            final_chunks = await reranker.rerank(ctx.query, candidates, top_n=top_chunks)
             trace.append(
                 RagTraceStep(
                     step="rerank",
                     duration_ms=int((time.perf_counter() - rerank_started) * 1000),
                     data={
-                        "chunk_ids": [item.chunk.id for item in final_chunks if item.chunk.id is not None],
+                        "hits": RagPipeline._serialize_trace_hits(final_chunks),
                     },
                 ),
             )
         else:
-            final_chunks = VectorRetriever.trim_candidates(candidates, top_n=RERANK_TOP_N)
+            final_chunks = VectorRetriever.trim_candidates(candidates, top_n=top_chunks)
 
         context = build_context_block(final_chunks)
 
