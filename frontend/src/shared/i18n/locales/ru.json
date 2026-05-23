@@ -59,6 +59,7 @@
     "settingsTitle": "Настройки RAG",
     "methodHelpAria": "Что такое {{method}}",
     "useHistory": "Использовать историю",
+    "topChunks": "Чанков в контексте",
     "methods": {
       "hyde": "HyDE",
       "multi_query": "Multi-Query",
@@ -75,6 +76,20 @@
   },
   "trace": {
     "empty": "Здесь появятся шаги RAG-пайплайна в реальном времени через SSE, когда будет подключён trace stream.",
+    "emptyRag": "Отправьте вопрос в RAG-режиме — здесь появятся шаги пайплайна и использованные чанки.",
+    "lastAnswer": "Последний ответ",
+    "searchQueries": "Поисковые запросы",
+    "pipelineSteps": "Шаги пайплайна",
+    "usedChunks": "Использованные чанки ({{count}})",
+    "citationHint": "Цифры [1], [2] в ответе ассистента — номера этих фрагментов (не id чанка в базе).",
+    "chunkCitation": "Цитата [{{index}}]",
+    "noChunks": "Релевантные чанки не найдены.",
+    "chunkScore": "score {{score}}",
+    "chunkSimilarity": "близость",
+    "retrievalSummary": "Запросов: {{queryCount}}, кандидатов: {{candidateCount}}",
+    "chunkNodeId": "node_id",
+    "chunkTokens": "токены",
+    "chunkSourceQuery": "запрос",
     "requestId": "request_id: {{id}}",
     "durationMs": "{{ms}} мс",
     "steps": {
@@ -83,6 +98,8 @@
       "router": "Роутер",
       "rerank": "Реранжирование",
       "hyde": "HyDE",
+      "multi_query": "Multi-Query",
+      "query_rewriting": "Query Rewriting",
       "faq_match": "FAQ",
       "guard": "Защита"
     }

@@ -59,6 +59,7 @@
     "settingsTitle": "RAG settings",
     "methodHelpAria": "What is {{method}}",
     "useHistory": "Use chat history",
+    "topChunks": "Chunks in context",
     "methods": {
       "hyde": "HyDE",
       "multi_query": "Multi-Query",
@@ -75,6 +76,20 @@
   },
   "trace": {
     "empty": "RAG pipeline steps will appear here in real time via SSE once the trace stream is connected.",
+    "emptyRag": "Send a question in RAG mode — pipeline steps and used chunks will appear here.",
+    "lastAnswer": "Last answer",
+    "searchQueries": "Search queries",
+    "pipelineSteps": "Pipeline steps",
+    "usedChunks": "Used chunks ({{count}})",
+    "citationHint": "Numbers [1], [2] in the assistant reply refer to these excerpts (not the chunk database id).",
+    "chunkCitation": "Citation [{{index}}]",
+    "noChunks": "No relevant chunks found.",
+    "chunkScore": "score {{score}}",
+    "chunkSimilarity": "similarity",
+    "retrievalSummary": "Queries: {{queryCount}}, candidates: {{candidateCount}}",
+    "chunkNodeId": "node_id",
+    "chunkTokens": "tokens",
+    "chunkSourceQuery": "query",
     "requestId": "request_id: {{id}}",
     "durationMs": "{{ms}} ms",
     "steps": {
@@ -83,6 +98,8 @@
       "router": "Router",
       "rerank": "Rerank",
       "hyde": "HyDE",
+      "multi_query": "Multi-Query",
+      "query_rewriting": "Query Rewriting",
       "faq_match": "FAQ match",
       "guard": "Guard"
     }
