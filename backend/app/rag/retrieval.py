@@ -4,9 +4,9 @@ from collections import defaultdict
 from pathlib import Path
 
 from app.core.faiss_manager import faiss_manager
+from app.core.rag_constants import RERANK_TOP_N, RETRIEVAL_TOP_K, RRF_K
 from app.llm.embeddings import EmbeddingClient
 from app.models.chunk_meta import ChunkMeta
-from app.rag.constants import RERANK_TOP_N, RETRIEVAL_TOP_K, RRF_K
 from app.rag.types import RetrievedChunk
 
 
@@ -69,6 +69,7 @@ class VectorRetriever:
 
         ranked_lists: list[list[tuple[int, float]]] = []
         chunk_lookup: dict[int, RetrievedChunk] = {}
+        max_similarity: dict[int, float] = {}
 
         for query in queries:
             items = await self.search_query(query, top_k=top_k)
@@ -76,8 +77,12 @@ class VectorRetriever:
                 [(item.chunk.id or 0, item.score) for item in items if item.chunk.id is not None],
             )
             for item in items:
-                if item.chunk.id is not None:
-                    chunk_lookup[item.chunk.id] = item
+                chunk_id = item.chunk.id
+                if chunk_id is None:
+                    continue
+
+                chunk_lookup[chunk_id] = item
+                max_similarity[chunk_id] = max(max_similarity.get(chunk_id, float("-inf")), item.score)
 
         fused = reciprocal_rank_fusion(ranked_lists)
         merged: list[RetrievedChunk] = []
@@ -88,7 +93,12 @@ class VectorRetriever:
                 continue
 
             merged.append(
-                RetrievedChunk(chunk=item.chunk, score=fused_score, source_query=item.source_query),
+                RetrievedChunk(
+                    chunk=item.chunk,
+                    score=fused_score,
+                    source_query=item.source_query,
+                    vector_similarity=max_similarity.get(row_id),
+                ),
             )
             if len(merged) >= top_k:
                 break
