@@ -12,13 +12,18 @@ interface LlmSettingsState extends LlmConfig {
     llmConfig: LlmConfig | null | undefined,
     useHistory: boolean | null | undefined,
   ) => void;
+  resetToDefaults: () => void;
   toPayload: () => { llm_config: LlmConfig; use_history: boolean | null };
 }
 
 function mergeLlmConfig(llmConfig: LlmConfig | null | undefined): LlmConfig {
+  if (!llmConfig) {
+    return { ...DEFAULT_LLM_CONFIG };
+  }
+
   return {
-    use_custom_prompt: llmConfig?.use_custom_prompt ?? DEFAULT_LLM_CONFIG.use_custom_prompt,
-    custom_prompt: llmConfig?.custom_prompt ?? DEFAULT_LLM_CONFIG.custom_prompt,
+    use_custom_prompt: llmConfig.use_custom_prompt ?? DEFAULT_LLM_CONFIG.use_custom_prompt,
+    custom_prompt: llmConfig.custom_prompt ?? null,
   };
 }
 
@@ -32,6 +37,11 @@ export const useLlmSettingsStore = create<LlmSettingsState>((set, get) => ({
     set({
       ...mergeLlmConfig(llmConfig),
       use_history: useHistory ?? true,
+    }),
+  resetToDefaults: () =>
+    set({
+      ...DEFAULT_LLM_CONFIG,
+      use_history: true,
     }),
   toPayload: () => {
     const { use_custom_prompt, custom_prompt, use_history } = get();
