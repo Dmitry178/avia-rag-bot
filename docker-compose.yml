@@ -1,0 +1,41 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATA__DIR: ./data
+      DB__URL: sqlite:///./data/app.db
+      FAISS__DIR: ./data
+      ETL__DOCUMENT_PATH: data/rag-document.md
+      APP__CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
+    volumes:
+      - ./backend/data:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/healthz')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ""
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
