@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from app.core.rag_constants import DEFAULT_TOP_CHUNKS, MAX_TOP_CHUNKS, MIN_TOP_CHUNKS
+
 
 class RagConfig(BaseModel):
     """
@@ -23,6 +25,12 @@ class RagConfig(BaseModel):
     use_rerank: bool | None = Field(
         default=None,
         description="Enable cross-encoder reranking after vector search.",
+    )
+    top_chunks: int = Field(
+        default=DEFAULT_TOP_CHUNKS,
+        ge=MIN_TOP_CHUNKS,
+        le=MAX_TOP_CHUNKS,
+        description="Number of knowledge chunks included in the LLM context.",
     )
 
     def to_metadata_dict(self) -> dict[str, bool]:
