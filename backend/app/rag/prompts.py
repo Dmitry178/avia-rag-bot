@@ -1,6 +1,6 @@
 """Prompt templates for RAG query methods."""
 
-from app.rag.constants import MULTI_QUERY_COUNT
+from app.core.rag_constants import MULTI_QUERY_COUNT
 
 
 def hyde_prompt(query: str) -> str:
