@@ -45,8 +45,7 @@ avia-bot/
 │   │   ├── db/                 # настройки БД
 │   │   └── exceptions/         # исключения
 │   ├── etl/                    # парсер и chunker markdown
-│   ├── faiss/                  # faiss.index
-│   ├── data/                   # SQLite, RAG-документ
+│   ├── data/                   # SQLite, RAG-документ, faiss.index
 │   ├── scripts/                # скрипты для локального запуска
 │   └── tests/                  # тесты
 ├── frontend/
@@ -186,8 +185,9 @@ API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 | Путь | Назначение |
 |------|------------|
 | `backend/data/app.db` | SQLite: чанки, манифест, чаты |
-| `backend/faiss/faiss.index` | FAISS-индекс |
+| `backend/data/faiss.index` | FAISS-индекс |
 | `backend/data/manifest.json` | копия манифеста |
+| `backend/data/rag-document.md` | исходный markdown для ETL |
 
 ## API чатов (кратко)
 
@@ -221,11 +221,41 @@ make frontend-dev                      # http://127.0.0.1:5173
 
 Полный список команд: `make help`.
 
+## Запуск в Docker
+
+Нужны: [Docker](https://docs.docker.com/get-docker/) и Docker Compose v2.
+
+```bash
+# 1. Переменные окружения (LLM-ключи и модели)
+cp .env.docker.example .env
+# отредактируйте LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
+
+# 2. Сборка и запуск
+make docker-up                       # http://127.0.0.1:8080
+
+# 3. Индексация базы знаний (для RAG; один раз или после смены документа)
+make docker-etl-ingest
+```
+
+Откройте `http://127.0.0.1:8080`. Nginx отдаёт frontend и проксирует `/api` на backend.  
+Данные SQLite, FAISS и RAG-документ сохраняются в `backend/data/` на хосте (bind mount).
+
+Полезные команды:
+
+```bash
+make docker-logs      # логи сервисов
+make docker-down      # остановить
+make docker-build     # только пересобрать образы
+```
+
+Порт UI можно переопределить в `.env`: `FRONTEND_PORT=8080`.
+
 ## Текущий статус
 
 **Готово:**
 - Backend: ETL, FAISS, модульный RAG-пайплайн, CRUD чатов, LLM/RAG ответы, настройки в чате и metadata, SSE trace events
-- Frontend: layout (чаты · диалог · трассировка/параметры), настройки RAG/LLM, отправка настроек с сообщением, i18n, тема
+- Frontend: layout (чаты · диалог · трассировка/параметры), настройки RAG/LLM, отправка настроек с сообщением, i18n, theme
+- Docker: production-сборка frontend (nginx) + backend (uvicorn), `docker compose`
 
 **В разработке:**
 - Подписка frontend на SSE trace stream (шаги сейчас в metadata; панель Trace — placeholder до подключения EventSource)

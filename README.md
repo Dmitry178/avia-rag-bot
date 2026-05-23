@@ -45,8 +45,7 @@ avia-bot/
 │   │   ├── db/                 # database setup
 │   │   └── exceptions/         # error handling
 │   ├── etl/                    # markdown parser and chunker
-│   ├── faiss/                  # faiss.index
-│   ├── data/                   # SQLite database and source knowledge document
+│   ├── data/                   # SQLite, source document, faiss.index
 │   ├── scripts/                # local run scripts
 │   └── tests/                  # tests
 ├── frontend/
@@ -186,8 +185,9 @@ Details: [`backend/etl/README.md`](backend/etl/README.md).
 | Path | Purpose |
 |------|---------|
 | `backend/data/app.db` | SQLite: chunks, manifest, chats |
-| `backend/faiss/faiss.index` | FAISS index |
+| `backend/data/faiss.index` | FAISS index |
 | `backend/data/manifest.json` | manifest copy for tooling |
+| `backend/data/rag-document.md` | source markdown for ETL |
 
 ## Chat API (summary)
 
@@ -221,11 +221,41 @@ Open `http://127.0.0.1:5173`. Vite proxies `/api` to the backend.
 
 Full command list: `make help`.
 
+## Docker
+
+Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose v2.
+
+```bash
+# 1. Environment (LLM keys and models)
+cp .env.docker.example .env
+# edit LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
+
+# 2. Build and start
+make docker-up                       # http://127.0.0.1:8080
+
+# 3. Index the knowledge base (for RAG; once or after document changes)
+make docker-etl-ingest
+```
+
+Open `http://127.0.0.1:8080`. Nginx serves the frontend and proxies `/api` to the backend.  
+SQLite, FAISS, and the RAG document persist in `backend/data/` on the host (bind mount).
+
+Useful commands:
+
+```bash
+make docker-logs      # follow service logs
+make docker-down      # stop containers
+make docker-build     # rebuild images only
+```
+
+Override the UI port in `.env`: `FRONTEND_PORT=8080`.
+
 ## Current status
 
 **Done:**
 - Backend: ETL, FAISS, modular RAG pipeline, chat CRUD, LLM/RAG replies, settings in chat and metadata, SSE trace events
 - Frontend: layout (chats · dialog · trace/parameters), RAG/LLM settings, settings sent with each message, i18n, theme
+- Docker: production frontend build (nginx) + backend (uvicorn), `docker compose`
 
 **In development:**
 - Frontend SSE trace subscription (steps are in metadata today; Trace panel is a placeholder until EventSource is wired)
