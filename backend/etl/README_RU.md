@@ -68,7 +68,7 @@ flowchart TB
     C -->|"list[ChunkDraft]"| S
     E -->|"vectors"| FM
     DBM --> DB[("SQLite chunk_meta")]
-    FM --> IDX["faiss/faiss.index"]
+    FM --> IDX["data/faiss.index"]
     S --> MAN["data/manifest.json"]
 ```
 
@@ -80,7 +80,7 @@ flowchart TB
 4. Удалить старые `chunk_meta` и `index_manifest` (только full rebuild).
 5. Вставить чанки с явными `id = 0..N-1` (совпадают с позицией в FAISS).
 6. Записать `IndexManifest` в SQLite, `commit`.
-7. Построить `IndexFlatIP`, L2-normalize, сохранить `faiss/faiss.index` (каталог `FAISS__DIR`, по умолчанию `backend/faiss/`).
+7. Построить `IndexFlatIP`, L2-normalize, сохранить `data/faiss.index` (каталог `FAISS__DIR`, по умолчанию `backend/data/`).
 8. Записать `data/manifest.json` (каталог `DATA__DIR`, по умолчанию `backend/data/`).
 
 ---
@@ -317,7 +317,7 @@ from etl.chunker import chunk_document
 | Путь | Переменная | Содержимое |
 |------|------------|------------|
 | `data/app.db` | `DB__URL` / `DATA__DIR` | Таблицы `chunk_meta`, `index_manifest`, чаты |
-| `faiss/faiss.index` | `FAISS__DIR` | Бинарный FAISS `IndexFlatIP`, векторы L2-нормализованы |
+| `data/faiss.index` | `FAISS__DIR` | Бинарный FAISS `IndexFlatIP`, векторы L2-нормализованы |
 | `data/manifest.json` | `DATA__DIR` | `source_path`, `doc_hash`, `embedding_model`, `chunk_count`, `built_at` |
 
 FAISS пишется атомарно через `FaissManager`: сначала `faiss.index.tmp`, затем `replace`.
@@ -407,7 +407,7 @@ print(len(chunks), {c.content_type for c in chunks})
 | Переменная | Назначение для ETL |
 |------------|-------------------|
 | `DATA__DIR` | Каталог для `app.db`, `manifest.json` (по умолчанию `./data`) |
-| `FAISS__DIR` | Каталог для `faiss.index` (по умолчанию `./faiss`, относительно `backend/`) |
+| `FAISS__DIR` | Каталог для `faiss.index` (по умолчанию `./data`, относительно `backend/`) |
 | `DB__URL` | SQLite URL (по умолчанию `sqlite:///./data/app.db`) |
 | `ETL__DOCUMENT_PATH` | Путь к markdown-источнику (относительно корня репозитория или абсолютный) |
 | `LLM__BASE_URL` | OpenAI-compatible API для embeddings |

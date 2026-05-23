@@ -68,7 +68,7 @@ flowchart TB
     C -->|"list[ChunkDraft]"| S
     E -->|"vectors"| FM
     DBM --> DB[("SQLite chunk_meta")]
-    FM --> IDX["faiss/faiss.index"]
+    FM --> IDX["data/faiss.index"]
     S --> MAN["data/manifest.json"]
 ```
 
@@ -80,7 +80,7 @@ flowchart TB
 4. Delete old `chunk_meta` and `index_manifest` (full rebuild only).
 5. Insert chunks with explicit `id = 0..N-1` (matches FAISS position).
 6. Write `IndexManifest` to SQLite, `commit`.
-7. Build `IndexFlatIP`, L2-normalize, save `faiss/faiss.index` (directory `FAISS__DIR`, default `backend/faiss/`).
+7. Build `IndexFlatIP`, L2-normalize, save `data/faiss.index` (directory `FAISS__DIR`, default `backend/data/`).
 8. Write `data/manifest.json` (directory `DATA__DIR`, default `backend/data/`).
 
 ---
@@ -319,7 +319,7 @@ Paths relative to `backend/` (when running from `backend/`):
 | Path | Variable | Contents |
 |------|----------|----------|
 | `data/app.db` | `DB__URL` / `DATA__DIR` | Tables `chunk_meta`, `index_manifest`, chats |
-| `faiss/faiss.index` | `FAISS__DIR` | Binary FAISS `IndexFlatIP`, L2-normalized vectors |
+| `data/faiss.index` | `FAISS__DIR` | Binary FAISS `IndexFlatIP`, L2-normalized vectors |
 | `data/manifest.json` | `DATA__DIR` | `source_path`, `doc_hash`, `embedding_model`, `chunk_count`, `built_at` |
 
 FAISS is written atomically via `FaissManager`: first `faiss.index.tmp`, then `replace`.
@@ -409,7 +409,7 @@ Variables from the root `.env` (nested delimiter `__`):
 | Variable | ETL purpose |
 |----------|-------------|
 | `DATA__DIR` | Directory for `app.db`, `manifest.json` (default `./data`) |
-| `FAISS__DIR` | Directory for `faiss.index` (default `./faiss`, relative to `backend/`) |
+| `FAISS__DIR` | Directory for `faiss.index` (default `./data`, relative to `backend/`) |
 | `DB__URL` | SQLite URL (default `sqlite:///./data/app.db`) |
 | `ETL__DOCUMENT_PATH` | Markdown source path (relative to repo root or absolute) |
 | `LLM__BASE_URL` | OpenAI-compatible API for embeddings |
