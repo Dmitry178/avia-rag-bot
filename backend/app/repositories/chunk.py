@@ -49,6 +49,19 @@ class ChunkRepository:
         await self.delete_all()
         await self.insert_many(chunks)
 
+    async def list_by_ids(self, chunk_ids: list[int]) -> list[ChunkMeta]:
+        """
+        Return chunks for the given ids (unordered).
+        """
+
+        if not chunk_ids:
+            return []
+
+        statement = select(ChunkMeta).where(ChunkMeta.id.in_(chunk_ids))
+        result = await self.session.execute(statement)
+
+        return list(result.scalars().all())
+
     async def count_by_content_type(self) -> dict[str, int]:
         """
         Return chunk counts grouped by content_type.
