@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from app.core.config import Settings, settings
 from app.core.db_manager import DBManager
 from app.core.logs import logger
+from app.core.rag_constants import DEFAULT_TOP_CHUNKS
 from app.core.sse_manager import sse_manager
 from app.exceptions import handle_basic_db_errors
 from app.exceptions.service import ServiceError
@@ -18,6 +19,7 @@ from app.llm.prompt_guard import (
 )
 from app.models.chat import ChatType
 from app.models.chat_message import MessageRole
+from app.models.chunk_meta import ChunkMeta
 from app.schemas.chat import (
     ChatDetailResponse,
     ChatMessageResponse,
@@ -136,12 +138,192 @@ class ChatService:
             )
 
     @staticmethod
+    def _chunk_similarity(item) -> float:
+        vector_similarity = getattr(item, "vector_similarity", None)
+
+        if vector_similarity is not None:
+            return vector_similarity
+
+        return item.score
+
+    @staticmethod
+    def _serialize_retrieved_chunks(chunks) -> list[dict]:
+        serialized: list[dict] = []
+
+        for citation_index, item in enumerate(chunks, start=1):
+            chunk = item.chunk
+            if chunk.id is None:
+                continue
+
+            similarity = round(ChatService._chunk_similarity(item), 4)
+
+            serialized.append(
+                {
+                    "citation_index": citation_index,
+                    "id": chunk.id,
+                    "section": chunk.section,
+                    "title": chunk.title,
+                    "content_type": chunk.content_type,
+                    "score": similarity,
+                    "similarity": similarity,
+                    "source_query": item.source_query,
+                    "token_count": chunk.token_count,
+                    "node_id": chunk.node_id,
+                    "content_preview": chunk.content[:600],
+                },
+            )
+
+        return serialized
+
+    @staticmethod
+    def _serialize_chunk_meta(
+        chunk: ChunkMeta,
+        *,
+        citation_index: int,
+        score: float | None = None,
+        similarity: float | None = None,
+    ) -> dict:
+        resolved_similarity = similarity if similarity is not None else score
+
+        return {
+            "citation_index": citation_index,
+            "id": chunk.id,
+            "section": chunk.section,
+            "title": chunk.title,
+            "content_type": chunk.content_type,
+            "score": round(resolved_similarity, 4) if resolved_similarity is not None else None,
+            "similarity": round(resolved_similarity, 4) if resolved_similarity is not None else None,
+            "source_query": None,
+            "token_count": chunk.token_count,
+            "node_id": chunk.node_id,
+            "content_preview": chunk.content[:600],
+        }
+
+    @staticmethod
+    def _similarity_scores_from_trace(metadata: dict) -> dict[int, float]:
+        scores: dict[int, float] = {}
+
+        for step in metadata.get("rag_trace") or []:
+            if not isinstance(step, dict):
+                continue
+
+            if step.get("step") not in {"retrieval", "rerank"}:
+                continue
+
+            data = step.get("data")
+            if not isinstance(data, dict):
+                continue
+
+            for hit in data.get("hits") or []:
+                if not isinstance(hit, dict):
+                    continue
+
+                chunk_id = hit.get("id")
+                similarity = hit.get("similarity")
+                if isinstance(chunk_id, int) and isinstance(similarity, (int, float)):
+                    scores[chunk_id] = float(similarity)
+
+        return scores
+
+    async def _load_chunk_map_for_metadata(self, metadata_list: list[dict]) -> dict[int, ChunkMeta]:
+        chunk_ids: set[int] = set()
+
+        for metadata in metadata_list:
+            for chunk_id in metadata.get("retrieved_chunk_ids") or []:
+                if isinstance(chunk_id, int):
+                    chunk_ids.add(chunk_id)
+
+            for chunk in metadata.get("retrieved_chunks") or []:
+                if isinstance(chunk, dict) and isinstance(chunk.get("id"), int):
+                    chunk_ids.add(chunk["id"])
+
+        if not chunk_ids:
+            return {}
+
+        chunks = await self.db.etl.chunks.list_by_ids(list(chunk_ids))
+        return {chunk.id: chunk for chunk in chunks if chunk.id is not None}
+
+    @staticmethod
+    def _enrich_rag_metadata(metadata: dict, chunk_map: dict[int, ChunkMeta]) -> dict:
+        enriched = dict(metadata)
+        similarity_by_id = ChatService._similarity_scores_from_trace(enriched)
+
+        existing = enriched.get("retrieved_chunks")
+        if existing:
+            merged: list[dict] = []
+
+            for chunk in existing:
+                if not isinstance(chunk, dict):
+                    continue
+
+                chunk_dict = dict(chunk)
+                chunk_id = chunk_dict.get("id")
+                similarity = chunk_dict.get("similarity")
+
+                if similarity is None:
+                    similarity = chunk_dict.get("score")
+
+                if similarity is None and isinstance(chunk_id, int):
+                    similarity = similarity_by_id.get(chunk_id)
+
+                if similarity is not None:
+                    chunk_dict["similarity"] = similarity
+                    chunk_dict["score"] = similarity
+
+                if isinstance(chunk_id, int):
+                    chunk_meta = chunk_map.get(chunk_id)
+                    if chunk_meta is not None:
+                        if not chunk_dict.get("title"):
+                            chunk_dict["title"] = chunk_meta.title
+                        if not chunk_dict.get("section"):
+                            chunk_dict["section"] = chunk_meta.section
+                        if not chunk_dict.get("node_id"):
+                            chunk_dict["node_id"] = chunk_meta.node_id
+                        if not chunk_dict.get("content_type"):
+                            chunk_dict["content_type"] = chunk_meta.content_type
+                        if not chunk_dict.get("token_count"):
+                            chunk_dict["token_count"] = chunk_meta.token_count
+                        if not chunk_dict.get("content_preview"):
+                            chunk_dict["content_preview"] = chunk_meta.content[:600]
+
+                merged.append(chunk_dict)
+
+            enriched["retrieved_chunks"] = merged
+            return enriched
+
+        if not metadata.get("retrieved_chunk_ids"):
+            return metadata
+
+        serialized: list[dict] = []
+
+        for citation_index, chunk_id in enumerate(metadata["retrieved_chunk_ids"], start=1):
+            if not isinstance(chunk_id, int):
+                continue
+
+            chunk = chunk_map.get(chunk_id)
+            if chunk is None:
+                continue
+
+            serialized.append(
+                ChatService._serialize_chunk_meta(
+                    chunk,
+                    citation_index=citation_index,
+                    similarity=similarity_by_id.get(chunk_id),
+                ),
+            )
+
+        enriched["retrieved_chunks"] = serialized
+
+        return enriched
+
+    @staticmethod
     def _rag_retrieval_metadata(rag_result) -> dict:
         return {
             "search_queries": rag_result.search_queries,
             "retrieved_chunk_ids": [
                 item.chunk.id for item in rag_result.chunks if item.chunk.id is not None
             ],
+            "retrieved_chunks": ChatService._serialize_retrieved_chunks(rag_result.chunks),
             "rag_trace": ChatService._serialize_rag_trace(rag_result.trace),
         }
 
@@ -174,8 +356,12 @@ class ChatService:
             closed_at=chat.closed_at,
         )
 
-    @staticmethod
-    def _message_to_response(message) -> ChatMessageResponse:
+    def _message_to_response(self, message, *, chunk_map: dict[int, ChunkMeta] | None = None) -> ChatMessageResponse:
+        metadata = message.message_metadata
+
+        if chunk_map is not None:
+            metadata = self._enrich_rag_metadata(metadata, chunk_map)
+
         return ChatMessageResponse(
             id=message.id,
             chat_id=message.chat_id,
@@ -183,7 +369,7 @@ class ChatService:
             content=message.content,
             rating=message.rating,
             rating_comment=message.rating_comment,
-            metadata=message.message_metadata,
+            metadata=metadata,
             created_at=message.created_at,
             updated_at=message.updated_at,
         )
@@ -234,12 +420,39 @@ class ChatService:
         Create a new chat thread.
         """
 
+        use_history = body.use_history
+        llm_config = body.llm_config.model_dump() if body.llm_config else None
+        rag_config = body.rag_config.model_dump() if body.rag_config else None
+
+        if body.chat_type == ChatType.LLM:
+            if use_history is None:
+                use_history = True
+
+            if llm_config is None:
+                llm_config = {
+                    "use_custom_prompt": False,
+                    "custom_prompt": None,
+                }
+
+        if body.chat_type == ChatType.RAG:
+            if use_history is None:
+                use_history = False
+
+            if rag_config is None:
+                rag_config = {
+                    "use_hyde": False,
+                    "use_multi_query": False,
+                    "use_query_rewriting": False,
+                    "use_rerank": False,
+                    "top_chunks": DEFAULT_TOP_CHUNKS,
+                }
+
         chat = await self.db.chat.chats.create(
             title=body.title,
             chat_type=body.chat_type,
-            rag_config=body.rag_config.model_dump() if body.rag_config else None,
-            llm_config=body.llm_config.model_dump() if body.llm_config else None,
-            use_history=body.use_history,
+            rag_config=rag_config,
+            llm_config=llm_config,
+            use_history=use_history,
         )
         await self.db.commit()
 
@@ -260,6 +473,9 @@ class ChatService:
             )
 
         messages = await self.db.chat.messages.list_by_chat(chat_id)
+        chunk_map = await self._load_chunk_map_for_metadata(
+            [message.message_metadata for message in messages],
+        )
 
         return ChatDetailResponse(
             id=chat.id,
@@ -273,7 +489,7 @@ class ChatService:
             created_at=chat.created_at,
             updated_at=chat.updated_at,
             closed_at=chat.closed_at,
-            messages=[self._message_to_response(message) for message in messages],
+            messages=[self._message_to_response(message, chunk_map=chunk_map) for message in messages],
         )
 
     @handle_basic_db_errors
@@ -467,6 +683,10 @@ class ChatService:
 
         await self.db.commit()
 
+        chunk_map = await self._load_chunk_map_for_metadata(
+            [user_message.message_metadata, assistant_message.message_metadata],
+        )
+
         logger.info(
             "chat_message_sent",
             chat_id=chat_id,
@@ -475,8 +695,8 @@ class ChatService:
         )
 
         return SendMessageResponse(
-            user_message=self._message_to_response(user_message),
-            assistant_message=self._message_to_response(assistant_message),
+            user_message=self._message_to_response(user_message, chunk_map=chunk_map),
+            assistant_message=self._message_to_response(assistant_message, chunk_map=chunk_map),
         )
 
     @handle_basic_db_errors
