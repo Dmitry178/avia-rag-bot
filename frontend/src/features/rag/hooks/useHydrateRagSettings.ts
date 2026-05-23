@@ -12,5 +12,15 @@ export function useHydrateRagSettings(chat: ChatSummary | ChatDetail | null | un
     }
 
     hydrateFromChat(chat.rag_config, chat.use_history);
-  }, [chat?.id, chat?.rag_config, chat?.use_history, hydrateFromChat, chat]);
+  }, [
+    chat?.id,
+    chat?.rag_config?.use_hyde,
+    chat?.rag_config?.use_multi_query,
+    chat?.rag_config?.use_query_rewriting,
+    chat?.rag_config?.use_rerank,
+    chat?.rag_config?.top_chunks,
+    chat?.use_history,
+    hydrateFromChat,
+    chat,
+  ]);
 }
