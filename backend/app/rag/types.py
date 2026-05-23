@@ -28,6 +28,7 @@ class RetrievedChunk:
     chunk: ChunkMeta
     score: float
     source_query: str | None = None
+    vector_similarity: float | None = None
 
 
 @dataclass
