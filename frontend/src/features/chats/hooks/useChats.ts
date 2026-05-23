@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatDetailQueryKey } from "@/features/chat/hooks/useChat";
 import { useChatModeStore } from "@/features/chat/modeStore";
 import { useLlmSettingsStore } from "@/features/llm/llmSettingsStore";
+import { DEFAULT_LLM_CREATE_PAYLOAD } from "@/features/llm/types";
 import { useRagSettingsStore } from "@/features/rag/ragSettingsStore";
+import { DEFAULT_RAG_CREATE_PAYLOAD } from "@/features/rag/types";
 import { createChat, deleteChat, listChats, updateChat } from "@/shared/api/chats";
 import type { ChatMode, ChatSummary } from "@/shared/api/types";
 import { useChatUiStore } from "../store";
@@ -23,28 +25,30 @@ export function useCreateChatMutation() {
   const queryClient = useQueryClient();
   const chatType = useChatModeStore((state) => state.mode);
   const setSelectedChatId = useChatUiStore((state) => state.setSelectedChatId);
-  const ragToPayload = useRagSettingsStore((state) => state.toPayload);
-  const llmToPayload = useLlmSettingsStore((state) => state.toPayload);
 
   return useMutation({
     mutationFn: (title: string) => {
       if (chatType === "rag") {
-        const payload = ragToPayload();
-
         return createChat(title, chatType, {
-          ragConfig: payload.rag_config,
-          useHistory: payload.use_history,
+          ragConfig: DEFAULT_RAG_CREATE_PAYLOAD.rag_config,
+          useHistory: DEFAULT_RAG_CREATE_PAYLOAD.use_history,
         });
       }
 
-      const payload = llmToPayload();
-
       return createChat(title, chatType, {
-        llmConfig: payload.llm_config,
-        useHistory: payload.use_history,
+        llmConfig: DEFAULT_LLM_CREATE_PAYLOAD.llm_config,
+        useHistory: DEFAULT_LLM_CREATE_PAYLOAD.use_history,
       });
     },
     onSuccess: (chat) => {
+      if (chatType === "llm") {
+        useLlmSettingsStore.getState().hydrateFromChat(chat.llm_config, chat.use_history);
+      }
+
+      if (chatType === "rag") {
+        useRagSettingsStore.getState().hydrateFromChat(chat.rag_config, chat.use_history);
+      }
+
       setSelectedChatId(chatType, chat.id);
 
       queryClient.setQueryData<ChatSummary[]>(chatsQueryKey(chatType), (current) => {
