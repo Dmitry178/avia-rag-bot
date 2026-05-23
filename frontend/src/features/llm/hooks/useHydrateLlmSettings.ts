@@ -12,5 +12,12 @@ export function useHydrateLlmSettings(chat: ChatSummary | ChatDetail | null | un
     }
 
     hydrateFromChat(chat.llm_config, chat.use_history);
-  }, [chat?.id, chat?.llm_config, chat?.use_history, hydrateFromChat, chat]);
+  }, [
+    chat?.id,
+    chat?.llm_config?.use_custom_prompt,
+    chat?.llm_config?.custom_prompt,
+    chat?.use_history,
+    hydrateFromChat,
+    chat,
+  ]);
 }
