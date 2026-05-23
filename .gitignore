@@ -3,17 +3,14 @@ _*
 .venv/
 .idea
 *.env
+!.env.example
 *.db
-!backend/.env.example
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+__pycache__/
 dist/
 build/
-
-# Data artifacts
-data/manifest.json
-backend/faiss/*
 
 # Node
 node_modules/
