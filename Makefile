@@ -4,7 +4,8 @@ FRONTEND_DIR := frontend
 .PHONY: help \
 	etl-ingest etl-stats etl-manifest \
 	backend-install backend-dev backend-test backend-test-api backend-test-unit backend-lint backend-typecheck \
-	frontend-install frontend-dev frontend-build frontend-typecheck
+	frontend-install frontend-dev frontend-build frontend-typecheck \
+	docker-up docker-down docker-build docker-etl-ingest docker-logs
 
 help:
 	@echo "Targets:"
@@ -27,6 +28,13 @@ help:
 	@echo "  make frontend-dev        Start Vite dev server on :5173"
 	@echo "  make frontend-build      Build frontend for production"
 	@echo "  make frontend-typecheck  Run TypeScript check"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-up           Build and start backend + frontend (:8080)"
+	@echo "  make docker-down         Stop containers"
+	@echo "  make docker-build        Build images only"
+	@echo "  make docker-etl-ingest   Run ETL ingest inside backend container"
+	@echo "  make docker-logs         Follow compose logs"
 
 # Parse, embed, and rebuild SQLite + FAISS (same as POST /api/etl/ingest).
 etl-ingest:
@@ -71,3 +79,18 @@ frontend-build:
 
 frontend-typecheck:
 	cd $(FRONTEND_DIR) && npm run typecheck
+
+docker-up:
+	docker compose up --build -d
+
+docker-down:
+	docker compose down
+
+docker-build:
+	docker compose build
+
+docker-etl-ingest:
+	docker compose exec backend uv run python scripts/run_etl.py ingest
+
+docker-logs:
+	docker compose logs -f
