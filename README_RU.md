@@ -2,9 +2,11 @@
 
 [English](README.md) · **Русский**
 
-Учебный проект — RAG-бот для сотрудников аэропорта: ответы на вопросы по внутренней базе знаний (SOP, FAQ, сценарии, decision trees). Интерфейс позволяет вести диалог с ассистентом, управлять списком чатов, настраивать параметры LLM/RAG и (в режиме RAG) наблюдать трассировку пайплайна.
+Демонстрационный проект — RAG-бот для сотрудников аэропорта: ответы на вопросы по внутренней базе знаний (SOP, FAQ, сценарии, decision trees). Интерфейс позволяет вести диалог с ассистентом, управлять списком чатов, настраивать параметры LLM/RAG и (в режиме RAG) наблюдать трассировку пайплайна.
 
-Monorepo: **backend** (FastAPI, индексация, RAG, API чатов) + **frontend** (React SPA). Telegram и Docker — в планах следующих этапов.
+Цель проекта — показать на учебной базе знаний принципы работы различных методов RAG: **HyDE**, **Multi-Query**, **Query Rewriting** и **Rerank**. Их можно включать и комбинировать в панели настроек и сравнивать результат по трассировке пайплайна и использованным чанкам.
+
+Monorepo: **backend** (FastAPI, индексация, RAG, API чатов) + **frontend** (React SPA).
 
 ## Что умеет приложение
 
@@ -32,24 +34,21 @@ Monorepo: **backend** (FastAPI, индексация, RAG, API чатов) + **f
 avia-bot/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routers/        # health, etl, chats
-│   │   ├── services/           # ETLService, ChatService
-│   │   ├── repositories/
-│   │   ├── models/
+│   │   ├── api/routers/        # api-роутеры
+│   │   ├── services/           # слой бизнес-логики
+│   │   ├── repositories/       # CRUD
+│   │   ├── models/             # модели БД
 │   │   ├── schemas/            # chat, rag, llm DTO
 │   │   ├── rag/                # RAG-пайплайн
-│   │   │   ├── pipeline.py
-│   │   │   ├── retrieval.py    # FAISS + RRF fusion
-│   │   │   └── methods/        # HyDE, Multi-Query, Query Rewriting, Rerank
-│   │   ├── llm/                # chat, embeddings, prompts, guard
-│   │   ├── core/               # config, faiss_manager, sse_manager
-│   │   ├── db/
-│   │   └── exceptions/
+│   │   ├── llm/                # вызов LLM
+│   │   ├── core/               # настройки, контекстные менеджеры
+│   │   ├── db/                 # настройки БД
+│   │   └── exceptions/         # исключения
 │   ├── etl/                    # парсер и chunker markdown
 │   ├── faiss/                  # faiss.index
-│   ├── data/                   # SQLite, manifest, документ
-│   ├── scripts/
-│   └── tests/
+│   ├── data/                   # SQLite, RAG-документ
+│   ├── scripts/                # скрипты для локального запуска
+│   └── tests/                  # тесты
 ├── frontend/
 │   ├── src/
 │   │   ├── app/                # layout, провайдеры
@@ -60,8 +59,8 @@ avia-bot/
 │   │   │   ├── llm/            # настройки LLM
 │   │   │   └── trace/          # панель трассировки (RAG)
 │   │   ├── shared/             # API, i18n
-│   │   ├── theme/
-│   │   └── styles/
+│   │   ├── theme/              # цветовые схемы
+│   │   └── styles/             # глобальные стили
 │   └── package.json
 ├── Makefile
 ├── README.md
@@ -75,11 +74,11 @@ avia-bot/
 
 | Каталог | Назначение |
 |---------|------------|
-| `api/routers/` | `/api/healthz`, `/api/etl/*`, `/api/chats/*` |
-| `services/` | `ETLService`, `ChatService` |
-| `rag/` | Модульный RAG: query transform → FAISS → rerank → контекст для LLM |
-| `llm/` | Chat completions, embeddings, system prompts, prompt guard |
-| `core/` | Конфиг, логирование, `faiss_manager`, `sse_manager` |
+| `api/routers/` | HTTP-эндпоинты health, индексации и чатов |
+| `services/` | Индексация базы знаний и логика чатов |
+| `rag/` | Модульный RAG: преобразование запроса → FAISS → rerank → контекст для LLM |
+| `llm/` | Вызов LLM, эмбеддинги, системные промпты, фильтрация запросов |
+| `core/` | Конфигурация, логирование, FAISS-индекс, SSE-события |
 
 ### Frontend (`frontend/src/`)
 
@@ -231,6 +230,3 @@ make frontend-dev                      # http://127.0.0.1:5173
 **В разработке:**
 - Подписка frontend на SSE trace stream (шаги сейчас в metadata; панель Trace — placeholder до подключения EventSource)
 - Streaming ответов
-
-**Запланировано:**
-- Telegram-бот, Docker, production-сборка

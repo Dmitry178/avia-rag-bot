@@ -2,9 +2,11 @@
 
 **English** · [Русский](README_RU.md)
 
-Educational project — a RAG bot for airport staff: answers questions from an internal knowledge base (SOP, FAQ, scenarios, decision trees). The UI lets you chat with the assistant, manage conversations, configure LLM/RAG parameters, and (in RAG mode) watch the pipeline trace.
+Demonstration project — a RAG bot for airport staff: answers questions from an internal knowledge base (SOP, FAQ, scenarios, decision trees). The UI lets you chat with the assistant, manage conversations, configure LLM/RAG parameters, and (in RAG mode) watch the pipeline trace.
 
-Monorepo: **backend** (FastAPI, indexing, RAG, chat API) + **frontend** (React SPA). Telegram and Docker are planned for later stages.
+The project goal is to illustrate how different RAG methods work on an educational knowledge base: **HyDE**, **Multi-Query**, **Query Rewriting**, and **Rerank**. You can enable and combine them in the settings panel and compare outcomes via the pipeline trace and retrieved chunks.
+
+Monorepo: **backend** (FastAPI, indexing, RAG, chat API) + **frontend** (React SPA).
 
 ## What the app does
 
@@ -32,36 +34,33 @@ Monorepo: **backend** (FastAPI, indexing, RAG, chat API) + **frontend** (React S
 avia-bot/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routers/        # health, etl, chats
-│   │   ├── services/           # ETLService, ChatService
-│   │   ├── repositories/
-│   │   ├── models/
+│   │   ├── api/routers/        # API route handlers
+│   │   ├── services/           # business logic layer
+│   │   ├── repositories/       # data access (CRUD)
+│   │   ├── models/             # database models
 │   │   ├── schemas/            # chat, rag, llm DTOs
 │   │   ├── rag/                # RAG pipeline
-│   │   │   ├── pipeline.py
-│   │   │   ├── retrieval.py    # FAISS + RRF fusion
-│   │   │   └── methods/        # HyDE, Multi-Query, Query Rewriting, Rerank
-│   │   ├── llm/                # chat, embeddings, prompts, guard
-│   │   ├── core/               # config, faiss_manager, sse_manager
-│   │   ├── db/
-│   │   └── exceptions/
+│   │   ├── llm/                # LLM calls
+│   │   ├── core/               # app config and shared runtime utilities
+│   │   ├── db/                 # database setup
+│   │   └── exceptions/         # error handling
 │   ├── etl/                    # markdown parser and chunker
 │   ├── faiss/                  # faiss.index
-│   ├── data/                   # SQLite, manifest, source document
-│   ├── scripts/
-│   └── tests/
+│   ├── data/                   # SQLite database and source knowledge document
+│   ├── scripts/                # local run scripts
+│   └── tests/                  # tests
 ├── frontend/
 │   ├── src/
-│   │   ├── app/                # layout, providers
+│   │   ├── app/                # layout and providers
 │   │   ├── features/
 │   │   │   ├── chats/          # chat list
-│   │   │   ├── chat/           # dialog, composer
+│   │   │   ├── chat/           # dialog and composer
 │   │   │   ├── rag/            # RAG settings
-│   │   │   ├── llm/            # LLM parameters
+│   │   │   ├── llm/            # LLM settings
 │   │   │   └── trace/          # trace panel (RAG mode)
-│   │   ├── shared/             # API, i18n
-│   │   ├── theme/
-│   │   └── styles/
+│   │   ├── shared/             # API client and i18n
+│   │   ├── theme/              # color schemes
+│   │   └── styles/             # global styles
 │   └── package.json
 ├── Makefile
 ├── README.md
@@ -75,11 +74,11 @@ External integrations (LLM, FAISS, SSE) live in `llm/`, `core/`, and `rag/`.
 
 | Directory | Purpose |
 |-----------|---------|
-| `api/routers/` | `/api/healthz`, `/api/etl/*`, `/api/chats/*` |
-| `services/` | `ETLService`, `ChatService` |
+| `api/routers/` | HTTP endpoints for health, indexing, and chats |
+| `services/` | Knowledge base indexing and chat logic |
 | `rag/` | Modular RAG: query transform → FAISS → rerank → LLM context |
-| `llm/` | Chat completions, embeddings, system prompts, prompt guard |
-| `core/` | Config, logging, `faiss_manager`, `sse_manager` |
+| `llm/` | LLM calls, embeddings, system prompts, inbound message filtering |
+| `core/` | Configuration, logging, FAISS index, SSE events |
 
 ### Frontend (`frontend/src/`)
 
@@ -231,6 +230,3 @@ Full command list: `make help`.
 **In development:**
 - Frontend SSE trace subscription (steps are in metadata today; Trace panel is a placeholder until EventSource is wired)
 - Response streaming
-
-**Planned:**
-- Telegram bot, Docker, production build
