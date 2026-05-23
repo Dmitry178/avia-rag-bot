@@ -101,7 +101,7 @@ class FaissSettings(BaseModel):
     FAISS vector index artifact directory (data-only, not a Python package).
     """
 
-    dir: str = Field(default="./faiss", description="Directory for faiss.index (relative to backend root).")
+    dir: str = Field(default="./data", description="Directory for faiss.index (relative to backend root).")
     index_file: str = Field(default="faiss.index", description="FAISS index filename inside dir.")
 
     def index_path(self, backend_root: Path) -> Path:
