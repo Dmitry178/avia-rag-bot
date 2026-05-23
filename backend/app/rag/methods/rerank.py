@@ -1,7 +1,7 @@
 """LLM-based reranking of retrieved chunks."""
 
+from app.core.rag_constants import RERANK_TOP_N
 from app.llm.chat import ChatCompletionClient
-from app.rag.constants import RERANK_TOP_N
 from app.rag.methods._llm_utils import parse_json_index_array
 from app.rag.methods.base import RerankMethod
 from app.rag.prompts import rerank_prompt
