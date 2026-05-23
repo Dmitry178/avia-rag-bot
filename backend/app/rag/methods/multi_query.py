@@ -1,7 +1,7 @@
 """Multi-Query retrieval expansion."""
 
+from app.core.rag_constants import MULTI_QUERY_COUNT
 from app.llm.chat import ChatCompletionClient
-from app.rag.constants import MULTI_QUERY_COUNT
 from app.rag.methods._llm_utils import parse_json_string_array
 from app.rag.methods.base import QueryTransformMethod
 from app.rag.prompts import multi_query_prompt
