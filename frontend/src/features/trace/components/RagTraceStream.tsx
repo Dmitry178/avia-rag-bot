@@ -1,4 +1,5 @@
 import { useTranslation } from "@/shared/i18n";
+import type { TraceEvent } from "@/shared/api/types";
 import type { RagMessageTrace, TraceHit } from "../lib/ragTrace";
 import { parseTraceHits } from "../lib/ragTrace";
 
@@ -30,57 +31,148 @@ function chunkDisplaySimilarity(chunk: RagMessageTrace["chunks"][number]): numbe
   return chunk.similarity ?? chunk.score;
 }
 
-function TraceStepBody({
+function isHitTraceStep(event: TraceEvent): boolean {
+  return parseTraceHits(event.data.hits).length > 0;
+}
+
+function TraceHitRow({
+  hit,
+  index,
+  chunkPreview,
+  t,
+}: {
+  hit: TraceHit;
+  index: number;
+  chunkPreview: string;
+  t: (key: string) => string;
+}) {
+  const preview = chunkPreview || hit.content_preview;
+
+  return (
+    <li className="trace-hit">
+      <details className="trace-hit__details">
+        <summary className="trace-hit__summary">
+          <span className="trace-hit__leading">
+            <span className="trace-hit__chevron" aria-hidden="true">
+              ▸
+            </span>
+            <span className="trace-hit__rank">{index + 1}</span>
+          </span>
+          <span className="trace-hit__similarity" title={t("trace.chunkSimilarity")}>
+            {formatSimilarity(hit.similarity)}
+          </span>
+          <div className="trace-hit__content">
+            <span className="trace-hit__title">{hit.title || `#${hit.id}`}</span>
+            {hit.section ? <span className="trace-hit__section">{hit.section}</span> : null}
+            <span className="trace-hit__id">#{hit.id}</span>
+          </div>
+        </summary>
+
+        {preview ? (
+          <pre className="trace-hit__preview">{preview}</pre>
+        ) : (
+          <p className="trace-hit__preview trace-hit__preview--empty">{t("trace.noChunkPreview")}</p>
+        )}
+      </details>
+    </li>
+  );
+}
+
+function TraceStepHits({
   step,
   data,
+  chunkPreviewById,
   t,
 }: {
   step: string;
   data: Record<string, unknown>;
+  chunkPreviewById: Map<number, string>;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
-  const hits =
-    step === "retrieval" || step === "rerank" ? parseTraceHits(data.hits) : ([] as TraceHit[]);
+  const hits = step === "retrieval" || step === "rerank" ? parseTraceHits(data.hits) : [];
 
-  if (hits.length > 0) {
-    const queryCount = Number(data.query_count);
-    const candidateCount = Number(data.candidate_count);
-
-    return (
-      <div className="trace-step__hits">
-        {step === "retrieval" && Number.isFinite(queryCount) && Number.isFinite(candidateCount) ? (
-          <p className="trace-step__summary">
-            {t("trace.retrievalSummary", {
-              queryCount,
-              candidateCount,
-            })}
-          </p>
-        ) : null}
-
-        <ol className="trace-hit-list">
-          {hits.map((hit, index) => (
-            <li key={`${hit.id}-${index}`} className="trace-hit">
-              <span className="trace-hit__rank">{index + 1}</span>
-              <span className="trace-hit__similarity" title={t("trace.chunkSimilarity")}>
-                {formatSimilarity(hit.similarity)}
-              </span>
-              <div className="trace-hit__content">
-                <span className="trace-hit__title">{hit.title || `#${hit.id}`}</span>
-                {hit.section ? <span className="trace-hit__section">{hit.section}</span> : null}
-                <span className="trace-hit__id">#{hit.id}</span>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </div>
-    );
-  }
-
-  if (Object.keys(data).length === 0) {
+  if (hits.length === 0) {
     return null;
   }
 
-  return <pre className="trace-step__body">{JSON.stringify(data, null, 2)}</pre>;
+  const queryCount = Number(data.query_count);
+  const candidateCount = Number(data.candidate_count);
+
+  return (
+    <div className="trace-step__hits">
+      {step === "retrieval" && Number.isFinite(queryCount) && Number.isFinite(candidateCount) ? (
+        <p className="trace-step__summary">
+          {t("trace.retrievalSummary", {
+            queryCount,
+            candidateCount,
+          })}
+        </p>
+      ) : null}
+
+      <ol className="trace-hit-list">
+        {hits.map((hit, index) => (
+          <TraceHitRow
+            key={`${hit.id}-${index}`}
+            hit={hit}
+            index={index}
+            chunkPreview={chunkPreviewById.get(hit.id) ?? ""}
+            t={t}
+          />
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function CollapsibleTraceStep({
+  event,
+  chunkPreviewById,
+  t,
+}: {
+  event: TraceEvent;
+  chunkPreviewById: Map<number, string>;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const hits = parseTraceHits(event.data.hits);
+  if (hits.length === 0) {
+    return null;
+  }
+
+  return (
+    <details className="trace-step">
+      <summary className="trace-step__title">
+        {stepLabel(t, event.step)}
+        {event.duration_ms ? ` · ${t("trace.durationMs", { ms: event.duration_ms })}` : ""}
+        <span className="trace-step__count">{hits.length}</span>
+      </summary>
+      <TraceStepHits
+        step={event.step}
+        data={event.data}
+        chunkPreviewById={chunkPreviewById}
+        t={t}
+      />
+    </details>
+  );
+}
+
+function buildChunkPreviewById(trace: RagMessageTrace): Map<number, string> {
+  const previewById = new Map<number, string>();
+
+  for (const step of trace.traceSteps) {
+    for (const hit of parseTraceHits(step.data.hits)) {
+      if (hit.content_preview) {
+        previewById.set(hit.id, hit.content_preview);
+      }
+    }
+  }
+
+  for (const chunk of trace.chunks) {
+    if (chunk.content_preview) {
+      previewById.set(chunk.id, chunk.content_preview);
+    }
+  }
+
+  return previewById;
 }
 
 export function RagTraceStream({ trace }: { trace: RagMessageTrace | null }) {
@@ -89,6 +181,9 @@ export function RagTraceStream({ trace }: { trace: RagMessageTrace | null }) {
   if (trace === null) {
     return <p className="trace-empty">{t("trace.emptyRag")}</p>;
   }
+
+  const chunkPreviewById = buildChunkPreviewById(trace);
+  const hitSteps = trace.traceSteps.filter(isHitTraceStep);
 
   return (
     <div className="rag-trace">
@@ -110,19 +205,15 @@ export function RagTraceStream({ trace }: { trace: RagMessageTrace | null }) {
         </section>
       ) : null}
 
-      {trace.traceSteps.length > 0 ? (
-        <section className="rag-trace__section">
-          <h4 className="rag-trace__section-title">{t("trace.pipelineSteps")}</h4>
-          {trace.traceSteps.map((event, index) => (
-            <article key={`${event.step}-${index}`} className="trace-step">
-              <h3 className="trace-step__title">
-                {stepLabel(t, event.step)}
-                {event.duration_ms
-                  ? ` · ${t("trace.durationMs", { ms: event.duration_ms })}`
-                  : ""}
-              </h3>
-              <TraceStepBody step={event.step} data={event.data} t={t} />
-            </article>
+      {hitSteps.length > 0 ? (
+        <section className="rag-trace__section rag-trace__section--steps">
+          {hitSteps.map((event, index) => (
+            <CollapsibleTraceStep
+              key={`${event.step}-${index}`}
+              event={event}
+              chunkPreviewById={chunkPreviewById}
+              t={t}
+            />
           ))}
         </section>
       ) : null}
