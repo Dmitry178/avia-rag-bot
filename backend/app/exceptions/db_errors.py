@@ -1,3 +1,5 @@
+import httpx
+
 from functools import wraps
 from inspect import iscoroutinefunction
 
@@ -47,28 +49,60 @@ def _unique_violation_extra(error: IntegrityError) -> dict[str, str]:
     return {}
 
 
+def _exception_detail(exc: Exception) -> str:
+    """
+    Prefer structured app errors, otherwise surface the underlying message.
+    """
+
+    if isinstance(exc, BaseCustomException):
+        return exc.detail
+
+    message = str(exc).strip()
+    if message:
+        return message
+
+    cause = exc.__cause__ or exc.__context__
+    if cause is not None:
+        return _exception_detail(cause)
+
+    return ServiceError.detail
+
+
+def _map_exception(exc: Exception) -> Exception:
+    if isinstance(exc, NoResultFound):
+        return DatabaseNoResultError()
+
+    if isinstance(exc, MultipleResultsFound):
+        return DatabaseMultipleResultsError()
+
+    if isinstance(exc, IntegrityError):
+        if _is_unique_violation(exc):
+            extra = _unique_violation_extra(exc)
+            return DatabaseUniqueFieldError(extra=extra or None)
+        return DatabaseServiceError(extra={"kind": "integrity_error"})
+
+    if isinstance(exc, SQLAlchemyError):
+        return DatabaseServiceError(extra={"kind": "sqlalchemy_error"})
+
+    if isinstance(exc, httpx.HTTPError):
+        return ServiceError(
+            detail=_exception_detail(exc),
+            error_code="external_api_error",
+            status_code=502,
+            extra={"kind": type(exc).__name__},
+        )
+
+    return ServiceError(
+        detail=_exception_detail(exc),
+        error_code="internal_error",
+        extra={"kind": type(exc).__name__},
+    )
+
+
 def handle_basic_db_errors(func):
     """
     Wrap service/repository methods and normalize low-level DB errors.
     """
-
-    def _map_exception(exc: Exception) -> Exception:
-        if isinstance(exc, NoResultFound):
-            return DatabaseNoResultError()
-
-        if isinstance(exc, MultipleResultsFound):
-            return DatabaseMultipleResultsError()
-
-        if isinstance(exc, IntegrityError):
-            if _is_unique_violation(exc):
-                extra = _unique_violation_extra(exc)
-                return DatabaseUniqueFieldError(extra=extra or None)
-            return DatabaseServiceError(extra={"kind": "integrity_error"})
-
-        if isinstance(exc, SQLAlchemyError):
-            return DatabaseServiceError(extra={"kind": "sqlalchemy_error"})
-
-        return ServiceError(error_code="internal_error", extra={"kind": "service_error"})
 
     if iscoroutinefunction(func):
         @wraps(func)
