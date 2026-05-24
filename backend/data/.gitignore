@@ -1,4 +1,6 @@
-app.db
+*.db[-shm]
+*.db-shm
+*.db-wal
 faiss.index
 ingest_checkpoint.json
 manifest.json
