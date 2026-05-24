@@ -29,7 +29,8 @@ router = APIRouter(prefix="/chats", tags=["chats"])
 @router.get(
     "/events",
     summary="Chat SSE stream",
-    description="Subscribe to sideband chat events (errors). Pass the same client_id as in POST /messages.",
+    description="Subscribe to sideband chat events (errors, trace, chat_title). "
+                "Pass the same client_id as in POST /messages.",
 )
 async def chat_events(client_id: str = Query(..., min_length=1)) -> EventSourceResponse:
     """
