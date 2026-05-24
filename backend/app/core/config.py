@@ -66,19 +66,40 @@ class DBSettings(BaseModel):
 
         return self.url
 
-    @property
-    def sqlite_file_path(self) -> Path | None:
-        """
-        Return filesystem path for file-based SQLite URLs.
-        """
-
+    @staticmethod
+    def _raw_sqlite_path(url: str) -> Path | None:
         for prefix in ("sqlite+aiosqlite:///", "sqlite:///"):
-            if self.url.startswith(prefix):
-                path = self.url.removeprefix(prefix)
+            if url.startswith(prefix):
+                path = url.removeprefix(prefix)
                 if path and not path.startswith(":"):
                     return Path(path)
 
         return None
+
+    def sqlite_file_path(self, backend_root: Path) -> Path | None:
+        """
+        Return absolute filesystem path for file-based SQLite URLs.
+        """
+
+        raw_path = self._raw_sqlite_path(self.url)
+        if raw_path is None:
+            return None
+
+        if raw_path.is_absolute():
+            return raw_path
+
+        return (backend_root / raw_path).resolve()
+
+    def resolved_async_url(self, backend_root: Path) -> str:
+        """
+        Return async DB URL with an absolute SQLite path when applicable.
+        """
+
+        sqlite_path = self.sqlite_file_path(backend_root)
+        if sqlite_path is None:
+            return self.async_url
+
+        return f"sqlite+aiosqlite:///{sqlite_path.as_posix()}"
 
 
 class DataSettings(BaseModel):
@@ -88,12 +109,23 @@ class DataSettings(BaseModel):
 
     dir: str = "./data"
 
-    def ensure_exists(self) -> None:
+    def resolve_dir(self, backend_root: Path) -> Path:
+        """
+        Return absolute data directory (relative paths are under backend root).
+        """
+
+        path = Path(self.dir)
+        if path.is_absolute():
+            return path
+
+        return (backend_root / path).resolve()
+
+    def ensure_exists(self, backend_root: Path) -> None:
         """
         Create data directory if missing.
         """
 
-        Path(self.dir).mkdir(parents=True, exist_ok=True)
+        self.resolve_dir(backend_root).mkdir(parents=True, exist_ok=True)
 
 
 class FaissSettings(BaseModel):
@@ -125,9 +157,9 @@ class ETLSettings(BaseModel):
     ETL pipeline settings.
     """
 
-    document_path: str = "backend/data/rag-document.md"
+    document_path: str = "data/rag-document.md"
 
-    def resolve_document_path(self, repo_root: Path) -> Path:
+    def resolve_document_path(self, backend_root: Path) -> Path:
         """
         Return absolute path to the knowledge base markdown document.
         """
@@ -136,7 +168,7 @@ class ETLSettings(BaseModel):
         if path.is_absolute():
             return path
 
-        return repo_root / path
+        return backend_root / path
 
 
 class LLMSettings(BaseModel):
@@ -147,7 +179,7 @@ class LLMSettings(BaseModel):
     base_url: str = ""
     api_key: str = ""
     model: str = ""
-    router_model: str = ""
+    summarization_model: str = ""
     embedding_model: str = ""
 
 
@@ -205,6 +237,13 @@ class Settings(BaseSettings):
         """
 
         return _BACKEND_ROOT
+
+    def resolve_data_dir(self) -> Path:
+        """
+        Absolute path to runtime artifacts (SQLite, FAISS, manifest sidecars).
+        """
+
+        return self.data.resolve_dir(self.backend_root)
 
 
 settings = Settings()
