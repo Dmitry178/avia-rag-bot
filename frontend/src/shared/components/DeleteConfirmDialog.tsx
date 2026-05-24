@@ -1,5 +1,6 @@
 import { Button } from "primereact/button";
-import { Dialog } from "primereact/dialog";
+
+import { AppModal } from "@/shared/components/AppModal";
 
 type DeleteConfirmDialogProps = {
   visible: boolean;
@@ -35,22 +36,19 @@ export function DeleteConfirmDialog({
   );
 
   return (
-    <Dialog
+    <AppModal
       visible={visible}
+      title={header}
+      footer={footer}
+      className="chat-delete-dialog"
+      dismissableMask={!isPending}
       onHide={() => {
         if (!isPending) {
           onHide();
         }
       }}
-      header={header}
-      footer={footer}
-      modal
-      dismissableMask
-      draggable={false}
-      resizable={false}
-      className="chat-delete-dialog"
     >
       <p className="chat-delete-dialog__message">{message}</p>
-    </Dialog>
+    </AppModal>
   );
 }
