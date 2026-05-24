@@ -2,16 +2,17 @@
 
 **English** · [Русский](README_RU.md)
 
-Test suite for `avia-bot-backend`. Split into two layers:
+Test suite for `avia-bot-backend`. Split into three areas:
 
 | Layer | Directory | What it covers |
 |-------|-----------|----------------|
 | **API** (integration) | `tests/api/` | FastAPI HTTP endpoints via `httpx.AsyncClient` |
 | **Unit** | `tests/unit/` | Business logic without HTTP: parsers, chunkers, RAG helpers, services, etc. |
+| **Exceptions** | `tests/exceptions/` | DB/API error normalization helpers |
 
 Stack: **pytest**, **pytest-asyncio** (`auto` mode), **httpx** (ASGI transport).
 
-Currently **65 tests** across both layers.
+Currently **88 tests** across all areas.
 
 ## Directory layout
 
@@ -23,20 +24,25 @@ tests/
 ├── paths.py            # shared paths to test data
 ├── api/
 │   ├── conftest.py     # client fixture (lifespan + AsyncClient)
-│   ├── test_chat.py    # chat CRUD, settings, messages, guards
+│   ├── test_chat.py    # chat CRUD, settings, messages, guards, titles
 │   ├── test_etl.py     # ETL endpoints
 │   └── test_health.py  # healthz / readyz
+├── exceptions/
+│   └── test_db_errors.py   # exception → ServiceError mapping
 └── unit/
     ├── etl/
     │   └── test_chunker.py       # parser + chunker
     ├── llm/
+    │   ├── test_chat_title.py    # chat title prompt/model helpers
     │   ├── test_prompts.py       # system prompt builder
     │   └── test_prompt_guard.py  # injection / off-topic guards
     ├── rag/
     │   └── test_pipeline.py      # RRF, query-transform / rerank registry
     └── services/
-        ├── test_etl_plan.py      # incremental ingest planning
-        └── test_etl_progress.py  # ETL progress helpers
+        ├── test_chat_title_service.py      # background title persistence
+        ├── test_etl_plan.py                # incremental ingest planning
+        ├── test_etl_progress.py            # ETL progress helpers
+        └── test_rag_metadata_enrichment.py # RAG trace / chunk id helpers
 ```
 
 ## Running tests
@@ -95,7 +101,7 @@ Boot the full application (`app.main:app`) with lifespan initialization (table c
 | File | Endpoints | Tests |
 |------|-----------|-------|
 | `test_health.py` | `GET /api/healthz`, `GET /api/readyz` | liveness and readiness return `{"status": "ok"}` |
-| `test_chat.py` | `POST/GET/PATCH/DELETE /api/chats`, `POST/DELETE /api/chats/{id}/messages` | create, list, filter by `chat_type`; `rag_config` / `llm_config` / `use_history` on create and PATCH; empty messages on new chat; send LLM message (mocked `ChatCompletionClient`) with custom-prompt mode skipping guards; send RAG message (mocked `RagPipeline`) persisting metadata, trace, and `message_count`; soft-delete chat and message; prompt injection closes chat → 409 on follow-up; off-topic blocked without closing |
+| `test_chat.py` | `POST/GET/PATCH/DELETE /api/chats`, `POST/DELETE /api/chats/{id}/messages` | create, list, filter by `chat_type`; `rag_config` / `llm_config` / `use_history` on create and PATCH; empty messages on new chat; send LLM message (mocked `ChatCompletionClient`) with custom-prompt mode skipping guards; LLM failure keeps user message; send RAG message (mocked `RagPipeline`) persisting metadata, trace, and `message_count`; soft-delete chat and message; prompt injection closes chat → 409 on follow-up; off-topic blocked without closing; first message schedules background title generation (default and custom-prompt context); second message skips title generation |
 | `test_etl.py` | `GET /api/etl/stats`, `GET /api/etl/manifest` | chunk statistics; manifest without index → 404 |
 
 Message tests patch external I/O (`ChatCompletionClient.complete`, `RagPipeline`) so no LLM or FAISS index is required.
@@ -159,6 +165,53 @@ Parametrized tests for prompt-injection and off-topic detection (`app/llm/prompt
 | `test_harden_messages_for_llm_wraps_only_latest_user_message` | only the last user turn is wrapped |
 | `test_reply_language_for_user_text` | Cyrillic → `ru`, Latin → `en` |
 | `test_blocked_refusal_matches_user_language` | refusal text matches user language |
+
+### `unit/llm/test_chat_title.py`
+
+Chat title generation helpers (`app/llm/chat_title.py`, `app/core/chat_constants.py`):
+
+| Test | Assertion |
+|------|-----------|
+| `test_is_default_chat_title` | recognizes default titles in EN/RU |
+| `test_normalize_chat_title_truncates_long_text` | long titles truncated with ellipsis |
+| `test_build_title_user_prompt_rag_uses_question_only` | RAG prompt uses user question only |
+| `test_build_title_user_prompt_llm_custom_includes_system_prompt` | LLM custom prompt included in title prompt |
+| `test_build_title_user_prompt_llm_builtin_uses_question_only` | built-in LLM mode uses question only |
+| `test_resolve_summarization_model_prefers_dedicated_setting` | `summarization_model` overrides main model |
+| `test_resolve_summarization_model_falls_back_to_main_model` | falls back to `model` when unset |
+| `test_parse_chat_title_response_strips_quotes_and_first_line` | strips quotes, markdown, extra lines |
+
+### `unit/services/test_chat_title_service.py`
+
+Background title persistence (`app/services/chat_title.py`); uses test DB via root `conftest.py`:
+
+| Test | Assertion |
+|------|-----------|
+| `test_generate_and_persist_updates_title_in_db` | generated title saved to chat row |
+| `test_generate_and_persist_skips_deleted_chat` | no update after soft-delete |
+| `test_generate_and_persist_skips_non_default_title` | custom title left unchanged |
+| `test_generate_and_persist_publishes_sse_on_generation_failure` | SSE `error` event on LLM failure |
+
+### `unit/services/test_rag_metadata_enrichment.py`
+
+RAG metadata helpers on `ChatService`:
+
+| Test | Assertion |
+|------|-----------|
+| `test_enrich_rag_trace_steps_adds_missing_content_preview` | trace hits get `content_preview` from chunk map |
+| `test_chunk_ids_from_metadata_includes_trace_hits` | chunk ids merged from `retrieved_chunk_ids` and trace |
+
+## Exception tests (`tests/exceptions/`)
+
+Pure helpers without HTTP or DB.
+
+### `exceptions/test_db_errors.py`
+
+| Test | Assertion |
+|------|-----------|
+| `test_map_exception_preserves_httpx_message` | `httpx` errors → `ServiceError` with 502 |
+| `test_map_exception_preserves_value_error_message` | `ValueError` → `internal_error` |
+| `test_map_exception_preserves_existing_service_error_detail` | existing `ServiceError` passed through unchanged |
 
 ## Shared modules
 
