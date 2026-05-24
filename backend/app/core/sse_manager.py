@@ -74,7 +74,7 @@ class SSEManager:
             await queue.put({"event": event, "data": data})
 
         if queues:
-            logger.debug("sse_published", client_id=client_id, event=event)
+            logger.debug("sse_published", client_id=client_id, sse_event=event)
 
 
 sse_manager = SSEManager()
