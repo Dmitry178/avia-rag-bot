@@ -22,7 +22,7 @@ _TITLE_INSTRUCTIONS = (
 )
 
 
-def _resolve_summarization_model(settings: LLMSettings) -> str:
+def resolve_summarization_model(settings: LLMSettings) -> str:
     model = settings.summarization_model or settings.model
     if not model:
         raise ValueError("LLM summarization model is not configured")
@@ -33,7 +33,7 @@ def _build_title_agent(settings: LLMSettings) -> Agent:
     if not settings.base_url:
         raise ValueError("LLM is not configured")
 
-    model_name = _resolve_summarization_model(settings)
+    model_name = resolve_summarization_model(settings)
     provider = OpenAIProvider(
         base_url=settings.base_url.rstrip("/"),
         api_key=settings.api_key or "not-needed",
