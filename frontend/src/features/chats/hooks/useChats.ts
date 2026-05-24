@@ -27,6 +27,7 @@ export function useCreateChatMutation() {
   const setSelectedChatId = useChatUiStore((state) => state.setSelectedChatId);
 
   return useMutation({
+    mutationKey: ["createChat"],
     mutationFn: (title: string) => {
       if (chatType === "rag") {
         return createChat(title, chatType, {
@@ -97,6 +98,7 @@ export function useDeleteChatMutation() {
   const setSelectedChatId = useChatUiStore((state) => state.setSelectedChatId);
 
   return useMutation({
+    mutationKey: ["deleteChat"],
     mutationFn: (chatId: number) => deleteChat(chatId),
     onMutate: async (chatId) => {
       await queryClient.cancelQueries({ queryKey: chatsQueryKey(chatType) });
@@ -142,6 +144,7 @@ export function useUpdateChatSettingsMutation(chatId: number | null) {
   const llmToPayload = useLlmSettingsStore((state) => state.toPayload);
 
   return useMutation({
+    mutationKey: ["updateChatSettings"],
     mutationFn: () => {
       if (chatId === null) {
         throw new Error("Chat is not selected");
