@@ -19,6 +19,18 @@ Monorepo: **backend** (FastAPI, индексация, RAG, API чатов) + **f
 - **Тема оформления** — светлая, тёмная или системная (следует настройкам ОС).
 - **Язык интерфейса** — русский и английский; выбор сохраняется между сессиями.
 
+## Скриншоты интерфейса
+
+**Режим RAG** — ответ с цитатами и трассировка пайплайна:
+
+![Режим RAG — панель трассировки](images/rag-ru.png)
+
+**Режим LLM** — ассистент по умолчанию и свой системный промпт:
+
+![Режим LLM — настройки по умолчанию](images/llm-1-ru.png)
+
+![Режим LLM — свой системный промпт](images/llm-2-ru.png)
+
 ## Стек
 
 | Часть | Технологии |
@@ -61,6 +73,7 @@ avia-bot/
 │   │   ├── theme/              # цветовые схемы
 │   │   └── styles/             # глобальные стили
 │   └── package.json
+├── images/                     # скриншоты UI для README
 ├── Makefile
 ├── README.md
 └── README_RU.md
@@ -151,7 +164,8 @@ HyDE, Multi-Query и Query Rewriting **взаимоисключающие** (в 
 
 **Не применяется**, когда в режиме LLM включён **свой системный промпт** (свободный режим).
 
-Unit-тесты: `backend/tests/unit/llm/test_prompt_guard.py`.
+Unit-тесты: `backend/tests/unit/llm/test_prompt_guard.py`.  
+Полный набор тестов (API + unit): [`backend/tests/README_RU.md`](backend/tests/README_RU.md).
 
 ## Тема и язык
 
@@ -256,7 +270,3 @@ make docker-build     # только пересобрать образы
 - Backend: ETL, FAISS, модульный RAG-пайплайн, CRUD чатов, LLM/RAG ответы, настройки в чате и metadata, SSE trace events
 - Frontend: layout (чаты · диалог · трассировка/параметры), настройки RAG/LLM, отправка настроек с сообщением, i18n, theme
 - Docker: production-сборка frontend (nginx) + backend (uvicorn), `docker compose`
-
-**В разработке:**
-- Подписка frontend на SSE trace stream (шаги сейчас в metadata; панель Trace — placeholder до подключения EventSource)
-- Streaming ответов

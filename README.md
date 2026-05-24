@@ -19,6 +19,18 @@ Monorepo: **backend** (FastAPI, indexing, RAG, chat API) + **frontend** (React S
 - **Theme** — light, dark, or system (follows OS settings).
 - **UI language** — Russian and English; the choice persists across sessions.
 
+## UI screenshots
+
+**RAG mode** — answer with citations and pipeline trace:
+
+![RAG mode — trace panel](images/rag-en.png)
+
+**LLM mode** — default aviation assistant and custom system prompt:
+
+![LLM mode — default settings](images/llm-1-en.png)
+
+![LLM mode — custom system prompt](images/llm-2-en.png)
+
 ## Stack
 
 | Part | Technologies |
@@ -61,6 +73,7 @@ avia-bot/
 │   │   ├── theme/              # color schemes
 │   │   └── styles/             # global styles
 │   └── package.json
+├── images/                     # UI screenshots for README
 ├── Makefile
 ├── README.md
 └── README_RU.md
@@ -151,7 +164,8 @@ Implemented in `backend/app/llm/` for **LLM** (default) and **RAG** modes:
 
 **Not applied** when **custom system prompt** is enabled in LLM mode (free mode).
 
-Unit tests: `backend/tests/unit/llm/test_prompt_guard.py`.
+Unit tests: `backend/tests/unit/llm/test_prompt_guard.py`.  
+Full test suite (API + unit): [`backend/tests/README.md`](backend/tests/README.md).
 
 ## Theme and language
 
@@ -256,7 +270,3 @@ Override the UI port in `.env`: `FRONTEND_PORT=8080`.
 - Backend: ETL, FAISS, modular RAG pipeline, chat CRUD, LLM/RAG replies, settings in chat and metadata, SSE trace events
 - Frontend: layout (chats · dialog · trace/parameters), RAG/LLM settings, settings sent with each message, i18n, theme
 - Docker: production frontend build (nginx) + backend (uvicorn), `docker compose`
-
-**In development:**
-- Frontend SSE trace subscription (steps are in metadata today; Trace panel is a placeholder until EventSource is wired)
-- Response streaming
