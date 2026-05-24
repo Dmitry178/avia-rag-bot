@@ -58,6 +58,7 @@ class RagPipeline:
                     "title": item.chunk.title or "",
                     "section": item.chunk.section or "",
                     "similarity": round(RagPipeline._chunk_similarity(item), 4),
+                    "content_preview": item.chunk.content[:600],
                 },
             )
 
@@ -96,7 +97,10 @@ class RagPipeline:
         chunks_by_id = await self._load_chunks()
         if not chunks_by_id:
             raise ServiceError(
-                detail="Knowledge base chunks are empty",
+                detail=(
+                    "Knowledge base chunks are missing in the database. "
+                    "Run `make etl-ingest` to rebuild SQLite metadata and FAISS index."
+                ),
                 error_code="rag_chunks_missing",
                 status_code=503,
             )
@@ -108,7 +112,6 @@ class RagPipeline:
         )
 
         transform = resolve_query_transform_method(rag_config, self._llm)
-        transform_name = transform.name if transform is not None else "retrieval"
 
         started = time.perf_counter()
 
@@ -116,14 +119,13 @@ class RagPipeline:
             search_queries = [ctx.query]
         else:
             search_queries = await transform.build_search_queries(ctx)
-
-        trace.append(
-            RagTraceStep(
-                step=transform_name,
-                duration_ms=int((time.perf_counter() - started) * 1000),
-                data={"queries": search_queries},
-            ),
-        )
+            trace.append(
+                RagTraceStep(
+                    step=transform.name,
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                    data={"queries": search_queries},
+                ),
+            )
 
         retrieval_started = time.perf_counter()
         candidates = await retriever.search_many(search_queries, top_k=RETRIEVAL_TOP_K)
