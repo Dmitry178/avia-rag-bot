@@ -16,10 +16,15 @@ async def lifespan(_app: FastAPI):
     Run startup/shutdown hooks for the FastAPI application.
     """
 
-    settings.data.ensure_exists()
+    settings.data.ensure_exists(settings.backend_root)
     settings.faiss.ensure_exists(settings.backend_root)
     await init_db()
-    logger.info("application_started", data_dir=settings.data.dir)
+    logger.info(
+        "application_started",
+        data_dir=str(settings.resolve_data_dir()),
+        db_path=str(settings.db.sqlite_file_path(settings.backend_root)),
+        faiss_index=str(settings.faiss.index_path(settings.backend_root)),
+    )
 
     yield
 
