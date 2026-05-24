@@ -63,15 +63,18 @@ Pytest configuration lives in `pyproject.toml` (`testpaths = ["tests"]`, `asynci
 
 ## Database isolation
 
-API tests **do not use** the dev database `data/app.db`. Before the application is imported, `tests/conftest.py`:
+Tests **do not use** the dev database `data/app.db`. Before the application is imported, `tests/conftest.py`:
 
 1. sets `DB__URL` to a separate file `tests/.pytest_app.db`;
 2. deletes it at the start of the session (if left over from a previous run);
-3. deletes it after all tests finish.
+3. asserts the async engine points at that file before any test runs;
+4. disposes the engine and deletes the file after all tests finish.
 
-This matters: previously API tests wrote to `data/app.db`, and after `make backend-test` / `uv run pytest` stray chats appeared in the dev environment (`Test chat`, `Empty`, `LLM chat`, etc.).
+This applies to both API integration tests and unit tests that open a database session (for example `tests/unit/services/test_chat_title_service.py`).
 
-Unit tests do not touch the database — `conftest.py` only affects the API layer that boots `app.main:app`.
+The database engine is created lazily on first use, so `DB__URL` must be set before importing `app.db.session`. Pytest loads `tests/conftest.py` first; ad-hoc scripts and one-off `python -c` snippets do not — set `DB__URL` manually or run code through pytest.
+
+This matters: previously tests wrote to `data/app.db`, and after `make backend-test` / `uv run pytest` stray chats appeared in the dev environment (`Test chat`, `Empty`, `LLM chat`, etc.).
 
 The file `tests/.pytest_app.db` is listed in `.gitignore`.
 

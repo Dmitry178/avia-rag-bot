@@ -63,15 +63,18 @@ uv run pytest -k "soft_delete"   # по имени теста
 
 ## Изоляция базы данных
 
-API-тесты **не используют** dev-базу `data/app.db`. Перед импортом приложения `tests/conftest.py`:
+Тесты **не используют** dev-базу `data/app.db`. Перед импортом приложения `tests/conftest.py`:
 
 1. задаёт `DB__URL` на отдельный файл `tests/.pytest_app.db`;
 2. удаляет его в начале сессии (если остался от прошлого прогона);
-3. удаляет после завершения всех тестов.
+3. проверяет, что async engine указывает на этот файл, до запуска тестов;
+4. закрывает engine и удаляет файл после завершения всех тестов.
 
-Это важно: раньше API-тесты писали в `data/app.db`, и после `make backend-test` / `uv run pytest` в dev-окружении появлялись «лишние» чаты (`Test chat`, `Empty`, `LLM chat` и т.д.).
+Это касается и API-тестов, и unit-тестов, которые открывают сессию БД (например `tests/unit/services/test_chat_title_service.py`).
 
-Unit-тесты БД не трогают — `conftest.py` влияет только на API-слой, который поднимает `app.main:app`.
+Engine создаётся лениво при первом обращении, поэтому `DB__URL` нужно выставить до импорта `app.db.session`. Pytest загружает `tests/conftest.py` первым; ad-hoc скрипты и `python -c` — нет, для них задайте `DB__URL` вручную или запускайте код через pytest.
+
+Это важно: раньше тесты писали в `data/app.db`, и после `make backend-test` / `uv run pytest` в dev-окружении появлялись «лишние» чаты (`Test chat`, `Empty`, `LLM chat` и т.д.).
 
 Файл `tests/.pytest_app.db` добавлен в `.gitignore`.
 
