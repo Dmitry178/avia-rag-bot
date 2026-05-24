@@ -129,6 +129,23 @@ class ChatRepository:
             update(Chat).where(Chat.id == chat_id).values(updated_at=datetime.now(UTC))
         )
 
+    async def update_title(self, chat_id: int, title: str) -> Chat | None:
+        """
+        Update chat title; returns None when the chat is missing or soft-deleted.
+        """
+
+        chat = await self.get_by_id(chat_id)
+        if chat is None:
+            return None
+
+        chat.title = title
+        chat.updated_at = datetime.now(UTC)
+        self.session.add(chat)
+        await self.session.flush()
+        await self.session.refresh(chat)
+
+        return chat
+
     async def soft_delete(self, chat_id: int) -> Chat | None:
         """
         Mark chat as deleted; returns updated row or None if not found.
