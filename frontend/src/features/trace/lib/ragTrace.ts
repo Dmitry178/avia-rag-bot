@@ -19,6 +19,7 @@ export interface TraceHit {
   title: string;
   section: string;
   similarity: number;
+  content_preview: string;
 }
 
 export interface RagMessageTrace {
@@ -69,6 +70,7 @@ export function parseTraceHits(value: unknown): TraceHit[] {
       title: String(hit.title ?? ""),
       section: String(hit.section ?? ""),
       similarity: parseScore(hit.similarity) ?? 0,
+      content_preview: String(hit.content_preview ?? ""),
     }))
     .filter((hit) => Number.isFinite(hit.id));
 }
