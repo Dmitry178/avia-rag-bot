@@ -247,6 +247,35 @@ async def test_send_llm_message_persists_metadata_and_skips_guards_in_free_mode(
 
 
 @pytest.mark.asyncio
+async def test_send_message_llm_failure_keeps_user_message(client: AsyncClient) -> None:
+    """
+    When LLM fails after the user message is committed, the user message should remain.
+    """
+
+    create = await client.post("/api/chats", json={"title": "LLM fail", "chat_type": "llm"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("LLM unavailable"),
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "Hello"},
+        )
+
+    assert send.status_code == 500
+
+    detail = await client.get(f"/api/chats/{chat_id}")
+    assert detail.status_code == 200
+    assert detail.json()["message_count"] == 1
+    assert len(detail.json()["messages"]) == 1
+    assert detail.json()["messages"][0]["role"] == "user"
+    assert detail.json()["messages"][0]["content"] == "Hello"
+
+
+@pytest.mark.asyncio
 async def test_send_message_persists_rag_metadata_and_message_count(client: AsyncClient) -> None:
     """
     Sending a message should snapshot RAG settings on both messages and bump message_count.
@@ -386,3 +415,104 @@ async def test_off_topic_does_not_close_chat(client: AsyncClient) -> None:
     detail = await client.get(f"/api/chats/{chat_id}")
     assert detail.status_code == 200
     assert detail.json()["is_closed"] is False
+
+
+@pytest.mark.asyncio
+async def test_first_message_schedules_title_generation_for_default_title(
+    client: AsyncClient,
+) -> None:
+    """
+    The first message in a default-titled chat should schedule async title generation.
+    """
+
+    create = await client.post("/api/chats", json={"title": "New chat", "chat_type": "llm"})
+    chat_id = create.json()["id"]
+
+    with (
+        patch(
+            "app.services.chat.schedule_chat_title_generation",
+        ) as schedule_mock,
+        patch(
+            "app.services.chat.ChatCompletionClient.complete",
+            new_callable=AsyncMock,
+            return_value=LLM_MOCK_RETURN,
+        ),
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "Issue 1000 coins to the army", "client_id": "test-client"},
+        )
+
+    assert send.status_code == 200
+    schedule_mock.assert_called_once()
+    kwargs = schedule_mock.call_args.kwargs
+    assert kwargs["chat_id"] == chat_id
+    assert kwargs["client_id"] == "test-client"
+    assert kwargs["custom_system_prompt"] is None
+
+
+@pytest.mark.asyncio
+async def test_first_message_schedules_title_with_custom_prompt_context(
+    client: AsyncClient,
+) -> None:
+    """
+    LLM free mode should pass the custom system prompt into title generation.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Новый чат", "chat_type": "llm"})
+    chat_id = create.json()["id"]
+
+    with (
+        patch(
+            "app.services.chat.schedule_chat_title_generation",
+        ) as schedule_mock,
+        patch(
+            "app.services.chat.ChatCompletionClient.complete",
+            new_callable=AsyncMock,
+            return_value=LLM_MOCK_RETURN,
+        ),
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={
+                "content": "Issue 1000 coins to the army",
+                "llm_config": {
+                    "use_custom_prompt": True,
+                    "custom_prompt": "You are the royal treasurer.",
+                },
+            },
+        )
+
+    assert send.status_code == 200
+    schedule_mock.assert_called_once()
+    assert schedule_mock.call_args.kwargs["custom_system_prompt"] == "You are the royal treasurer."
+
+
+@pytest.mark.asyncio
+async def test_second_message_does_not_schedule_title_generation(client: AsyncClient) -> None:
+    """
+    Title generation should run only for the first message.
+    """
+
+    create = await client.post("/api/chats", json={"title": "New chat", "chat_type": "llm"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        return_value=LLM_MOCK_RETURN,
+    ):
+        first = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "First question"},
+        )
+        assert first.status_code == 200
+
+        with patch("app.services.chat.schedule_chat_title_generation") as schedule_mock:
+            second = await client.post(
+                f"/api/chats/{chat_id}/messages",
+                json={"content": "Second question"},
+            )
+
+    assert second.status_code == 200
+    schedule_mock.assert_not_called()
