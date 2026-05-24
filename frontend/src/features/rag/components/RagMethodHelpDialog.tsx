@@ -1,6 +1,6 @@
 import { Button } from "primereact/button";
-import { Dialog } from "primereact/dialog";
 
+import { AppModal } from "@/shared/components/AppModal";
 import { getRagMethodHelp } from "@/shared/i18n/ragMethods";
 import { useTranslation } from "@/shared/i18n";
 import type { RagMethodKey } from "../types";
@@ -26,20 +26,14 @@ export function RagMethodHelpDialog({ method, onHide }: RagMethodHelpDialogProps
   );
 
   return (
-    <Dialog
+    <AppModal
       visible
-      onHide={onHide}
-      header={help.title}
+      title={help.title}
       footer={footer}
-      modal
-      dismissableMask
-      draggable={false}
-      resizable={false}
       className="rag-help-dialog"
-      style={{ width: "min(32rem, 92vw)" }}
-      breakpoints={{ "960px": "92vw" }}
+      onHide={onHide}
     >
       <p className="rag-help-dialog__description">{help.description}</p>
-    </Dialog>
+    </AppModal>
   );
 }
