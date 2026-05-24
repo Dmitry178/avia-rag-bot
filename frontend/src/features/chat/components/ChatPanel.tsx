@@ -1,16 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "primereact/button";
 import { InputTextarea } from "primereact/inputtextarea";
-import { Message } from "primereact/message";
 import { ProgressSpinner } from "primereact/progressspinner";
 import ReactMarkdown from "react-markdown";
 
 import { PanelHeader } from "@/app/layout/AppHeader";
-import { DeleteConfirmDialog } from "@/shared/components/DeleteConfirmDialog";
+import { useDeleteConfirmStore } from "@/shared/components/deleteConfirmStore";
+import { showErrorToast, showSuccessToast } from "@/shared/toast/showToast";
 import { useChatModeStore } from "@/features/chat/modeStore";
 import { useLlmSettingsStore } from "@/features/llm/llmSettingsStore";
 import { useRagSettingsStore } from "@/features/rag/ragSettingsStore";
 import { useSelectedChatId } from "@/features/chats/store";
+import { useElementHover } from "@/shared/hooks/useElementHover";
 import { useTranslation } from "@/shared/i18n";
 import { useChatDetailQuery, useDeleteMessageMutation, useSendMessageMutation } from "../hooks/useChat";
 import { useComposerAutoResize } from "../hooks/useComposerAutoResize";
@@ -23,14 +24,17 @@ function MessageBubble({
   content,
   onDelete,
   isDeleteDisabled,
+  hoverResetKey,
 }: {
   messageId: number;
   role: "user" | "assistant" | "system";
   content: string;
   onDelete: (messageId: number) => void;
   isDeleteDisabled: boolean;
+  hoverResetKey: unknown;
 }) {
   const { t } = useTranslation();
+  const { ref, hovered, hoverProps } = useElementHover([hoverResetKey]);
   const label =
     role === "user"
       ? t("roles.user")
@@ -38,24 +42,49 @@ function MessageBubble({
         ? t("roles.assistant")
         : t("roles.system");
 
-  const showDelete = role === "user" || role === "assistant";
+  const showActions = role === "user" || role === "assistant";
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      showSuccessToast(t("chat.copyMessageSuccess"), t("common.ok"));
+    } catch {
+      showErrorToast(t("chat.copyMessageFailed"), t("errors.sseTitle"));
+    }
+  };
 
   const bubble = (
     <article
+      ref={ref}
+      {...hoverProps}
       className={`chat-message${
         role === "user" ? " chat-message--user" : role === "assistant" ? " chat-message--assistant" : ""
       }`}
     >
-      {showDelete ? (
-        <button
-          type="button"
-          className="chat-message__delete"
-          aria-label={t("chat.deleteMessage")}
-          disabled={isDeleteDisabled}
-          onClick={() => onDelete(messageId)}
+      {showActions ? (
+        <div
+          className={`chat-message__actions${
+            hovered ? " chat-message__actions--visible" : ""
+          }`}
         >
-          <i className="pi pi-trash" aria-hidden="true" />
-        </button>
+          <button
+            type="button"
+            className="chat-message__action chat-message__action--copy"
+            aria-label={t("chat.copyMessage")}
+            onClick={() => void handleCopy()}
+          >
+            <i className="pi pi-copy" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="chat-message__action chat-message__action--delete"
+            aria-label={t("chat.deleteMessage")}
+            disabled={isDeleteDisabled}
+            onClick={() => onDelete(messageId)}
+          >
+            <i className="pi pi-trash" aria-hidden="true" />
+          </button>
+        </div>
       ) : null}
       <p className="chat-message__role">{label}</p>
       <div className="chat-message__content">
@@ -94,7 +123,10 @@ export function ChatPanel() {
   const chatQuery = useChatDetailQuery(selectedChatId);
   const sendMutation = useSendMessageMutation(selectedChatId);
   const deleteMessageMutation = useDeleteMessageMutation(selectedChatId);
-  const [messageToDelete, setMessageToDelete] = useState<number | null>(null);
+  const openDeleteConfirm = useDeleteConfirmStore((state) => state.open);
+  const closeDeleteConfirm = useDeleteConfirmStore((state) => state.close);
+  const setDeleteConfirmPending = useDeleteConfirmStore((state) => state.setPending);
+  const isDeleteConfirmOpen = useDeleteConfirmStore((state) => state.request !== null);
   const { draft, setDraft, clearDraft } = useComposerDraft(selectedChatId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelBodyRef = useRef<HTMLDivElement>(null);
@@ -177,25 +209,6 @@ export function ChatPanel() {
 
   return (
     <>
-      <DeleteConfirmDialog
-        visible={messageToDelete !== null}
-        header={t("chat.deleteMessageConfirmTitle")}
-        message={t("chat.deleteMessageConfirmMessage")}
-        confirmLabel={t("chat.deleteMessage")}
-        cancelLabel={t("common.cancel")}
-        isPending={deleteMessageMutation.isPending}
-        onHide={() => setMessageToDelete(null)}
-        onConfirm={() => {
-          if (messageToDelete === null) {
-            return;
-          }
-
-          deleteMessageMutation.mutate(messageToDelete, {
-            onSuccess: () => setMessageToDelete(null),
-          });
-        }}
-      />
-
       <PanelHeader title={t("panels.dialog")} />
 
       <div className="app-panel__body" ref={panelBodyRef}>
@@ -209,12 +222,6 @@ export function ChatPanel() {
           </div>
         ) : null}
 
-        {chatQuery.isError ? (
-          <div className="trace-empty">
-            <Message severity="error" text={t("errors.loadChat")} />
-          </div>
-        ) : null}
-
         {chatQuery.data ? (
           <div className="chat-messages">
             {chatQuery.data.messages.map((message) => (
@@ -223,8 +230,23 @@ export function ChatPanel() {
                 messageId={message.id}
                 role={message.role}
                 content={message.content}
-                onDelete={setMessageToDelete}
-                isDeleteDisabled={deleteMessageMutation.isPending || messageToDelete !== null}
+                hoverResetKey={chatMode}
+                onDelete={(messageId) => {
+                  openDeleteConfirm({
+                    header: t("chat.deleteMessageConfirmTitle"),
+                    message: t("chat.deleteMessageConfirmMessage"),
+                    confirmLabel: t("chat.deleteMessage"),
+                    cancelLabel: t("common.cancel"),
+                    onConfirm: () => {
+                      setDeleteConfirmPending(true);
+                      deleteMessageMutation.mutate(messageId, {
+                        onSuccess: () => closeDeleteConfirm(),
+                        onSettled: () => setDeleteConfirmPending(false),
+                      });
+                    },
+                  });
+                }}
+                isDeleteDisabled={deleteMessageMutation.isPending || isDeleteConfirmOpen}
               />
             ))}
           </div>
@@ -262,12 +284,6 @@ export function ChatPanel() {
           </>
         )}
       </div>
-
-      {sendMutation.isError ? (
-        <div style={{ padding: "0 1rem 1rem" }}>
-          <Message severity="error" text={sendMutation.error.message} />
-        </div>
-      ) : null}
     </>
   );
 }
