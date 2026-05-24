@@ -56,7 +56,7 @@ async def _with_db[T](handler: Callable[[DBManager], Coroutine[Any, Any, T]]) ->
     Open DB session, run handler, commit lifecycle and dispose engine.
     """
 
-    settings.data.ensure_exists()
+    settings.data.ensure_exists(settings.backend_root)
     await init_db()
 
     try:
