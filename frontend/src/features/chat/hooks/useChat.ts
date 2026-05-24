@@ -27,6 +27,7 @@ export function useSendMessageMutation(chatId: number | null) {
   const llmToPayload = useLlmSettingsStore((state) => state.toPayload);
 
   return useMutation({
+    mutationKey: ["sendMessage"],
     mutationFn: (payload: SendMessagePayload) => {
       if (chatId === null) {
         throw new Error("Chat is not selected");
@@ -58,6 +59,7 @@ export function useDeleteMessageMutation(chatId: number | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ["deleteMessage"],
     mutationFn: (messageId: number) => {
       if (chatId === null) {
         throw new Error("Chat is not selected");
