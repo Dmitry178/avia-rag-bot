@@ -38,26 +38,26 @@ class ETLService:
 
     def _resolve_source_path(self, source_path: str | None) -> Path:
         """
-        API/CLI override or default from ETL__DOCUMENT_PATH (relative to repo root).
+        API/CLI override or default from ETL__DOCUMENT_PATH (relative to backend root).
         """
 
         if source_path:
             path = Path(source_path)
             if not path.is_absolute():
-                path = self.settings.repo_root / path
+                path = self.settings.backend_root / path
             return path
 
-        return self.settings.etl.resolve_document_path(self.settings.repo_root)
+        return self.settings.etl.resolve_document_path(self.settings.backend_root)
 
     def _faiss_index_path(self) -> Path:
         return self.settings.faiss.index_path(self.settings.backend_root)
 
     def _manifest_json_path(self) -> Path:
         # Duplicate of index_manifest row for tooling / Docker bootstrap without DB access.
-        return Path(self.settings.data.dir) / "manifest.json"
+        return self.settings.resolve_data_dir() / "manifest.json"
 
     def _checkpoint_store(self) -> IngestCheckpointStore:
-        return IngestCheckpointStore(Path(self.settings.data.dir) / "ingest_checkpoint.json")
+        return IngestCheckpointStore(self.settings.resolve_data_dir() / "ingest_checkpoint.json")
 
     @staticmethod
     def _report_progress(
@@ -378,7 +378,7 @@ class ETLService:
             item_title="vector index",
         )
 
-        data_dir = Path(self.settings.data.dir)
+        data_dir = self.settings.resolve_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
         self.settings.faiss.ensure_exists(self.settings.backend_root)
         await faiss_manager.save_async(vectors, self._faiss_index_path())
