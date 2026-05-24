@@ -35,6 +35,9 @@
     "placeholderLlm": "Задайте любой вопрос...",
     "placeholderLlmAviation": "Задайте любой вопрос по авиации...",
     "delete": "Удалить чат",
+    "copyMessage": "Копировать сообщение",
+    "copyMessageSuccess": "Сообщение скопировано в буфер обмена",
+    "copyMessageFailed": "Не удалось скопировать сообщение",
     "deleteMessage": "Удалить сообщение",
     "deleteMessageConfirmTitle": "Удалить сообщение?",
     "deleteMessageConfirmMessage": "Сообщение будет удалено из истории чата.",
@@ -53,7 +56,14 @@
   },
   "errors": {
     "loadChats": "Не удалось загрузить список чатов",
-    "loadChat": "Не удалось загрузить историю чата"
+    "loadChat": "Не удалось загрузить историю чата",
+    "sendMessage": "Не удалось отправить сообщение",
+    "deleteMessage": "Не удалось удалить сообщение",
+    "createChat": "Не удалось создать чат",
+    "deleteChat": "Не удалось удалить чат",
+    "updateChatSettings": "Не удалось сохранить настройки",
+    "sseTitle": "Ошибка",
+    "chatTitleFailed": "Не удалось сгенерировать название чата"
   },
   "rag": {
     "settingsTitle": "Настройки RAG",
@@ -84,6 +94,7 @@
     "citationHint": "Цифры [1], [2] в ответе ассистента — номера этих фрагментов (не id чанка в базе).",
     "chunkCitation": "Цитата [{{index}}]",
     "noChunks": "Релевантные чанки не найдены.",
+    "noChunkPreview": "Текст фрагмента недоступен.",
     "chunkScore": "score {{score}}",
     "chunkSimilarity": "близость",
     "retrievalSummary": "Запросов: {{queryCount}}, кандидатов: {{candidateCount}}",

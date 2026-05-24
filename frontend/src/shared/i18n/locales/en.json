@@ -35,6 +35,9 @@
     "placeholderLlm": "Ask anything...",
     "placeholderLlmAviation": "Ask any aviation-related question...",
     "delete": "Delete chat",
+    "copyMessage": "Copy message",
+    "copyMessageSuccess": "Message copied to clipboard",
+    "copyMessageFailed": "Failed to copy message",
     "deleteMessage": "Delete message",
     "deleteMessageConfirmTitle": "Delete this message?",
     "deleteMessageConfirmMessage": "The message will be removed from the chat history.",
@@ -53,7 +56,14 @@
   },
   "errors": {
     "loadChats": "Failed to load chat list",
-    "loadChat": "Failed to load chat history"
+    "loadChat": "Failed to load chat history",
+    "sendMessage": "Failed to send message",
+    "deleteMessage": "Failed to delete message",
+    "createChat": "Failed to create chat",
+    "deleteChat": "Failed to delete chat",
+    "updateChatSettings": "Failed to save settings",
+    "sseTitle": "Error",
+    "chatTitleFailed": "Failed to generate chat title"
   },
   "rag": {
     "settingsTitle": "RAG settings",
@@ -84,6 +94,7 @@
     "citationHint": "Numbers [1], [2] in the assistant reply refer to these excerpts (not the chunk database id).",
     "chunkCitation": "Citation [{{index}}]",
     "noChunks": "No relevant chunks found.",
+    "noChunkPreview": "Chunk text is unavailable.",
     "chunkScore": "score {{score}}",
     "chunkSimilarity": "similarity",
     "retrievalSummary": "Queries: {{queryCount}}, candidates: {{candidateCount}}",
