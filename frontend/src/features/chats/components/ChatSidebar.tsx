@@ -1,23 +1,38 @@
 import { useEffect, useState } from "react";
-import { Message } from "primereact/message";
 import { ProgressSpinner } from "primereact/progressspinner";
 
 import { NewChatButton, PanelHeader } from "@/app/layout/AppHeader";
-import { DeleteConfirmDialog } from "@/shared/components/DeleteConfirmDialog";
+import { useChatModeStore } from "@/features/chat/modeStore";
+import { useDeleteConfirmStore } from "@/shared/components/deleteConfirmStore";
+import { usePointerHoverSync } from "@/shared/hooks/usePointerHoverSync";
 import { useTranslation } from "@/shared/i18n";
 import { formatDateTime } from "@/shared/lib/format";
-import type { ChatSummary } from "@/shared/api/types";
 import { useSelectedChatId, useChatUiStore } from "../store";
 import { useChatsQuery, useCreateChatMutation, useDeleteChatMutation } from "../hooks/useChats";
 
 export function ChatSidebar() {
   const { t, locale } = useTranslation();
+  const chatMode = useChatModeStore((state) => state.mode);
   const [selectedChatId, setSelectedChatId] = useSelectedChatId();
+  const [hoveredChatId, setHoveredChatId] = useState<number | null>(null);
   const requestComposerFocus = useChatUiStore((state) => state.requestComposerFocus);
   const chatsQuery = useChatsQuery();
   const createChatMutation = useCreateChatMutation();
   const deleteChatMutation = useDeleteChatMutation();
-  const [chatToDelete, setChatToDelete] = useState<ChatSummary | null>(null);
+  const openDeleteConfirm = useDeleteConfirmStore((state) => state.open);
+  const closeDeleteConfirm = useDeleteConfirmStore((state) => state.close);
+  const setDeleteConfirmPending = useDeleteConfirmStore((state) => state.setPending);
+
+  usePointerHoverSync({
+    resetDeps: [chatMode, chatsQuery.data],
+    selector: ".chat-list__row",
+    getId: (element) => {
+      const chatId = element.getAttribute("data-chat-id");
+
+      return chatId ? Number(chatId) : null;
+    },
+    onSync: setHoveredChatId,
+  });
 
   useEffect(() => {
     if (!chatsQuery.isSuccess || selectedChatId === null || chatsQuery.isFetching) {
@@ -39,25 +54,6 @@ export function ChatSidebar() {
 
   return (
     <>
-      <DeleteConfirmDialog
-        visible={chatToDelete !== null}
-        header={chatToDelete ? t("chat.deleteConfirmTitle", { title: chatToDelete.title }) : ""}
-        message={t("chat.deleteConfirmMessage")}
-        confirmLabel={t("chat.delete")}
-        cancelLabel={t("common.cancel")}
-        isPending={deleteChatMutation.isPending}
-        onHide={() => setChatToDelete(null)}
-        onConfirm={() => {
-          if (chatToDelete === null) {
-            return;
-          }
-
-          deleteChatMutation.mutate(chatToDelete.id, {
-            onSuccess: () => setChatToDelete(null),
-          });
-        }}
-      />
-
       <PanelHeader title={t("panels.chats")} />
 
       <div className="app-panel__body">
@@ -79,12 +75,6 @@ export function ChatSidebar() {
           </div>
         ) : null}
 
-        {chatsQuery.isError ? (
-          <div className="trace-empty">
-            <Message severity="error" text={t("errors.loadChats")} />
-          </div>
-        ) : null}
-
         {chatsQuery.data?.length === 0 ? (
           <p className="trace-empty">{t("chat.createFirst")}</p>
         ) : null}
@@ -93,9 +83,12 @@ export function ChatSidebar() {
           {chatsQuery.data?.map((chat) => (
             <li
               key={chat.id}
+              data-chat-id={chat.id}
               className={`chat-list__row${
                 selectedChatId === chat.id ? " chat-list__row--active" : ""
-              }`}
+              }${hoveredChatId === chat.id ? " chat-list__row--hovered" : ""}`}
+              onMouseEnter={() => setHoveredChatId(chat.id)}
+              onMouseLeave={() => setHoveredChatId(null)}
             >
               <button
                 type="button"
@@ -134,7 +127,19 @@ export function ChatSidebar() {
                     return;
                   }
 
-                  setChatToDelete(chat);
+                  openDeleteConfirm({
+                    header: t("chat.deleteConfirmTitle", { title: chat.title }),
+                    message: t("chat.deleteConfirmMessage"),
+                    confirmLabel: t("chat.delete"),
+                    cancelLabel: t("common.cancel"),
+                    onConfirm: () => {
+                      setDeleteConfirmPending(true);
+                      deleteChatMutation.mutate(chat.id, {
+                        onSuccess: () => closeDeleteConfirm(),
+                        onSettled: () => setDeleteConfirmPending(false),
+                      });
+                    },
+                  });
                 }}
               >
                 <i className="pi pi-trash" aria-hidden="true" />
