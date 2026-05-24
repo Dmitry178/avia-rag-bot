@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from app.core.chat_constants import is_default_chat_title
 from app.core.config import Settings, settings
 from app.core.db_manager import DBManager
 from app.core.logs import logger
@@ -35,6 +36,7 @@ from app.schemas.llm import LlmConfig
 from app.schemas.rag import RagConfig
 from app.rag.pipeline import RagPipeline
 from app.rag.types import RagQueryContext, RagTraceStep
+from app.services.chat_title import schedule_chat_title_generation
 
 
 class ChatService:
@@ -225,23 +227,94 @@ class ChatService:
 
         return scores
 
+    @staticmethod
+    def _chunk_ids_from_metadata(metadata: dict) -> set[int]:
+        chunk_ids: set[int] = set()
+
+        for chunk_id in metadata.get("retrieved_chunk_ids") or []:
+            if isinstance(chunk_id, int):
+                chunk_ids.add(chunk_id)
+
+        for chunk in metadata.get("retrieved_chunks") or []:
+            if isinstance(chunk, dict) and isinstance(chunk.get("id"), int):
+                chunk_ids.add(chunk["id"])
+
+        for step in metadata.get("rag_trace") or []:
+            if not isinstance(step, dict):
+                continue
+
+            data = step.get("data")
+            if not isinstance(data, dict):
+                continue
+
+            for hit in data.get("hits") or []:
+                if isinstance(hit, dict) and isinstance(hit.get("id"), int):
+                    chunk_ids.add(hit["id"])
+
+        return chunk_ids
+
     async def _load_chunk_map_for_metadata(self, metadata_list: list[dict]) -> dict[int, ChunkMeta]:
         chunk_ids: set[int] = set()
 
         for metadata in metadata_list:
-            for chunk_id in metadata.get("retrieved_chunk_ids") or []:
-                if isinstance(chunk_id, int):
-                    chunk_ids.add(chunk_id)
-
-            for chunk in metadata.get("retrieved_chunks") or []:
-                if isinstance(chunk, dict) and isinstance(chunk.get("id"), int):
-                    chunk_ids.add(chunk["id"])
+            chunk_ids.update(self._chunk_ids_from_metadata(metadata))
 
         if not chunk_ids:
             return {}
 
         chunks = await self.db.etl.chunks.list_by_ids(list(chunk_ids))
         return {chunk.id: chunk for chunk in chunks if chunk.id is not None}
+
+    @staticmethod
+    def _enrich_trace_hit(hit: dict, chunk_map: dict[int, ChunkMeta]) -> dict:
+        enriched = dict(hit)
+        chunk_id = enriched.get("id")
+
+        if not isinstance(chunk_id, int):
+            return enriched
+
+        chunk_meta = chunk_map.get(chunk_id)
+        if chunk_meta is None:
+            return enriched
+
+        if not enriched.get("title"):
+            enriched["title"] = chunk_meta.title
+
+        if not enriched.get("section"):
+            enriched["section"] = chunk_meta.section
+
+        if not enriched.get("content_preview"):
+            enriched["content_preview"] = chunk_meta.content[:600]
+
+        return enriched
+
+    @staticmethod
+    def _enrich_rag_trace_steps(trace: list, chunk_map: dict[int, ChunkMeta]) -> list:
+        enriched_steps: list = []
+
+        for step in trace:
+            if not isinstance(step, dict):
+                continue
+
+            step_dict = dict(step)
+            data = step_dict.get("data")
+            if not isinstance(data, dict):
+                enriched_steps.append(step_dict)
+                continue
+
+            data_dict = dict(data)
+            hits = data_dict.get("hits")
+
+            if isinstance(hits, list):
+                data_dict["hits"] = [
+                    ChatService._enrich_trace_hit(hit, chunk_map) if isinstance(hit, dict) else hit
+                    for hit in hits
+                ]
+
+            step_dict["data"] = data_dict
+            enriched_steps.append(step_dict)
+
+        return enriched_steps
 
     @staticmethod
     def _enrich_rag_metadata(metadata: dict, chunk_map: dict[int, ChunkMeta]) -> dict:
@@ -289,30 +362,32 @@ class ChatService:
                 merged.append(chunk_dict)
 
             enriched["retrieved_chunks"] = merged
-            return enriched
 
-        if not metadata.get("retrieved_chunk_ids"):
-            return metadata
+        elif metadata.get("retrieved_chunk_ids"):
+            serialized: list[dict] = []
 
-        serialized: list[dict] = []
+            for citation_index, chunk_id in enumerate(metadata["retrieved_chunk_ids"], start=1):
+                if not isinstance(chunk_id, int):
+                    continue
 
-        for citation_index, chunk_id in enumerate(metadata["retrieved_chunk_ids"], start=1):
-            if not isinstance(chunk_id, int):
-                continue
+                chunk = chunk_map.get(chunk_id)
+                if chunk is None:
+                    continue
 
-            chunk = chunk_map.get(chunk_id)
-            if chunk is None:
-                continue
+                serialized.append(
+                    ChatService._serialize_chunk_meta(
+                        chunk,
+                        citation_index=citation_index,
+                        similarity=similarity_by_id.get(chunk_id),
+                    ),
+                )
 
-            serialized.append(
-                ChatService._serialize_chunk_meta(
-                    chunk,
-                    citation_index=citation_index,
-                    similarity=similarity_by_id.get(chunk_id),
-                ),
-            )
+            enriched["retrieved_chunks"] = serialized
 
-        enriched["retrieved_chunks"] = serialized
+        rag_trace = enriched.get("rag_trace")
+
+        if isinstance(rag_trace, list) and rag_trace:
+            enriched["rag_trace"] = ChatService._enrich_rag_trace_steps(rag_trace, chunk_map)
 
         return enriched
 
@@ -564,6 +639,8 @@ class ChatService:
         chat = await self.db.chat.chats.get_by_id(chat_id)
         assert chat is not None
 
+        should_generate_title = chat.message_count == 0 and is_default_chat_title(chat.title)
+
         chat_type = ChatType(chat.chat_type)
         use_history_value = self._resolve_use_history(body, chat)
 
@@ -624,7 +701,28 @@ class ChatService:
                 "total_tokens": None,
                 "blocked_reason": block_reason.value,
             }
+            assistant_metadata = {**llm_metadata, "requested_at": requested_at, **settings_metadata}
+            assistant_message = await self.db.chat.messages.create(
+                chat_id=chat_id,
+                role=MessageRole.ASSISTANT,
+                content=assistant_text,
+                message_metadata=assistant_metadata,
+            )
+
+            if block_reason is BlockReason.INJECTION:
+                await self.db.chat.chats.close(chat_id)
+            else:
+                await self.db.chat.chats.touch(chat_id)
+
+            await self.db.chat.chats.adjust_message_count(chat_id, 2)
+            await self.db.commit()
         else:
+            # Commit the user message before LLM/RAG I/O so SQLite is not write-locked
+            # for the duration of external calls (title generation, other chats, etc.).
+            await self.db.chat.chats.touch(chat_id)
+            await self.db.chat.chats.adjust_message_count(chat_id, 1)
+            await self.db.commit()
+
             try:
                 reply_language = reply_language_for_user_text(body.content)
 
@@ -662,26 +760,19 @@ class ChatService:
                     )
             except Exception as exc:
                 await self._publish_error(body.client_id, chat_id, exc)
-                await self.db.rollback()
                 raise
 
-        assistant_metadata = {**llm_metadata, "requested_at": requested_at, **settings_metadata}
+            assistant_metadata = {**llm_metadata, "requested_at": requested_at, **settings_metadata}
+            assistant_message = await self.db.chat.messages.create(
+                chat_id=chat_id,
+                role=MessageRole.ASSISTANT,
+                content=assistant_text,
+                message_metadata=assistant_metadata,
+            )
 
-        assistant_message = await self.db.chat.messages.create(
-            chat_id=chat_id,
-            role=MessageRole.ASSISTANT,
-            content=assistant_text,
-            message_metadata=assistant_metadata,
-        )
-
-        if block_reason is BlockReason.INJECTION:
-            await self.db.chat.chats.close(chat_id)
-        else:
             await self.db.chat.chats.touch(chat_id)
-
-        await self.db.chat.chats.adjust_message_count(chat_id, 2)
-
-        await self.db.commit()
+            await self.db.chat.chats.adjust_message_count(chat_id, 1)
+            await self.db.commit()
 
         chunk_map = await self._load_chunk_map_for_metadata(
             [user_message.message_metadata, assistant_message.message_metadata],
@@ -693,6 +784,21 @@ class ChatService:
             user_message_id=user_message.id,
             assistant_message_id=assistant_message.id,
         )
+
+        if should_generate_title:
+            custom_system_prompt = None
+            
+            if chat_type == ChatType.LLM and self._is_llm_free_mode(llm_snapshot):
+                custom_system_prompt = self._resolve_custom_system_prompt(llm_snapshot)
+
+            schedule_chat_title_generation(
+                chat_id=chat_id,
+                client_id=body.client_id,
+                user_message=body.content,
+                chat_type=chat_type,
+                custom_system_prompt=custom_system_prompt,
+                app_settings=self.settings,
+            )
 
         return SendMessageResponse(
             user_message=self._message_to_response(user_message, chunk_map=chunk_map),
