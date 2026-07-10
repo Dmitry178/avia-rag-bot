@@ -3,7 +3,7 @@
 import hashlib
 
 # Bump when chunking rules change and existing vectors must be recomputed.
-CHUNKER_VERSION = "1"
+CHUNKER_VERSION = "2"
 
 
 def content_hash(text: str) -> str:
