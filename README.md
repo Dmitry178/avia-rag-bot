@@ -179,7 +179,7 @@ RAG method help texts: `rag-methods.ru.json` / `rag-methods.en.json`.
 ## ETL
 
 1. **Parse** markdown → section tree
-2. **Chunk** with content-type awareness
+2. **Chunk** with content-type awareness (see [Knowledge base document](#knowledge-base-document))
 3. **Embeddings** via LLM provider
 4. **Persist** to SQLite + FAISS
 
@@ -193,8 +193,12 @@ make etl-manifest
 
 API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 
+**FAISS / AVX:** `faiss-cpu` from PyPI ships a generic build. On startup you may see INFO messages that AVX512/AVX2 modules are missing; FAISS then loads the default library (`Successfully loaded faiss.`). This is expected and does not require action. Loader noise is suppressed to WARNING in app logging.
+
+**Interrupting ingest:** `Ctrl+C` during `make etl-ingest` saves the embedding checkpoint after the last completed batch and exits with code 130. Re-run the same command to resume.
+
 Default document: `backend/data/rag-document.md` (`ETL__DOCUMENT_PATH`).  
-Details: [`backend/etl/README.md`](backend/etl/README.md).
+Low-level ETL module details: [`backend/etl/README.md`](backend/etl/README.md).
 
 | Path | Purpose |
 |------|---------|
@@ -202,6 +206,51 @@ Details: [`backend/etl/README.md`](backend/etl/README.md).
 | `backend/data/faiss.index` | FAISS index |
 | `backend/data/manifest.json` | manifest copy for tooling |
 | `backend/data/rag-document.md` | source markdown for ETL |
+
+## Knowledge base document
+
+The RAG source is a single markdown file: [`backend/data/rag-document.md`](backend/data/rag-document.md) (~6800 lines). It is structured as numbered H1 chapters and is intentionally heterogeneous: operational procedures, FAQs, decision trees, and scenarios live in different chapter groups with different chunking rules.
+
+`backend/data/rag-doc-index.md` is a **short structural outline** for humans (headings only, plus a few full examples). It is **not** used by ETL or RAG.
+
+### Chapter groups
+
+| Chapters | Role | Indexed for RAG |
+|----------|------|-----------------|
+| **00** | Project description: purpose, capabilities, limitations, scope, usage policy | **No** — injected into the RAG system prompt |
+| **01–12** | Operational SOPs (passenger service, registration, baggage, security, etc.) | **Yes** — `sop` chunks |
+| **13** | Out of scope: what the bot answers / refuses, how to decline and redirect | **No** — injected into the RAG system prompt |
+| **14** | Central FAQ (question/answer pairs) | **Yes** — `faq` chunks |
+| **15** | Aviation glossary (term definitions) | **No** — disabled in MVP |
+| **16** | Decision trees (step-by-step case handling) | **Yes** — `decision_tree` chunks |
+| **17** | Practical scenarios (worked examples) | **Yes** — `scenario` chunks |
+
+### Chunking rules (ETL)
+
+| Content | Chunk unit | Notes |
+|---------|------------|-------|
+| SOP (ch. 01–12) | One `##` section = one chunk; if > ~800 tokens, split by `###` with parent `##` title as context | Trailing per-chapter `**FAQ**` blocks are **stripped** from SOP text |
+| FAQ (all sources) | One question/answer pair = one chunk | Pairs from ch. 01–12 **and** ch. 14 are unified as `faq`; each chunk includes `[Источник: <chapter>]` metadata |
+| Decision trees (ch. 16) | One tree (`## 16.X. …`) = one chunk | Tree body is never split mid-content |
+| Scenarios (ch. 17) | One scenario (`## Сценарий N: …`) = one chunk | Scenario body is kept whole |
+| Glossary (ch. 15) | — | Not chunked or embedded in MVP |
+| Chapters 00, 13 | — | Not chunked or embedded; see below |
+
+Every indexed chunk gets a retrieval prefix: `[Раздел: …]`, `[Тип: …]`, plus FAQ source metadata where applicable.
+
+### Chapters 00 and 13 in the system prompt (MVP)
+
+Chapters **00** and **13** are meta-policy, not operational knowledge. They are loaded from the source document at runtime and appended to the **RAG system prompt** (with short English guidance for the LLM), not passed through FAISS.
+
+For MVP the **full chapter text** is included without summarization, so scope and refusal rules are always available. Summarization may be added later to save context window.
+
+Implementation: `etl/static_sections.py` (extract), `app/llm/kb_static_context.py` (format), `RagPipeline.build_generation_prompt()`.
+
+### Glossary disabled (MVP)
+
+Chapter **15** is parsed but **not indexed**. Terminology questions are expected to be covered by SOP and FAQ retrieval for now. Glossary embedding or keyword lookup can be added in a later stage.
+
+> **Note:** RAG retrieval strategy (multi-lane search by content type) is planned but not documented here yet.
 
 ## Chat API (summary)
 
