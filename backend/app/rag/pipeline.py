@@ -10,6 +10,7 @@ from app.core.rag_constants import RETRIEVAL_TOP_K
 from app.exceptions.service import ServiceError
 from app.llm.chat import ChatCompletionClient
 from app.llm.embeddings import EmbeddingClient
+from app.llm.kb_static_context import load_kb_static_context
 from app.models.chunk_meta import ChunkMeta
 from app.rag.generation import build_context_block, build_rag_system_prompt
 from app.rag.methods.registry import resolve_query_transform_method, resolve_rerank_method
@@ -167,10 +168,16 @@ class RagPipeline:
             search_queries=search_queries,
         )
 
-    @staticmethod
-    def build_generation_prompt(*, context: str, reply_language: str | None) -> str:
+    def build_generation_prompt(self, *, context: str, reply_language: str | None) -> str:
         """
         Build the grounded system prompt for the final LLM call.
         """
 
-        return build_rag_system_prompt(context=context, reply_language=reply_language)
+        document_path = self._settings.etl.resolve_document_path(self._settings.backend_root)
+        kb_static_context = load_kb_static_context(str(document_path))
+
+        return build_rag_system_prompt(
+            context=context,
+            reply_language=reply_language,
+            kb_static_context=kb_static_context,
+        )
