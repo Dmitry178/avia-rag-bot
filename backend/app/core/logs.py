@@ -64,6 +64,9 @@ def setup_logging(log_settings: LogSettings) -> None:
     root_logger.addHandler(handler)
     root_logger.setLevel(level)
 
+    # faiss-cpu falls back from AVX512/AVX2 to the generic build; loader INFO is noisy and harmless.
+    logging.getLogger("faiss.loader").setLevel(logging.WARNING)
+
     for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         uvicorn_logger = logging.getLogger(logger_name)
         uvicorn_logger.handlers.clear()
