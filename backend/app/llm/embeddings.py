@@ -2,7 +2,7 @@
 
 import httpx
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 
 from app.core.config import LLMSettings
 from app.exceptions.service import ServiceError
@@ -25,6 +25,7 @@ class EmbeddingClient:
                 error_code="embedding_config_error",
                 status_code=400,
             )
+
         if not self._settings.embedding_model:
             raise ServiceError(
                 detail="LLM__EMBEDDING_MODEL is not configured",
@@ -32,48 +33,67 @@ class EmbeddingClient:
                 status_code=400,
             )
 
-    async def embed_texts(
-            self,
-            texts: list[str],
-            *,
-            on_batch_complete: Callable[[int, int], None] | None = None,
+    async def _post_embedding_batch(
+        self,
+        client: httpx.AsyncClient,
+        batch: list[str],
     ) -> list[list[float]]:
         """
-        Embed texts in batches and return vectors in the same order.
+        Request embeddings for a single batch.
+        """
+
+        headers = {"Authorization": f"Bearer {self._settings.api_key}"} if self._settings.api_key else {}
+        base_url = self._settings.base_url.rstrip("/")
+        response = await client.post(
+            f"{base_url}/embeddings",
+            headers=headers,
+            json={"model": self._settings.embedding_model, "input": batch},
+        )
+
+        if response.status_code >= 400:
+            raise ServiceError(
+                detail=f"Embedding API error: {response.status_code}",
+                error_code="embedding_api_error",
+                status_code=502,
+                extra={"body": response.text[:500]},
+            )
+
+        payload = response.json()
+        data = sorted(payload["data"], key=lambda item: item["index"])
+
+        return [item["embedding"] for item in data]
+
+    async def iter_embed_batches(self, texts: list[str]) -> AsyncIterator[list[list[float]]]:
+        """
+        Yield embedding vectors batch by batch in input order.
         """
 
         self._validate_config()
 
         if not texts:
-            return []
-
-        vectors: list[list[float]] = []
-        headers = {"Authorization": f"Bearer {self._settings.api_key}"} if self._settings.api_key else {}
-        base_url = self._settings.base_url.rstrip("/")
-        total = len(texts)
+            return
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             for offset in range(0, len(texts), EMBED_BATCH_SIZE):
-                batch = texts[offset: offset + EMBED_BATCH_SIZE]
-                response = await client.post(
-                    f"{base_url}/embeddings",
-                    headers=headers,
-                    json={"model": self._settings.embedding_model, "input": batch},
-                )
+                batch = texts[offset : offset + EMBED_BATCH_SIZE]
+                yield await self._post_embedding_batch(client, batch)
 
-                if response.status_code >= 400:
-                    raise ServiceError(
-                        detail=f"Embedding API error: {response.status_code}",
-                        error_code="embedding_api_error",
-                        status_code=502,
-                        extra={"body": response.text[:500]},
-                    )
+    async def embed_texts(
+        self,
+        texts: list[str],
+        *,
+        on_batch_complete: Callable[[int, int], None] | None = None,
+    ) -> list[list[float]]:
+        """
+        Embed texts in batches and return vectors in the same order.
+        """
 
-                payload = response.json()
-                data = sorted(payload["data"], key=lambda item: item["index"])
-                vectors.extend(item["embedding"] for item in data)
+        vectors: list[list[float]] = []
+        total = len(texts)
 
-                if on_batch_complete is not None:
-                    on_batch_complete(min(offset + len(batch), total), total)
+        async for batch_vectors in self.iter_embed_batches(texts):
+            vectors.extend(batch_vectors)
+            if on_batch_complete is not None:
+                on_batch_complete(len(vectors), total)
 
         return vectors
