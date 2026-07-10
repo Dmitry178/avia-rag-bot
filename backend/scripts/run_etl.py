@@ -13,6 +13,7 @@ from app.core.logs import logger
 from app.db.init_db import init_db
 from app.db.session import SessionLocal, dispose_engine
 from app.exceptions.base import BaseCustomException
+from app.exceptions.ingest import IngestInterruptedError
 from app.services.etl import ETLService
 from app.services.etl_progress import IngestProgress
 
@@ -168,11 +169,33 @@ def main() -> None:
 
     try:
         exit_code = asyncio.run(commands[args.command]())
+
+    except IngestInterruptedError as exc:
+        print(file=sys.stderr)
+        print(
+            f"Ingest interrupted after {exc.embedded}/{exc.total} chunks.",
+            file=sys.stderr,
+        )
+        print("Checkpoint saved. Re-run the same ingest command to resume.", file=sys.stderr)
+        logger.info(
+            "etl_ingest_interrupted",
+            embedded=exc.embedded,
+            total=exc.total,
+        )
+        exit_code = 130
+
+    except KeyboardInterrupt:
+        print(file=sys.stderr)
+        print("Ingest interrupted.", file=sys.stderr)
+        logger.info("etl_ingest_interrupted_keyboard")
+        exit_code = 130
+
     except BaseCustomException as exc:
         logger.error("etl_cli_failed", error_code=exc.error_code, detail=exc.detail, extra=exc.extra)
         print(file=sys.stderr)
         print(f"Error [{exc.error_code}]: {exc.detail}", file=sys.stderr)
         exit_code = 1
+
     except Exception as exc:  # noqa: BLE001
         logger.exception("etl_cli_failed", error=str(exc))
         print(file=sys.stderr)
