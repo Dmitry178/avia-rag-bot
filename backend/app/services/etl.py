@@ -1,5 +1,6 @@
 """Document ingestion and indexing."""
 
+import asyncio
 import hashlib
 import json
 
@@ -11,8 +12,9 @@ from app.core.db_manager import DBManager
 from app.core.faiss_manager import faiss_manager
 from app.core.logs import logger
 from app.exceptions import handle_basic_db_errors
+from app.exceptions.ingest import IngestInterruptedError
 from app.exceptions.service import ServiceError
-from app.llm.embeddings import EMBED_BATCH_SIZE, EmbeddingClient
+from app.llm.embeddings import EmbeddingClient
 from app.models.chunk_meta import ChunkMeta
 from app.models.index_manifest import IndexManifest
 from app.schemas.etl import ChunkStatsResponse, IngestResponse, ManifestResponse
@@ -153,30 +155,43 @@ class ETLService:
         texts = [drafts[index].content for index in pending_indices]
         embedder = EmbeddingClient(self.settings.llm)
         embedded_count = total_chunks - len(pending_indices)
+        completed_in_run = 0
 
-        def on_batch_complete(done: int, batch_total: int) -> None:
-            current_embedded = embedded_count + done
-            overall = 5 + int(85 * current_embedded / max(total_chunks, 1))
-            section, item_title, section_current, section_total = self._chunk_progress_context(
-                drafts,
-                pending_indices,
-                done,
-            )
-            self._report_progress(
-                on_progress,
-                phase="embedding",
-                current=current_embedded,
+        try:
+            async for batch_vectors in embedder.iter_embed_batches(texts):
+                for vector in batch_vectors:
+                    draft_index = pending_indices[completed_in_run]
+                    vectors_by_index[draft_index] = vector
+                    checkpoint.vectors_by_hash[drafts[draft_index].content_hash] = vector
+                    completed_in_run += 1
+
+                    section, item_title, section_current, section_total = self._chunk_progress_context(
+                        drafts,
+                        pending_indices,
+                        completed_in_run,
+                    )
+                    current_embedded = embedded_count + completed_in_run
+                    self._report_progress(
+                        on_progress,
+                        phase="embedding",
+                        current=current_embedded,
+                        total=total_chunks,
+                        overall_percent=5 + int(85 * current_embedded / max(total_chunks, 1)),
+                        section=section,
+                        item_title=item_title,
+                        section_current=section_current,
+                        section_total=section_total,
+                    )
+
+                checkpoint_store.save(checkpoint)
+        except asyncio.CancelledError as exc:
+            checkpoint_store.save(checkpoint)
+            raise IngestInterruptedError(
+                embedded=embedded_count + completed_in_run,
                 total=total_chunks,
-                overall_percent=overall,
-                section=section,
-                item_title=item_title,
-                section_current=section_current,
-                section_total=section_total,
-            )
+            ) from None
 
-        new_vectors = await embedder.embed_texts(texts, on_batch_complete=on_batch_complete)
-
-        if len(new_vectors) != len(pending_indices):
+        if completed_in_run != len(pending_indices):
             raise ServiceError(
                 detail="Embedding count does not match chunk count",
                 error_code="etl_embedding_mismatch",
@@ -185,13 +200,7 @@ class ETLService:
 
         checkpoint_total = len(pending_indices)
 
-        for item_index, (draft_index, vector) in enumerate(
-            zip(pending_indices, new_vectors, strict=True),
-            start=1,
-        ):
-            vectors_by_index[draft_index] = vector
-            checkpoint.vectors_by_hash[drafts[draft_index].content_hash] = vector
-
+        for item_index in range(1, checkpoint_total + 1):
             section, item_title, section_current, section_total = self._chunk_progress_context(
                 drafts,
                 pending_indices,
@@ -208,9 +217,6 @@ class ETLService:
                 section_current=section_current,
                 section_total=section_total,
             )
-
-            if item_index % EMBED_BATCH_SIZE == 0 or item_index == checkpoint_total:
-                checkpoint_store.save(checkpoint)
 
         return [vectors_by_index[i] for i in range(total_chunks)]  # type: ignore[misc]
 
@@ -236,6 +242,7 @@ class ETLService:
 
         # --- Phase 1: read and chunk (no DB) ---
         path = self._resolve_source_path(source_path)
+
         if not path.is_file():
             raise ServiceError(
                 detail=f"Source document not found: {path}",
