@@ -40,15 +40,21 @@ _RAG_GROUNDING_RULES = (
 )
 
 
-def build_rag_system_prompt(*, context: str, reply_language: str | None = None) -> str:
+def build_rag_system_prompt(
+    *,
+    context: str,
+    reply_language: str | None = None,
+    kb_static_context: str = "",
+) -> str:
     """
     System prompt for grounded RAG answers.
     """
 
     base = build_system_prompt(reply_language=reply_language)
+    static_block = f"\n\n{kb_static_context.strip()}" if kb_static_context.strip() else ""
 
     return (
-        f"{base}\n\n"
+        f"{base}{static_block}\n\n"
         f"{_RAG_GROUNDING_RULES}\n\n"
         f"Knowledge-base excerpts:\n{context}"
     )
