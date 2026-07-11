@@ -258,6 +258,19 @@ Within each lane, FAISS returns global top rows; results are **filtered by `cont
 
 Each `RetrievedChunk` carries `retrieval_lane` for trace and UI.
 
+### Decision tree walkthrough
+
+When the `decision_tree` lane returns a chunk whose similarity is at or above the threshold (`DECISION_TREE_MIN_SIMILARITY`, default **0.30**), the pipeline treats it as an **operational situation** that warrants a dedicated procedure — not a generic knowledge-base excerpt.
+
+Logic lives in `app/rag/decision_tree.py`; orchestration in `RagPipeline` and `ChatService`:
+
+1. **Detection** — after multi-lane retrieval, `select_applicable_decision_trees()` inspects the `decision_tree` lane independently of the global `top_chunks` trim (at most one tree per answer).
+2. **Context split** — matching `decision_tree` chunks are **excluded** from the general RAG context so the main answer is not diluted by mixed corpora.
+3. **Dedicated generation** — a separate LLM call walks through the matched tree and produces a numbered operational checklist (immediate actions, branch selection, critical safety steps). Result is stored in assistant message metadata as `decision_tree_guidance`.
+4. **General answer** — the usual RAG completion runs in parallel on the remaining chunks (SOP, FAQ, scenario).
+
+Trace adds two steps when applicable: `decision_tree` (matched hits from the lane) and `decision_tree_generation` (walkthrough applied).
+
 ### Trace
 
 Each pipeline step produces a `RagTraceStep` (name, duration, structured data). Typical steps:
@@ -268,6 +281,8 @@ Each pipeline step produces a `RagTraceStep` (name, duration, structured data). 
 | `hyde` / `multi_query` / `query_rewriting` | Generated search queries (if enabled) |
 | `retrieval` | Per-lane hits (`lanes[]` with `source_label`, `top_k`, `hits`) plus merged candidates |
 | `rerank` | Final ranked hits (if enabled) |
+| `decision_tree` | Applicable decision-tree hits from the `decision_tree` lane (similarity ≥ threshold) |
+| `decision_tree_generation` | Dedicated walkthrough of the matched tree (if applied) |
 
 Steps are:
 
@@ -308,10 +323,11 @@ sequenceDiagram
 
 1. Same guard pre-check as LLM (unless overridden by mode rules).
 2. `RagPipeline.run()` — retrieval + trace.
-3. Context block built from retrieved chunks (`rag/generation.py`).
+3. Context block built from retrieved chunks **excluding** applicable decision trees (`rag/generation.py`).
 4. System prompt = RAG template + static chapters 00/13 + context.
-5. `ChatCompletionClient` generates the answer.
-6. Trace pushed over SSE during the request; persisted in message metadata.
+5. `ChatCompletionClient` generates the general answer.
+6. If a decision tree matched — a **second** LLM call produces the operational walkthrough (`decision_tree_guidance` in metadata).
+7. Trace pushed over SSE during the request; persisted in message metadata.
 
 ### Chat title
 
@@ -350,6 +366,8 @@ Three-column shell (`app/layout/AppLayout.tsx`):
 | Sidebar | Chat list | Chat list |
 | Center | Dialog + composer | Dialog + composer |
 | Right | Trace panel (lanes, applied settings, chunks) | LLM parameters panel |
+
+In RAG mode, when `metadata.decision_tree_guidance` is present, the chat panel renders an **operational procedure card** above the general assistant reply (`DecisionTreeGuidanceBlock` in `features/chat/components/ChatPanel.tsx`). The card uses a distinct **warning-colored** border and background so on-duty staff can spot step-by-step algorithms at a glance, separate from explanatory text.
 
 Mode switch in the header (`features/chat/modeStore.ts` — Zustand). Chat lists are filtered by `chat_type` on the API.
 
