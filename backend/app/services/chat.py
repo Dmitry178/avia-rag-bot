@@ -166,6 +166,7 @@ class ChatService:
                     "section": chunk.section,
                     "title": chunk.title,
                     "content_type": chunk.content_type,
+                    "retrieval_lane": item.retrieval_lane or chunk.content_type,
                     "score": similarity,
                     "similarity": similarity,
                     "source_query": item.source_query,
@@ -193,6 +194,7 @@ class ChatService:
             "section": chunk.section,
             "title": chunk.title,
             "content_type": chunk.content_type,
+            "retrieval_lane": chunk.content_type,
             "score": round(resolved_similarity, 4) if resolved_similarity is not None else None,
             "similarity": round(resolved_similarity, 4) if resolved_similarity is not None else None,
             "source_query": None,
@@ -225,6 +227,19 @@ class ChatService:
                 if isinstance(chunk_id, int) and isinstance(similarity, (int, float)):
                     scores[chunk_id] = float(similarity)
 
+            for lane in data.get("lanes") or []:
+                if not isinstance(lane, dict):
+                    continue
+
+                for hit in lane.get("hits") or []:
+                    if not isinstance(hit, dict):
+                        continue
+
+                    chunk_id = hit.get("id")
+                    similarity = hit.get("similarity")
+                    if isinstance(chunk_id, int) and isinstance(similarity, (int, float)):
+                        scores[chunk_id] = float(similarity)
+
         return scores
 
     @staticmethod
@@ -250,6 +265,14 @@ class ChatService:
             for hit in data.get("hits") or []:
                 if isinstance(hit, dict) and isinstance(hit.get("id"), int):
                     chunk_ids.add(hit["id"])
+
+            for lane in data.get("lanes") or []:
+                if not isinstance(lane, dict):
+                    continue
+
+                for hit in lane.get("hits") or []:
+                    if isinstance(hit, dict) and isinstance(hit.get("id"), int):
+                        chunk_ids.add(hit["id"])
 
         return chunk_ids
 
@@ -283,6 +306,12 @@ class ChatService:
         if not enriched.get("section"):
             enriched["section"] = chunk_meta.section
 
+        if not enriched.get("content_type"):
+            enriched["content_type"] = chunk_meta.content_type
+
+        if not enriched.get("retrieval_lane"):
+            enriched["retrieval_lane"] = enriched.get("lane") or chunk_meta.content_type
+
         if not enriched.get("content_preview"):
             enriched["content_preview"] = chunk_meta.content[:600]
 
@@ -310,6 +339,27 @@ class ChatService:
                     ChatService._enrich_trace_hit(hit, chunk_map) if isinstance(hit, dict) else hit
                     for hit in hits
                 ]
+
+            lanes = data_dict.get("lanes")
+            if isinstance(lanes, list):
+                enriched_lanes: list[dict] = []
+
+                for lane in lanes:
+                    if not isinstance(lane, dict):
+                        continue
+
+                    lane_dict = dict(lane)
+                    lane_hits = lane_dict.get("hits")
+
+                    if isinstance(lane_hits, list):
+                        lane_dict["hits"] = [
+                            ChatService._enrich_trace_hit(hit, chunk_map) if isinstance(hit, dict) else hit
+                            for hit in lane_hits
+                        ]
+
+                    enriched_lanes.append(lane_dict)
+
+                data_dict["lanes"] = enriched_lanes
 
             step_dict["data"] = data_dict
             enriched_steps.append(step_dict)
@@ -354,6 +404,8 @@ class ChatService:
                             chunk_dict["node_id"] = chunk_meta.node_id
                         if not chunk_dict.get("content_type"):
                             chunk_dict["content_type"] = chunk_meta.content_type
+                        if not chunk_dict.get("retrieval_lane"):
+                            chunk_dict["retrieval_lane"] = chunk_meta.content_type
                         if not chunk_dict.get("token_count"):
                             chunk_dict["token_count"] = chunk_meta.token_count
                         if not chunk_dict.get("content_preview"):
@@ -787,7 +839,7 @@ class ChatService:
 
         if should_generate_title:
             custom_system_prompt = None
-            
+
             if chat_type == ChatType.LLM and self._is_llm_free_mode(llm_snapshot):
                 custom_system_prompt = self._resolve_custom_system_prompt(llm_snapshot)
 
