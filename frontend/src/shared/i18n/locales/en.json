@@ -42,7 +42,10 @@
     "deleteMessageConfirmTitle": "Delete this message?",
     "deleteMessageConfirmMessage": "The message will be removed from the chat history.",
     "deleteConfirmTitle": "Delete chat \"{{title}}\"?",
-    "deleteConfirmMessage": "The full chat history will be deleted."
+    "deleteConfirmMessage": "The full chat history will be deleted.",
+    "decisionTree": {
+      "title": "Operational procedure"
+    }
   },
   "roles": {
     "user": "You",
@@ -123,7 +126,9 @@
       "query_rewriting": "Query Rewriting",
       "faq_match": "FAQ match",
       "guard": "Guard",
-      "rag_config": "RAG settings"
+      "rag_config": "RAG settings",
+      "decision_tree": "Decision tree match",
+      "decision_tree_generation": "Decision tree walkthrough"
     },
     "lanes": {
       "sop": "SOP (ch. 01–12)",

@@ -42,7 +42,10 @@
     "deleteMessageConfirmTitle": "Удалить сообщение?",
     "deleteMessageConfirmMessage": "Сообщение будет удалено из истории чата.",
     "deleteConfirmTitle": "Удалить чат «{{title}}»?",
-    "deleteConfirmMessage": "Вся история чата будет удалена."
+    "deleteConfirmMessage": "Вся история чата будет удалена.",
+    "decisionTree": {
+      "title": "Оперативный алгоритм"
+    }
   },
   "roles": {
     "user": "Вы",
@@ -123,7 +126,9 @@
       "query_rewriting": "Query Rewriting",
       "faq_match": "FAQ",
       "guard": "Защита",
-      "rag_config": "Настройки RAG"
+      "rag_config": "Настройки RAG",
+      "decision_tree": "Совпадение с деревом решений",
+      "decision_tree_generation": "Проработка дерева решений"
     },
     "lanes": {
       "sop": "SOP (гл. 01–12)",
