@@ -1,5 +1,7 @@
 """Chat use cases: CRUD, messaging, and RAG/LLM replies."""
 
+import time
+
 from datetime import UTC, datetime
 
 from app.core.chat_constants import is_default_chat_title
@@ -34,6 +36,8 @@ from app.schemas.chat import (
 )
 from app.schemas.llm import LlmConfig
 from app.schemas.rag import RagConfig
+from app.rag.decision_tree import exclude_decision_tree_chunks, generate_decision_tree_guidance
+from app.rag.generation import build_context_block
 from app.rag.pipeline import RagPipeline
 from app.rag.types import RagQueryContext, RagTraceStep
 from app.services.chat_title import schedule_chat_title_generation
@@ -792,10 +796,46 @@ class ChatService:
                     await self._publish_rag_trace(body.client_id, rag_result.trace)
                     settings_metadata.update(self._rag_retrieval_metadata(rag_result))
 
+                    dt_guidance = None
+
+                    if rag_result.applicable_decision_trees:
+                        dt_started = time.perf_counter()
+                        dt_guidance = await generate_decision_tree_guidance(
+                            client,
+                            query=body.content,
+                            tree=rag_result.applicable_decision_trees[0],
+                            reply_language=reply_language,
+                        )
+                        dt_duration_ms = int((time.perf_counter() - dt_started) * 1000)
+                        candidate = rag_result.applicable_decision_trees[0]
+                        rag_result.trace.append(
+                            RagTraceStep(
+                                step="decision_tree_generation",
+                                duration_ms=dt_duration_ms,
+                                data={
+                                    "chunk_id": candidate.chunk.id,
+                                    "title": candidate.chunk.title,
+                                    "applied": dt_guidance is not None,
+                                },
+                            ),
+                        )
+                        settings_metadata["rag_trace"] = self._serialize_rag_trace(rag_result.trace)
+                        await self._publish_rag_trace(body.client_id, rag_result.trace[-1:])
+
+                        if dt_guidance is not None:
+                            settings_metadata["decision_tree_guidance"] = dt_guidance.to_metadata()
+
+                    context_for_general = rag_result.context
+
+                    if dt_guidance is not None:
+                        context_for_general = build_context_block(
+                            exclude_decision_tree_chunks(rag_result.chunks),
+                        )
+
                     assistant_text, llm_metadata = await client.complete(
                         llm_messages,
                         system_prompt=pipeline.build_generation_prompt(
-                            context=rag_result.context,
+                            context=context_for_general,
                             reply_language=reply_language,
                         ),
                     )
