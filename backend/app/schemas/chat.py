@@ -1,12 +1,12 @@
 """Chat API schemas."""
 
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from app.models.chat_message import MessageRole
 from app.models.chat import ChatType
+from app.schemas.common import UtcDatetime
 from app.schemas.llm import LlmConfig
 from app.schemas.rag import RagConfig
 
@@ -24,9 +24,9 @@ class ChatSummaryResponse(BaseModel):
     rag_config: RagConfig | None = None
     llm_config: LlmConfig | None = None
     use_history: bool | None = None
-    created_at: datetime
-    updated_at: datetime
-    closed_at: datetime | None = None
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
+    closed_at: UtcDatetime | None = None
 
 
 class ChatMessageResponse(BaseModel):
@@ -41,8 +41,8 @@ class ChatMessageResponse(BaseModel):
     rating: int | None = None
     rating_comment: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
 
 
 class ChatDetailResponse(BaseModel):
@@ -58,9 +58,9 @@ class ChatDetailResponse(BaseModel):
     rag_config: RagConfig | None = None
     llm_config: LlmConfig | None = None
     use_history: bool | None = None
-    created_at: datetime
-    updated_at: datetime
-    closed_at: datetime | None = None
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
+    closed_at: UtcDatetime | None = None
     messages: list[ChatMessageResponse]
 
 
