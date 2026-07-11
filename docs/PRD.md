@@ -234,6 +234,7 @@ Per documentation chapters 00 and 13:
 | FR-CHAT-05 | Auto-generated chat title | P2 | ✅ |
 | FR-CHAT-06 | Citation / section reference in answer | P1 | ✅ (via trace) |
 | FR-CHAT-07 | LLM mode for free-form dialogue | P2 | ✅ |
+| FR-CHAT-08 | Decision tree match → dedicated operational walkthrough + highlighted UI card | P0 | ✅ |
 
 ### 9.3. Security and compliance
 
@@ -333,9 +334,10 @@ flowchart TB
 
 1. A suspicious item is found.
 2. Staff asks: "What should I do?"
-3. RAG retrieves decision tree 16.2.
-4. The answer is a step-by-step algorithm.
-5. At the critical phase the bot reminds to call security.
+3. RAG retrieves decision tree 16.2 from the `decision_tree` lane.
+4. A **separate algorithm** walks through the tree and produces a numbered operational checklist (stored in `decision_tree_guidance`).
+5. The UI shows the checklist in a **warning-colored card** above the general answer so staff notice the procedure immediately.
+6. At the critical phase the bot reminds to call security.
 
 ### UC-03: Out-of-scope question
 
@@ -356,8 +358,8 @@ flowchart TB
 
 ### 13.1. Implemented (MVP / demo)
 
-- Backend: ETL, FAISS, multi-lane RAG, chats, LLM/RAG replies, SSE trace, prompt guards
-- Frontend: three-column UI, RAG/LLM settings, trace viewer, i18n, themes
+- Backend: ETL, FAISS, multi-lane RAG, decision-tree walkthrough, chats, LLM/RAG replies, SSE trace, prompt guards
+- Frontend: three-column UI, RAG/LLM settings, trace viewer, operational procedure cards (decision trees), i18n, themes
 - Docker: nginx + backend, persistence in `backend/data/`
 - Educational KB with realistic airport SOP structure
 
