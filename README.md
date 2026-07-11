@@ -73,6 +73,11 @@ avia-bot/
 │   │   ├── theme/              # color schemes
 │   │   └── styles/             # global styles
 │   └── package.json
+├── docs/                       # architecture and product requirements
+│   ├── ARCHITECTURE.md         # technical architecture (EN)
+│   ├── ARCHITECTURE_RU.md      # technical architecture (RU)
+│   ├── PRD.md                  # product requirements (EN)
+│   └── PRD_RU.md               # product requirements (RU)
 ├── images/                     # UI screenshots for README
 ├── Makefile
 ├── README.md
@@ -158,7 +163,7 @@ Lanes run in parallel (`app/rag/retrieval_lanes.py`, `VectorRetriever.search_lan
 
 Trace (SSE + `metadata.rag_trace`): `rag_config` snapshot, query transform step, `retrieval` with `lanes[]` and merged hits, optional `rerank`. Each chunk includes `retrieval_lane` and chapter `section`.
 
-Full architecture: [ARCHITECTURE.md](ARCHITECTURE.md).
+Full architecture: [ARCHITECTURE.md](docs/ARCHITECTURE.md). Product requirements: [PRD.md](docs/PRD.md).
 
 **Requirement:** build the index before using RAG (`make etl-ingest`). Without it, the API returns `503 rag_index_missing`.
 

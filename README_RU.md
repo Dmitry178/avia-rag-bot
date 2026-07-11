@@ -73,6 +73,11 @@ avia-bot/
 │   │   ├── theme/              # цветовые схемы
 │   │   └── styles/             # глобальные стили
 │   └── package.json
+├── docs/                       # архитектура и продуктовые требования
+│   ├── ARCHITECTURE.md         # техническая архитектура (EN)
+│   ├── ARCHITECTURE_RU.md      # техническая архитектура (RU)
+│   ├── PRD.md                  # продуктовые требования (EN)
+│   └── PRD_RU.md               # продуктовые требования (RU)
 ├── images/                     # скриншоты UI для README
 ├── Makefile
 ├── README.md
@@ -158,7 +163,7 @@ Lane выполняются параллельно (`app/rag/retrieval_lanes.py`
 
 Трассировка (SSE + `metadata.rag_trace`): снимок `rag_config`, шаг query transform, `retrieval` с `lanes[]` и объединёнными hits, опциональный `rerank`. У каждого чанка — `retrieval_lane` и глава в `section`.
 
-Подробная архитектура: [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md).
+Подробная архитектура: [ARCHITECTURE_RU.md](docs/ARCHITECTURE_RU.md). Продуктовые требования: [PRD_RU.md](docs/PRD_RU.md).
 
 **Требование:** перед использованием RAG нужен построенный индекс (`make etl-ingest`). Без индекса API вернёт `503 rag_index_missing`.
 
