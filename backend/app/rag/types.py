@@ -53,3 +53,4 @@ class RagPipelineResult:
     chunks: list[RetrievedChunk]
     trace: list[RagTraceStep]
     search_queries: list[str] = field(default_factory=list)
+    applicable_decision_trees: list[RetrievedChunk] = field(default_factory=list)
