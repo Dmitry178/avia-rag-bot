@@ -11,6 +11,7 @@ from app.llm.chat import ChatCompletionClient
 from app.llm.embeddings import EmbeddingClient
 from app.llm.kb_static_context import load_kb_static_context
 from app.models.chunk_meta import ChunkMeta
+from app.rag.decision_tree import select_applicable_decision_trees
 from app.rag.generation import build_context_block, build_rag_system_prompt
 from app.rag.methods.registry import resolve_query_transform_method, resolve_rerank_method
 from app.rag.retrieval import VectorRetriever, dedupe_retrieved_chunks
@@ -202,13 +203,27 @@ class RagPipeline:
         else:
             final_chunks = VectorRetriever.trim_candidates(candidates, top_n=top_chunks)
 
+        applicable_decision_trees = select_applicable_decision_trees(lane_results)
         context = build_context_block(final_chunks)
+
+        if applicable_decision_trees:
+            trace.append(
+                RagTraceStep(
+                    step="decision_tree",
+                    duration_ms=0,
+                    data={
+                        "applicable_count": len(applicable_decision_trees),
+                        "hits": RagPipeline._serialize_trace_hits(applicable_decision_trees),
+                    },
+                ),
+            )
 
         return RagPipelineResult(
             context=context,
             chunks=final_chunks,
             trace=trace,
             search_queries=search_queries,
+            applicable_decision_trees=applicable_decision_trees,
         )
 
     def build_generation_prompt(self, *, context: str, reply_language: str | None) -> str:
