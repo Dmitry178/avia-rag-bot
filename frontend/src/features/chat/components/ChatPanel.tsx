@@ -17,11 +17,38 @@ import { useChatDetailQuery, useDeleteMessageMutation, useSendMessageMutation } 
 import { useComposerAutoResize } from "../hooks/useComposerAutoResize";
 import { useComposerDraft } from "../hooks/useComposerDraft";
 import { useComposerFocus } from "../hooks/useComposerFocus";
+import {
+  parseDecisionTreeGuidance,
+  type DecisionTreeGuidance,
+} from "../lib/decisionTreeGuidance";
+
+function DecisionTreeGuidanceBlock({ guidance }: { guidance: DecisionTreeGuidance }) {
+  const { t } = useTranslation();
+
+  return (
+    <section className="decision-tree-guidance" aria-label={t("chat.decisionTree.title")}>
+      <header className="decision-tree-guidance__header">
+        <i className="pi pi-sitemap decision-tree-guidance__icon" aria-hidden="true" />
+        <div>
+          <p className="decision-tree-guidance__label">{t("chat.decisionTree.title")}</p>
+          <p className="decision-tree-guidance__meta">
+            {guidance.title}
+            {guidance.section ? ` · ${guidance.section}` : ""}
+          </p>
+        </div>
+      </header>
+      <div className="decision-tree-guidance__content">
+        <ReactMarkdown>{guidance.guidance}</ReactMarkdown>
+      </div>
+    </section>
+  );
+}
 
 function MessageBubble({
   messageId,
   role,
   content,
+  metadata,
   onDelete,
   isDeleteDisabled,
   hoverResetKey,
@@ -29,12 +56,15 @@ function MessageBubble({
   messageId: number;
   role: "user" | "assistant" | "system";
   content: string;
+  metadata?: Record<string, unknown>;
   onDelete: (messageId: number) => void;
   isDeleteDisabled: boolean;
   hoverResetKey: unknown;
 }) {
   const { t } = useTranslation();
   const { ref, hovered, hoverProps } = useElementHover([hoverResetKey]);
+  const decisionTreeGuidance =
+    role === "assistant" && metadata ? parseDecisionTreeGuidance(metadata) : null;
   const label =
     role === "user"
       ? t("roles.user")
@@ -87,6 +117,7 @@ function MessageBubble({
         </div>
       ) : null}
       <p className="chat-message__role">{label}</p>
+      {decisionTreeGuidance ? <DecisionTreeGuidanceBlock guidance={decisionTreeGuidance} /> : null}
       <div className="chat-message__content">
         {role === "assistant" ? <ReactMarkdown>{content}</ReactMarkdown> : <p>{content}</p>}
       </div>
@@ -230,6 +261,7 @@ export function ChatPanel() {
                 messageId={message.id}
                 role={message.role}
                 content={message.content}
+                metadata={message.metadata}
                 hoverResetKey={chatMode}
                 onDelete={(messageId) => {
                   openDeleteConfirm({
