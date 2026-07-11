@@ -1,7 +1,11 @@
 import { useTranslation } from "@/shared/i18n";
 import type { TraceEvent } from "@/shared/api/types";
-import type { RagMessageTrace, TraceHit } from "../lib/ragTrace";
-import { parseTraceHits } from "../lib/ragTrace";
+import type { RagConfigSnapshot, RagMessageTrace, RetrievalLaneTrace, TraceHit } from "../lib/ragTrace";
+import {
+  parseRetrievalLanes,
+  parseTraceHits,
+  retrievalLanesFromTrace,
+} from "../lib/ragTrace";
 
 const TRACE_STEP_KEYS = new Set([
   "retrieval",
@@ -13,7 +17,10 @@ const TRACE_STEP_KEYS = new Set([
   "query_rewriting",
   "faq_match",
   "guard",
+  "rag_config",
 ]);
+
+const LANE_KEYS = new Set(["sop", "faq", "decision_tree", "scenario"]);
 
 function formatSimilarity(score: number): string {
   return score.toFixed(4);
@@ -27,11 +34,23 @@ function stepLabel(t: (key: string) => string, step: string): string {
   return step;
 }
 
+function laneLabel(t: (key: string) => string, lane: string): string {
+  if (LANE_KEYS.has(lane)) {
+    return t(`trace.lanes.${lane}`);
+  }
+
+  return lane;
+}
+
 function chunkDisplaySimilarity(chunk: RagMessageTrace["chunks"][number]): number | null {
   return chunk.similarity ?? chunk.score;
 }
 
 function isHitTraceStep(event: TraceEvent): boolean {
+  if (event.step === "retrieval") {
+    return parseRetrievalLanes(event.data.lanes).length > 0 || parseTraceHits(event.data.hits).length > 0;
+  }
+
   return parseTraceHits(event.data.hits).length > 0;
 }
 
@@ -64,6 +83,11 @@ function TraceHitRow({
           <div className="trace-hit__content">
             <span className="trace-hit__title">{hit.title || `#${hit.id}`}</span>
             {hit.section ? <span className="trace-hit__section">{hit.section}</span> : null}
+            {hit.lane ? (
+              <span className="trace-hit__lane" title={hit.lane_source || undefined}>
+                {laneLabel(t, hit.lane)}
+              </span>
+            ) : null}
             <span className="trace-hit__id">#{hit.id}</span>
           </div>
         </summary>
@@ -78,6 +102,45 @@ function TraceHitRow({
   );
 }
 
+function RetrievalLaneSection({
+  lane,
+  chunkPreviewById,
+  t,
+}: {
+  lane: RetrievalLaneTrace;
+  chunkPreviewById: Map<number, string>;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  return (
+    <details className="trace-lane">
+      <summary className="trace-lane__summary">
+        <span className="trace-lane__title">{laneLabel(t, lane.lane)}</span>
+        <span className="trace-lane__count">
+          {t("trace.laneHitCount", { count: lane.hit_count, topK: lane.top_k })}
+        </span>
+      </summary>
+
+      <p className="trace-lane__source">{lane.source_label}</p>
+
+      {lane.hits.length === 0 ? (
+        <p className="trace-empty trace-empty--compact">{t("trace.laneNoHits")}</p>
+      ) : (
+        <ol className="trace-hit-list">
+          {lane.hits.map((hit, index) => (
+            <TraceHitRow
+              key={`${lane.lane}-${hit.id}-${index}`}
+              hit={hit}
+              index={index}
+              chunkPreview={chunkPreviewById.get(hit.id) ?? ""}
+              t={t}
+            />
+          ))}
+        </ol>
+      )}
+    </details>
+  );
+}
+
 function TraceStepHits({
   step,
   data,
@@ -89,9 +152,10 @@ function TraceStepHits({
   chunkPreviewById: Map<number, string>;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
-  const hits = step === "retrieval" || step === "rerank" ? parseTraceHits(data.hits) : [];
+  const lanes = step === "retrieval" ? parseRetrievalLanes(data.lanes) : [];
+  const hits = step === "rerank" ? parseTraceHits(data.hits) : [];
 
-  if (hits.length === 0) {
+  if (lanes.length === 0 && hits.length === 0) {
     return null;
   }
 
@@ -109,17 +173,32 @@ function TraceStepHits({
         </p>
       ) : null}
 
-      <ol className="trace-hit-list">
-        {hits.map((hit, index) => (
-          <TraceHitRow
-            key={`${hit.id}-${index}`}
-            hit={hit}
-            index={index}
-            chunkPreview={chunkPreviewById.get(hit.id) ?? ""}
-            t={t}
-          />
-        ))}
-      </ol>
+      {lanes.length > 0 ? (
+        <div className="trace-lane-list">
+          {lanes.map((lane) => (
+            <RetrievalLaneSection
+              key={lane.lane}
+              lane={lane}
+              chunkPreviewById={chunkPreviewById}
+              t={t}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {hits.length > 0 ? (
+        <ol className="trace-hit-list">
+          {hits.map((hit, index) => (
+            <TraceHitRow
+              key={`${hit.id}-${index}`}
+              hit={hit}
+              index={index}
+              chunkPreview={chunkPreviewById.get(hit.id) ?? ""}
+              t={t}
+            />
+          ))}
+        </ol>
+      ) : null}
     </div>
   );
 }
@@ -133,8 +212,15 @@ function CollapsibleTraceStep({
   chunkPreviewById: Map<number, string>;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
+  if (event.step === "rag_config") {
+    return null;
+  }
+
+  const lanes = event.step === "retrieval" ? parseRetrievalLanes(event.data.lanes) : [];
   const hits = parseTraceHits(event.data.hits);
-  if (hits.length === 0) {
+  const itemCount = lanes.length > 0 ? lanes.reduce((sum, lane) => sum + lane.hits.length, 0) : hits.length;
+
+  if (itemCount === 0) {
     return null;
   }
 
@@ -143,7 +229,7 @@ function CollapsibleTraceStep({
       <summary className="trace-step__title">
         {stepLabel(t, event.step)}
         {event.duration_ms ? ` · ${t("trace.durationMs", { ms: event.duration_ms })}` : ""}
-        <span className="trace-step__count">{hits.length}</span>
+        <span className="trace-step__count">{itemCount}</span>
       </summary>
       <TraceStepHits
         step={event.step}
@@ -155,6 +241,52 @@ function CollapsibleTraceStep({
   );
 }
 
+function RagConfigUsedSection({
+  config,
+  t,
+}: {
+  config: RagConfigSnapshot;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const enabledMethods = [
+    config.use_hyde ? "hyde" : null,
+    config.use_multi_query ? "multi_query" : null,
+    config.use_query_rewriting ? "query_rewriting" : null,
+    config.use_rerank ? "rerank" : null,
+  ].filter((method): method is string => method !== null);
+
+  return (
+    <section className="rag-trace__section rag-trace__section--config">
+      <h4 className="rag-trace__section-title">{t("trace.appliedRagConfig")}</h4>
+      <dl className="rag-trace__config">
+        <div className="rag-trace__config-row">
+          <dt>{t("trace.appliedMethods")}</dt>
+          <dd>
+            {enabledMethods.length > 0
+              ? enabledMethods.map((method) => t(`trace.steps.${method}`)).join(", ")
+              : t("trace.appliedMethodsDirect")}
+          </dd>
+        </div>
+        <div className="rag-trace__config-row">
+          <dt>{t("rag.topChunks")}</dt>
+          <dd>{config.top_chunks ?? 5}</dd>
+        </div>
+        <div className="rag-trace__config-row">
+          <dt>{t("rag.useHistory")}</dt>
+          <dd>
+            {config.use_history == null
+              ? t("trace.appliedHistoryUnknown")
+              : config.use_history
+                ? t("common.yes")
+                : t("common.no")}
+          </dd>
+        </div>
+      </dl>
+      <p className="rag-trace__hint">{t("trace.staticChaptersHint")}</p>
+    </section>
+  );
+}
+
 function buildChunkPreviewById(trace: RagMessageTrace): Map<number, string> {
   const previewById = new Map<number, string>();
 
@@ -162,6 +294,14 @@ function buildChunkPreviewById(trace: RagMessageTrace): Map<number, string> {
     for (const hit of parseTraceHits(step.data.hits)) {
       if (hit.content_preview) {
         previewById.set(hit.id, hit.content_preview);
+      }
+    }
+
+    for (const lane of parseRetrievalLanes(step.data.lanes)) {
+      for (const hit of lane.hits) {
+        if (hit.content_preview) {
+          previewById.set(hit.id, hit.content_preview);
+        }
       }
     }
   }
@@ -183,7 +323,10 @@ export function RagTraceStream({ trace }: { trace: RagMessageTrace | null }) {
   }
 
   const chunkPreviewById = buildChunkPreviewById(trace);
-  const hitSteps = trace.traceSteps.filter(isHitTraceStep);
+  const retrievalLanes = retrievalLanesFromTrace(trace.traceSteps);
+  const hitSteps = trace.traceSteps
+    .filter(isHitTraceStep)
+    .filter((event) => !(event.step === "retrieval" && retrievalLanes.length > 0));
 
   return (
     <div className="rag-trace">
@@ -191,6 +334,8 @@ export function RagTraceStream({ trace }: { trace: RagMessageTrace | null }) {
         <span className="rag-trace__label">{t("trace.lastAnswer")}</span>
         <span className="rag-trace__meta">#{trace.messageId}</span>
       </header>
+
+      {trace.ragConfig ? <RagConfigUsedSection config={trace.ragConfig} t={t} /> : null}
 
       {trace.searchQueries.length > 0 ? (
         <section className="rag-trace__section">
@@ -205,8 +350,25 @@ export function RagTraceStream({ trace }: { trace: RagMessageTrace | null }) {
         </section>
       ) : null}
 
+      {retrievalLanes.length > 0 ? (
+        <section className="rag-trace__section">
+          <h4 className="rag-trace__section-title">{t("trace.retrievalLanes")}</h4>
+          <div className="trace-lane-list">
+            {retrievalLanes.map((lane) => (
+              <RetrievalLaneSection
+                key={lane.lane}
+                lane={lane}
+                chunkPreviewById={chunkPreviewById}
+                t={t}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {hitSteps.length > 0 ? (
         <section className="rag-trace__section rag-trace__section--steps">
+          <h4 className="rag-trace__section-title">{t("trace.pipelineSteps")}</h4>
           {hitSteps.map((event, index) => (
             <CollapsibleTraceStep
               key={`${event.step}-${index}`}
@@ -238,6 +400,9 @@ export function RagTraceStream({ trace }: { trace: RagMessageTrace | null }) {
                       {t("trace.chunkCitation", { index: chunk.citation_index })}
                     </span>
                     <span className="rag-chunk__id">#{chunk.id}</span>
+                    {chunk.retrieval_lane ? (
+                      <span className="rag-chunk__lane">{laneLabel(t, chunk.retrieval_lane)}</span>
+                    ) : null}
                     {chunk.content_type ? (
                       <span className="rag-chunk__type">{chunk.content_type}</span>
                     ) : null}
