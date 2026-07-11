@@ -56,6 +56,58 @@ async def test_create_and_list_chats(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_chat_returns_utc_timestamps(client: AsyncClient) -> None:
+    """
+    Chat timestamps from SQLite must serialize with an explicit UTC offset.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Timestamp chat"})
+    assert create.status_code == 200
+
+    created_at = create.json()["created_at"]
+    updated_at = create.json()["updated_at"]
+
+    assert created_at.endswith("+00:00") or created_at.endswith("Z")
+    assert updated_at.endswith("+00:00") or updated_at.endswith("Z")
+
+
+@pytest.mark.asyncio
+async def test_update_chat_settings_skips_noop_timestamp_bump(client: AsyncClient) -> None:
+    """
+    Saving unchanged settings must not bump updated_at.
+    """
+
+    create = await client.post(
+        "/api/chats",
+        json={
+            "title": "Settings chat",
+            "chat_type": "llm",
+            "llm_config": {
+                "use_custom_prompt": False,
+                "custom_prompt": None,
+            },
+            "use_history": True,
+        },
+    )
+    assert create.status_code == 200
+    chat_id = create.json()["id"]
+    updated_at = create.json()["updated_at"]
+
+    patch = await client.patch(
+        f"/api/chats/{chat_id}",
+        json={
+            "llm_config": {
+                "use_custom_prompt": False,
+                "custom_prompt": None,
+            },
+            "use_history": True,
+        },
+    )
+    assert patch.status_code == 200
+    assert patch.json()["updated_at"] == updated_at
+
+
+@pytest.mark.asyncio
 async def test_create_chat_includes_message_count_and_rag_fields(client: AsyncClient) -> None:
     """
     New chat should expose message_count and nullable RAG settings.
