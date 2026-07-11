@@ -1,4 +1,4 @@
-import type { TraceEvent } from "@/shared/api/types";
+import type { RagConfig, TraceEvent } from "@/shared/api/types";
 
 export interface RetrievedChunkInfo {
   citation_index: number;
@@ -6,6 +6,7 @@ export interface RetrievedChunkInfo {
   section: string;
   title: string;
   content_type: string;
+  retrieval_lane: string;
   score: number | null;
   similarity: number | null;
   source_query: string | null;
@@ -18,8 +19,23 @@ export interface TraceHit {
   id: number;
   title: string;
   section: string;
+  content_type: string;
+  lane: string;
+  lane_source: string;
   similarity: number;
   content_preview: string;
+}
+
+export interface RetrievalLaneTrace {
+  lane: string;
+  source_label: string;
+  top_k: number;
+  hit_count: number;
+  hits: TraceHit[];
+}
+
+export interface RagConfigSnapshot extends RagConfig {
+  use_history?: boolean | null;
 }
 
 export interface RagMessageTrace {
@@ -27,6 +43,7 @@ export interface RagMessageTrace {
   searchQueries: string[];
   traceSteps: TraceEvent[];
   chunks: RetrievedChunkInfo[];
+  ragConfig: RagConfigSnapshot | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,10 +86,30 @@ export function parseTraceHits(value: unknown): TraceHit[] {
       id: Number(hit.id),
       title: String(hit.title ?? ""),
       section: String(hit.section ?? ""),
+      content_type: String(hit.content_type ?? ""),
+      lane: String(hit.lane ?? hit.retrieval_lane ?? hit.content_type ?? ""),
+      lane_source: String(hit.lane_source ?? ""),
       similarity: parseScore(hit.similarity) ?? 0,
       content_preview: String(hit.content_preview ?? ""),
     }))
     .filter((hit) => Number.isFinite(hit.id));
+}
+
+export function parseRetrievalLanes(value: unknown): RetrievalLaneTrace[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isRecord)
+    .map((lane) => ({
+      lane: String(lane.lane ?? ""),
+      source_label: String(lane.source_label ?? ""),
+      top_k: Number(lane.top_k ?? 0),
+      hit_count: Number(lane.hit_count ?? 0),
+      hits: parseTraceHits(lane.hits),
+    }))
+    .filter((lane) => lane.lane.length > 0);
 }
 
 function similarityByIdFromTrace(traceSteps: TraceEvent[]): Map<number, number> {
@@ -85,6 +122,12 @@ function similarityByIdFromTrace(traceSteps: TraceEvent[]): Map<number, number> 
 
     for (const hit of parseTraceHits(step.data.hits)) {
       scores.set(hit.id, hit.similarity);
+    }
+
+    for (const lane of parseRetrievalLanes(step.data.lanes)) {
+      for (const hit of lane.hits) {
+        scores.set(hit.id, hit.similarity);
+      }
     }
   }
 
@@ -104,6 +147,7 @@ function parseRetrievedChunks(value: unknown): RetrievedChunkInfo[] {
       section: String(chunk.section ?? ""),
       title: String(chunk.title ?? ""),
       content_type: String(chunk.content_type ?? ""),
+      retrieval_lane: String(chunk.retrieval_lane ?? chunk.content_type ?? ""),
       score: parseScore(chunk.score),
       similarity: parseScore(chunk.similarity) ?? parseScore(chunk.score),
       source_query: chunk.source_query == null ? null : String(chunk.source_query),
@@ -160,6 +204,7 @@ function buildFallbackChunks(metadata: Record<string, unknown>, traceSteps: Trac
     section: "",
     title: "",
     content_type: "",
+    retrieval_lane: "",
     score: similarityById.get(id) ?? null,
     similarity: similarityById.get(id) ?? null,
     source_query: null,
@@ -177,6 +222,31 @@ function parseSearchQueries(value: unknown): string[] {
   return value.map(String).filter((query) => query.length > 0);
 }
 
+function parseRagConfigSnapshot(metadata: Record<string, unknown>): RagConfigSnapshot | null {
+  const traceSteps = parseTraceSteps(metadata.rag_trace);
+  const traceConfigStep = traceSteps.find((step) => step.step === "rag_config");
+
+  const fromTrace = traceConfigStep && isRecord(traceConfigStep.data) ? traceConfigStep.data : null;
+  const fromMetadata = isRecord(metadata.rag_config) ? metadata.rag_config : null;
+  const source = fromTrace ?? fromMetadata;
+
+  if (!source) {
+    return null;
+  }
+
+  return {
+    use_hyde: source.use_hyde === true,
+    use_multi_query: source.use_multi_query === true,
+    use_query_rewriting: source.use_query_rewriting === true,
+    use_rerank: source.use_rerank === true,
+    top_chunks: Number(source.top_chunks ?? 5),
+    use_history:
+      metadata.use_history === undefined || metadata.use_history === null
+        ? null
+        : Boolean(metadata.use_history),
+  };
+}
+
 export function extractRagTraceFromMetadata(metadata: Record<string, unknown>): Omit<
   RagMessageTrace,
   "messageId"
@@ -184,6 +254,7 @@ export function extractRagTraceFromMetadata(metadata: Record<string, unknown>): 
   const traceSteps = parseTraceSteps(metadata.rag_trace);
   const searchQueries = parseSearchQueries(metadata.search_queries);
   let chunks = parseRetrievedChunks(metadata.retrieved_chunks);
+  const ragConfig = parseRagConfigSnapshot(metadata);
 
   if (chunks.length === 0) {
     chunks = buildFallbackChunks(metadata, traceSteps);
@@ -205,7 +276,7 @@ export function extractRagTraceFromMetadata(metadata: Record<string, unknown>): 
     return null;
   }
 
-  return { searchQueries, traceSteps, chunks };
+  return { searchQueries, traceSteps, chunks, ragConfig };
 }
 
 export function findLatestRagTrace(
@@ -230,4 +301,13 @@ export function findLatestRagTrace(
   }
 
   return null;
+}
+
+export function retrievalLanesFromTrace(traceSteps: TraceEvent[]): RetrievalLaneTrace[] {
+  const retrievalStep = traceSteps.find((step) => step.step === "retrieval");
+  if (!retrievalStep || !isRecord(retrievalStep.data)) {
+    return [];
+  }
+
+  return parseRetrievalLanes(retrievalStep.data.lanes);
 }
