@@ -112,7 +112,7 @@ export function ChatSidebar() {
                     {chat.title}
                   </span>
                 </span>
-                <span className="chat-list__meta">{formatDateTime(chat.updated_at, locale)}</span>
+                <span className="chat-list__meta">{formatDateTime(chat.created_at, locale)}</span>
               </button>
               <button
                 type="button"
