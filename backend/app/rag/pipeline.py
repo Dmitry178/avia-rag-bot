@@ -6,7 +6,6 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.core.db_manager import DBManager
-from app.core.rag_constants import RETRIEVAL_TOP_K
 from app.exceptions.service import ServiceError
 from app.llm.chat import ChatCompletionClient
 from app.llm.embeddings import EmbeddingClient
@@ -14,7 +13,8 @@ from app.llm.kb_static_context import load_kb_static_context
 from app.models.chunk_meta import ChunkMeta
 from app.rag.generation import build_context_block, build_rag_system_prompt
 from app.rag.methods.registry import resolve_query_transform_method, resolve_rerank_method
-from app.rag.retrieval import VectorRetriever
+from app.rag.retrieval import VectorRetriever, dedupe_retrieved_chunks
+from app.rag.retrieval_lanes import LANE_BY_ID, RETRIEVAL_LANES
 from app.rag.types import RagPipelineResult, RagQueryContext, RagTraceStep, RetrievedChunk
 from app.schemas.rag import RagConfig
 
@@ -45,25 +45,56 @@ class RagPipeline:
         return item.score
 
     @staticmethod
-    def _serialize_trace_hits(items: list[RetrievedChunk]) -> list[dict]:
-        hits: list[dict] = []
+    def _serialize_trace_hit(item: RetrievedChunk) -> dict:
+        chunk_id = item.chunk.id
+        if chunk_id is None:
+            return {}
 
-        for item in items:
-            chunk_id = item.chunk.id
-            if chunk_id is None:
-                continue
+        lane = item.retrieval_lane or item.chunk.content_type
+        lane_meta = LANE_BY_ID.get(lane)
 
-            hits.append(
+        return {
+            "id": chunk_id,
+            "title": item.chunk.title or "",
+            "section": item.chunk.section or "",
+            "content_type": item.chunk.content_type,
+            "lane": lane,
+            "lane_source": lane_meta.source_label if lane_meta is not None else "",
+            "similarity": round(RagPipeline._chunk_similarity(item), 4),
+            "content_preview": item.chunk.content[:600],
+        }
+
+    @classmethod
+    def _serialize_trace_hits(cls, items: list[RetrievedChunk]) -> list[dict]:
+        return [hit for item in items if (hit := cls._serialize_trace_hit(item))]
+
+    @staticmethod
+    def _serialize_lane_results(lane_results: dict[str, list[RetrievedChunk]]) -> list[dict]:
+        lanes: list[dict] = []
+
+        for lane in RETRIEVAL_LANES:
+            hits = lane_results.get(lane.id, [])
+            lanes.append(
                 {
-                    "id": chunk_id,
-                    "title": item.chunk.title or "",
-                    "section": item.chunk.section or "",
-                    "similarity": round(RagPipeline._chunk_similarity(item), 4),
-                    "content_preview": item.chunk.content[:600],
+                    "lane": lane.id,
+                    "source_label": lane.source_label,
+                    "top_k": lane.top_k,
+                    "hit_count": len(hits),
+                    "hits": RagPipeline._serialize_trace_hits(hits),
                 },
             )
 
-        return hits
+        return lanes
+
+    @staticmethod
+    def _serialize_rag_config(rag_config: RagConfig) -> dict:
+        return {
+            "use_hyde": bool(rag_config.use_hyde),
+            "use_multi_query": bool(rag_config.use_multi_query),
+            "use_query_rewriting": bool(rag_config.use_query_rewriting),
+            "use_rerank": bool(rag_config.use_rerank),
+            "top_chunks": rag_config.top_chunks,
+        }
 
     @staticmethod
     def _normalized_config(rag_config: RagConfig | None) -> RagConfig:
@@ -87,6 +118,14 @@ class RagPipeline:
         rag_config = self._normalized_config(ctx.rag_config)
         top_chunks = rag_config.top_chunks
         index_path = self._index_path()
+
+        trace.append(
+            RagTraceStep(
+                step="rag_config",
+                duration_ms=0,
+                data=RagPipeline._serialize_rag_config(rag_config),
+            ),
+        )
 
         if not index_path.is_file():
             raise ServiceError(
@@ -129,7 +168,10 @@ class RagPipeline:
             )
 
         retrieval_started = time.perf_counter()
-        candidates = await retriever.search_many(search_queries, top_k=RETRIEVAL_TOP_K)
+        lane_results = await retriever.search_lanes(search_queries)
+        lane_hits = [hit for hits in lane_results.values() for hit in hits]
+        candidates = dedupe_retrieved_chunks(lane_hits)
+
         trace.append(
             RagTraceStep(
                 step="retrieval",
@@ -137,6 +179,7 @@ class RagPipeline:
                 data={
                     "query_count": len(search_queries),
                     "candidate_count": len(candidates),
+                    "lanes": RagPipeline._serialize_lane_results(lane_results),
                     "hits": RagPipeline._serialize_trace_hits(candidates),
                 },
             ),
