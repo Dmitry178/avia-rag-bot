@@ -14,7 +14,7 @@ Monorepo: **backend** (FastAPI, индексация, RAG, API чатов) + **f
 - **Чаты** — создание, выбор, закрытие и удаление диалогов; история сообщений и настройки хранятся на backend.
 - **Два режима работы** (переключаются в шапке UI):
   - **LLM** — прямой диалог с языковой моделью без поиска по базе знаний. Панель **Параметры**: история диалога, свой системный промпт (свободный режим без guard).
-  - **RAG** — ответы с опорой на проиндексированные документы. Панель **Трассировка**: настройки retrieval и шаги пайплайна.
+  - **RAG** — ответы с опорой на проиндексированные документы. Панель **Трассировка**: настройки RAG, снимок настроек для ответа, hits по корпусам (lane) и использованные чанки.
 - **Настройки на уровне чата** — RAG/LLM-параметры сохраняются в чате и снимком попадают в metadata каждого сообщения.
 - **Тема оформления** — светлая, тёмная или системная (следует настройкам ОС).
 - **Язык интерфейса** — русский и английский; выбор сохраняется между сессиями.
@@ -88,7 +88,7 @@ avia-bot/
 |---------|------------|
 | `api/routers/` | HTTP-эндпоинты health, индексации и чатов |
 | `services/` | Индексация базы знаний и логика чатов |
-| `rag/` | Модульный RAG: преобразование запроса → FAISS → rerank → контекст для LLM |
+| `rag/` | Multi-lane RAG: query transform → параллельный поиск по корпусам → rerank → контекст для LLM |
 | `llm/` | Вызов LLM, эмбеддинги, системные промпты, фильтрация запросов |
 | `core/` | Конфигурация, логирование, FAISS-индекс, SSE-события |
 
@@ -102,7 +102,7 @@ SPA на React + Vite. В dev-режиме запросы к `/api` прокси
 | `features/chat/` | Диалог, отправка сообщений, markdown-ответы |
 | `features/rag/` | Панель настроек RAG (HyDE, Multi-Query, Query Rewriting, Rerank, история) |
 | `features/llm/` | Панель параметров LLM (история, свой системный промпт) |
-| `features/trace/` | Трассировка RAG-пайплайна (режим RAG) |
+| `features/trace/` | Трассировка RAG: применённые настройки, запросы, hits по корпусу (lane), чанки в ответе |
 | `shared/api/` | HTTP-клиент для `/api/chats/*` |
 
 ## Режимы LLM и RAG
@@ -112,7 +112,7 @@ SPA на React + Vite. В dev-режиме запросы к `/api` прокси
 | Режим | Описание | Правая панель |
 |-------|----------|---------------|
 | **LLM** | Свободный диалог с LLM. База знаний не используется. Guard и авиационный system prompt — по умолчанию; при включённом **своём системном промпте** guard отключается. | **Параметры** |
-| **RAG** | Поиск по FAISS, опциональные методы retrieval, ответ с контекстом из базы знаний. | **Трассировка** (настройки + шаги пайплайна) |
+| **RAG** | Multi-lane поиск по FAISS с разделением по корпусам, опциональные методы retrieval, ответ с контекстом из базы знаний. | **Трассировка** (настройки + trace по ответу) |
 
 При отправке сообщения frontend передаёт на backend актуальные настройки (`rag_config` / `llm_config`, `use_history`). Backend сохраняет их в чате и в `metadata` user/assistant сообщений.
 
@@ -121,7 +121,7 @@ SPA на React + Vite. В dev-режиме запросы к `/api` прокси
 | Параметр | Группа | Описание |
 |----------|--------|----------|
 | **HyDE** | Query transform (один из трёх) | LLM генерирует гипотетический ответ; поиск по его embedding |
-| **Multi-Query** | Query transform | Несколько вариантов запроса → поиск по каждому → fusion (RRF) |
+| **Multi-Query** | Query transform | Несколько вариантов запроса → поиск в каждом корпусе → RRF **внутри каждого lane** |
 | **Query Rewriting** | Query transform | Переписывание запроса с учётом истории диалога |
 | **Rerank** | Независимо | LLM-реранжирование top-кандидатов после vector search |
 | **Использовать историю** | Общее | Влияет на LLM-контекст и query rewriting |
@@ -141,14 +141,24 @@ HyDE, Multi-Query и Query Rewriting **взаимоисключающие** (в 
 
 ```
 [HyDE | Multi-Query | Query Rewriting | прямой запрос]
-        → embed → FAISS search (top-30)
-        → [optional Rerank → top-5]
-        → контекст в system prompt → LLM → ответ
+        → параллельные lane (фильтр по content_type):
+            SOP гл.01–12 (8) | FAQ (5) | деревья решений (3) | сценарии (3)
+        → dedupe → [опциональный Rerank → top_chunks]
+        → статические гл.00 + гл.13 в system prompt + контекст из retrieval → LLM
 ```
 
-Классы методов: `backend/app/rag/methods/` (`HyDEQueryMethod`, `MultiQueryMethod`, `QueryRewritingMethod`, `LlmRerankMethod`). Оркестратор: `RagPipeline` в `rag/pipeline.py`.
+| Lane | Источник | Квота |
+|------|----------|-------|
+| `sop` | Главы 01–12 | 8 |
+| `faq` | Глава 14 + FAQ по главам | 5 |
+| `decision_tree` | Глава 16 | 3 |
+| `scenario` | Глава 17 | 3 |
 
-Шаги трассировки публикуются через SSE (`GET /api/chats/events?client_id=…`, event `trace`) и сохраняются в `metadata.rag_trace` ответа ассистента.
+Lane выполняются параллельно (`app/rag/retrieval_lanes.py`, `VectorRetriever.search_lanes()`). Один общий FAISS-индекс; каждый lane фильтрует по `content_type`. Классы методов: `backend/app/rag/methods/`. Оркестратор: `RagPipeline` в `rag/pipeline.py`.
+
+Трассировка (SSE + `metadata.rag_trace`): снимок `rag_config`, шаг query transform, `retrieval` с `lanes[]` и объединёнными hits, опциональный `rerank`. У каждого чанка — `retrieval_lane` и глава в `section`.
+
+Подробная архитектура: [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md).
 
 **Требование:** перед использованием RAG нужен построенный индекс (`make etl-ingest`). Без индекса API вернёт `503 rag_index_missing`.
 
@@ -250,8 +260,6 @@ API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 
 Глава **15** парсится, но **не индексируется**. Терминологические вопросы на данном этапе закрываются через SOP и FAQ. Подключение глоссария (embedding или keyword lookup) — в следующих итерациях.
 
-> **Примечание:** стратегия RAG-поиска (multi-lane retrieval по типам контента) запланирована, но пока не описана в документации.
-
 ## API чатов (кратко)
 
 | Метод | Путь | Описание |
@@ -316,6 +324,6 @@ make docker-build     # только пересобрать образы
 ## Текущий статус
 
 **Готово:**
-- Backend: ETL, FAISS, модульный RAG-пайплайн, CRUD чатов, LLM/RAG ответы, настройки в чате и metadata, SSE trace events
-- Frontend: layout (чаты · диалог · трассировка/параметры), настройки RAG/LLM, отправка настроек с сообщением, i18n, theme
+- Backend: ETL (инкрементальный ingest, resume по checkpoint), FAISS, multi-lane RAG, статические главы 00/13 в system prompt, CRUD чатов, LLM/RAG ответы, SSE trace
+- Frontend: layout (чаты · диалог · трассировка/параметры), настройки RAG/LLM, просмотр trace по lane, i18n, theme
 - Docker: production-сборка frontend (nginx) + backend (uvicorn), `docker compose`

@@ -14,7 +14,7 @@ Monorepo: **backend** (FastAPI, indexing, RAG, chat API) + **frontend** (React S
 - **Chats** — create, select, close, and delete conversations; message history and settings are stored on the backend.
 - **Two operating modes** (switched in the header):
   - **LLM** — direct dialogue with the language model, no knowledge base search. **Parameters** panel: chat history, custom system prompt (free mode without guards).
-  - **RAG** — answers grounded in indexed documents. **Trace** panel: retrieval settings and pipeline steps.
+  - **RAG** — answers grounded in indexed documents. **Trace** panel: RAG settings, applied config per answer, multi-corpus retrieval hits, and chunks used in generation.
 - **Per-chat settings** — RAG/LLM parameters are saved on the chat and snapshotted in each message’s metadata.
 - **Theme** — light, dark, or system (follows OS settings).
 - **UI language** — Russian and English; the choice persists across sessions.
@@ -88,7 +88,7 @@ External integrations (LLM, FAISS, SSE) live in `llm/`, `core/`, and `rag/`.
 |-----------|---------|
 | `api/routers/` | HTTP endpoints for health, indexing, and chats |
 | `services/` | Knowledge base indexing and chat logic |
-| `rag/` | Modular RAG: query transform → FAISS → rerank → LLM context |
+| `rag/` | Multi-lane RAG: query transform → parallel corpus search → rerank → LLM context |
 | `llm/` | LLM calls, embeddings, system prompts, inbound message filtering |
 | `core/` | Configuration, logging, FAISS index, SSE events |
 
@@ -102,7 +102,7 @@ React + Vite SPA. In dev mode, requests to `/api` are proxied to the backend (`h
 | `features/chat/` | Dialog, send messages, markdown replies |
 | `features/rag/` | RAG settings panel (HyDE, Multi-Query, Query Rewriting, Rerank, history) |
 | `features/llm/` | LLM parameters panel (history, custom system prompt) |
-| `features/trace/` | RAG pipeline trace (RAG mode) |
+| `features/trace/` | RAG trace: applied settings, search queries, hits per corpus (lane), used chunks |
 | `shared/api/` | HTTP client for `/api/chats/*` |
 
 ## LLM and RAG modes
@@ -112,7 +112,7 @@ The header switch sets the **UI mode** and chat type. Chat lists are separate pe
 | Mode | Description | Right panel |
 |------|-------------|-------------|
 | **LLM** | Free-form LLM dialogue. Knowledge base is not used. Guards and aviation system prompt apply by default; **custom system prompt** disables guards. | **Parameters** |
-| **RAG** | FAISS retrieval, optional retrieval methods, answer with knowledge-base context. | **Trace** (settings + pipeline steps) |
+| **RAG** | Multi-lane FAISS retrieval by corpus, optional retrieval methods, answer with knowledge-base context. | **Trace** (settings + per-answer trace) |
 
 On send, the frontend passes current settings (`rag_config` / `llm_config`, `use_history`). The backend stores them on the chat and in user/assistant message metadata.
 
@@ -121,7 +121,7 @@ On send, the frontend passes current settings (`rag_config` / `llm_config`, `use
 | Setting | Group | Description |
 |---------|-------|-------------|
 | **HyDE** | Query transform (pick one) | LLM generates a hypothetical answer; search by its embedding |
-| **Multi-Query** | Query transform | Several query variants → search each → fusion (RRF) |
+| **Multi-Query** | Query transform | Several query variants → search each corpus → RRF fusion **within each lane** |
 | **Query Rewriting** | Query transform | Rewrite query using conversation history |
 | **Rerank** | Independent | LLM reranking of top candidates after vector search |
 | **Use chat history** | Shared | Affects LLM context and query rewriting |
@@ -141,14 +141,24 @@ If no query transform is selected — direct vector search on the user question.
 
 ```
 [HyDE | Multi-Query | Query Rewriting | direct query]
-        → embed → FAISS search (top-30)
-        → [optional Rerank → top-5]
-        → context in system prompt → LLM → answer
+        → parallel lanes (filter by content_type):
+            SOP ch.01–12 (8) | FAQ (5) | decision trees (3) | scenarios (3)
+        → dedupe → [optional Rerank → top_chunks]
+        → static ch.00 + ch.13 in system prompt + retrieved context → LLM
 ```
 
-Method classes: `backend/app/rag/methods/` (`HyDEQueryMethod`, `MultiQueryMethod`, `QueryRewritingMethod`, `LlmRerankMethod`). Orchestrator: `RagPipeline` in `rag/pipeline.py`.
+| Lane | Source | Quota |
+|------|--------|-------|
+| `sop` | Chapters 01–12 | 8 |
+| `faq` | Chapter 14 + per-chapter FAQ | 5 |
+| `decision_tree` | Chapter 16 | 3 |
+| `scenario` | Chapter 17 | 3 |
 
-Trace steps are published via SSE (`GET /api/chats/events?client_id=…`, event `trace`) and stored in `metadata.rag_trace` on the assistant message.
+Lanes run in parallel (`app/rag/retrieval_lanes.py`, `VectorRetriever.search_lanes()`). One shared FAISS index; each lane filters by `content_type`. Method classes: `backend/app/rag/methods/`. Orchestrator: `RagPipeline` in `rag/pipeline.py`.
+
+Trace (SSE + `metadata.rag_trace`): `rag_config` snapshot, query transform step, `retrieval` with `lanes[]` and merged hits, optional `rerank`. Each chunk includes `retrieval_lane` and chapter `section`.
+
+Full architecture: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **Requirement:** build the index before using RAG (`make etl-ingest`). Without it, the API returns `503 rag_index_missing`.
 
@@ -250,8 +260,6 @@ Implementation: `etl/static_sections.py` (extract), `app/llm/kb_static_context.p
 
 Chapter **15** is parsed but **not indexed**. Terminology questions are expected to be covered by SOP and FAQ retrieval for now. Glossary embedding or keyword lookup can be added in a later stage.
 
-> **Note:** RAG retrieval strategy (multi-lane search by content type) is planned but not documented here yet.
-
 ## Chat API (summary)
 
 | Method | Path | Description |
@@ -316,6 +324,6 @@ Override the UI port in `.env`: `FRONTEND_PORT=8080`.
 ## Current status
 
 **Done:**
-- Backend: ETL, FAISS, modular RAG pipeline, chat CRUD, LLM/RAG replies, settings in chat and metadata, SSE trace events
-- Frontend: layout (chats · dialog · trace/parameters), RAG/LLM settings, settings sent with each message, i18n, theme
+- Backend: ETL (incremental ingest, checkpoint resume), FAISS, multi-lane RAG pipeline, static chapters 00/13 in system prompt, chat CRUD, LLM/RAG replies, SSE trace
+- Frontend: layout (chats · dialog · trace/parameters), RAG/LLM settings, multi-lane trace viewer, i18n, theme
 - Docker: production frontend build (nginx) + backend (uvicorn), `docker compose`
