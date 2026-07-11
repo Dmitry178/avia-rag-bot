@@ -618,6 +618,57 @@ textarea {
   margin-bottom: 0;
 }
 
+.decision-tree-guidance {
+  margin: 0 0 1rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--color-warning-border, #d97706);
+  border-radius: 0.5rem;
+  background: var(--color-warning-surface, rgba(217, 119, 6, 0.08));
+}
+
+.decision-tree-guidance__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  margin-bottom: 0.75rem;
+}
+
+.decision-tree-guidance__icon {
+  margin-top: 0.125rem;
+  font-size: 1rem;
+  color: var(--color-warning-text, #d97706);
+}
+
+.decision-tree-guidance__label {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-warning-text, #d97706);
+}
+
+.decision-tree-guidance__meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.decision-tree-guidance__content {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+.decision-tree-guidance__content p {
+  margin: 0 0 0.75rem;
+}
+
+.decision-tree-guidance__content p:last-child,
+.decision-tree-guidance__content ol:last-child,
+.decision-tree-guidance__content ul:last-child {
+  margin-bottom: 0;
+}
+
 .chat-composer {
   display: flex;
   align-items: flex-end;
