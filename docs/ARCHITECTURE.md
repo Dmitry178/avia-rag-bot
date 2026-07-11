@@ -2,7 +2,7 @@
 
 **English** · [Русский](ARCHITECTURE_RU.md)
 
-This document describes how **avia-bot** is structured: components, data flows, layering rules, and deployment topology. For setup, commands, and feature overview, see [README.md](README.md).
+This document describes how **avia-bot** is structured: components, data flows, layering rules, and deployment topology. For setup, commands, and feature overview, see [README.md](../README.md).
 
 ## Purpose
 
@@ -187,7 +187,7 @@ flowchart TB
 
 Entry points: `POST /api/etl/ingest`, `make etl-ingest`, `scripts/run_etl.py`.
 
-See [backend/etl/README.md](backend/etl/README.md) for chunking rules per chapter group.
+See [backend/etl/README.md](../backend/etl/README.md) for chunking rules per chapter group.
 
 ## Knowledge base document
 
@@ -425,7 +425,7 @@ Data persists on the host via volume `./backend/data:/app/data`.
 | Unit | `backend/tests/unit/` | ETL chunker, RAG methods, prompt guard, services |
 | ETL package | `backend/tests/unit/etl/` | Parser/chunker without DB |
 
-Run: `make backend-test` (from repo root). See [backend/tests/README.md](backend/tests/README.md).
+Run: `make backend-test` (from repo root). See [backend/tests/README.md](../backend/tests/README.md).
 
 ## API surface (summary)
 
@@ -450,7 +450,8 @@ Full request/response shapes are in `app/schemas/`.
 
 | Document | Content |
 |----------|---------|
-| [README.md](README.md) | Quick start, UI screenshots, feature list |
-| [backend/etl/README.md](backend/etl/README.md) | Parser/chunker internals |
-| [backend/tests/README.md](backend/tests/README.md) | Test layout and commands |
+| [README.md](../README.md) | Quick start, UI screenshots, feature list |
+| [PRD.md](PRD.md) | Product requirements (business view) |
+| [backend/etl/README.md](../backend/etl/README.md) | Parser/chunker internals |
+| [backend/tests/README.md](../backend/tests/README.md) | Test layout and commands |
 | `.cursor/rules/backend-layered-architecture.mdc` | Layer rules for contributors |

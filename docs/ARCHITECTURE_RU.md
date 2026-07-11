@@ -2,7 +2,7 @@
 
 [English](ARCHITECTURE.md) · **Русский**
 
-В этом документе описана структура **avia-bot**: компоненты, потоки данных, правила слоёв и топология развёртывания. Запуск, команды и обзор возможностей — в [README_RU.md](README_RU.md).
+В этом документе описана структура **avia-bot**: компоненты, потоки данных, правила слоёв и топология развёртывания. Запуск, команды и обзор возможностей — в [README_RU.md](../README_RU.md).
 
 ## Назначение
 
@@ -187,7 +187,7 @@ flowchart TB
 
 Точки входа: `POST /api/etl/ingest`, `make etl-ingest`, `scripts/run_etl.py`.
 
-Подробности чанкинга по группам глав — в [backend/etl/README_RU.md](backend/etl/README_RU.md).
+Подробности чанкинга по группам глав — в [backend/etl/README_RU.md](../backend/etl/README_RU.md).
 
 ## Документ базы знаний
 
@@ -425,7 +425,7 @@ React 19 SPA с feature-based структурой папок.
 | Unit | `backend/tests/unit/` | ETL chunker, RAG methods, prompt guard, services |
 | Пакет ETL | `backend/tests/unit/etl/` | Parser/chunker без БД |
 
-Запуск: `make backend-test` (из корня репозитория). См. [backend/tests/README_RU.md](backend/tests/README_RU.md).
+Запуск: `make backend-test` (из корня репозитория). См. [backend/tests/README_RU.md](../backend/tests/README_RU.md).
 
 ## Поверхность API (кратко)
 
@@ -450,7 +450,8 @@ React 19 SPA с feature-based структурой папок.
 
 | Документ | Содержание |
 |----------|------------|
-| [README_RU.md](README_RU.md) | Быстрый старт, скриншоты, список возможностей |
-| [backend/etl/README_RU.md](backend/etl/README_RU.md) | Внутренности parser/chunker |
-| [backend/tests/README_RU.md](backend/tests/README_RU.md) | Структура тестов и команды |
+| [README_RU.md](../README_RU.md) | Быстрый старт, скриншоты, список возможностей |
+| [PRD_RU.md](PRD_RU.md) | Продуктовые требования (бизнес-вид) |
+| [backend/etl/README_RU.md](../backend/etl/README_RU.md) | Внутренности parser/chunker |
+| [backend/tests/README_RU.md](../backend/tests/README_RU.md) | Структура тестов и команды |
 | `.cursor/rules/backend-layered-architecture.mdc` | Правила слоёв для контрибьюторов |
