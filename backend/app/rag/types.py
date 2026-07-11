@@ -29,6 +29,7 @@ class RetrievedChunk:
     score: float
     source_query: str | None = None
     vector_similarity: float | None = None
+    retrieval_lane: str | None = None
 
 
 @dataclass
