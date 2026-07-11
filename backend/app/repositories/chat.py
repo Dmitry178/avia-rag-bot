@@ -104,14 +104,22 @@ class ChatRepository:
         if chat is None:
             return None
 
-        if update_rag_config:
+        changed = False
+
+        if update_rag_config and chat.rag_config != rag_config:
             chat.rag_config = rag_config
+            changed = True
 
-        if update_llm_config:
+        if update_llm_config and chat.llm_config != llm_config:
             chat.llm_config = llm_config
+            changed = True
 
-        if update_use_history:
+        if update_use_history and chat.use_history != use_history:
             chat.use_history = use_history
+            changed = True
+
+        if not changed:
+            return chat
 
         chat.updated_at = datetime.now(UTC)
         self.session.add(chat)
