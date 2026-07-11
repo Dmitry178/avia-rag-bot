@@ -149,8 +149,11 @@ If no query transform is selected — direct vector search on the user question.
         → parallel lanes (filter by content_type):
             SOP ch.01–12 (8) | FAQ (5) | decision trees (3) | scenarios (3)
         → dedupe → [optional Rerank → top_chunks]
-        → static ch.00 + ch.13 in system prompt + retrieved context → LLM
+        → static ch.00 + ch.13 in system prompt + retrieved context → LLM (general answer)
+        → [if decision_tree lane match ≥ 0.30] separate LLM walkthrough → operational card in UI
 ```
+
+**Decision trees (ch. 16):** when the `decision_tree` lane returns a sufficiently relevant chunk, the backend runs a **dedicated walkthrough** (`app/rag/decision_tree.py`) — separate from the general RAG answer. Decision-tree chunks are excluded from the main context. The frontend renders the result as an **«Operational procedure»** card with a warning-colored border and background above the assistant reply (`metadata.decision_tree_guidance`).
 
 | Lane | Source | Quota |
 |------|--------|-------|
@@ -161,7 +164,7 @@ If no query transform is selected — direct vector search on the user question.
 
 Lanes run in parallel (`app/rag/retrieval_lanes.py`, `VectorRetriever.search_lanes()`). One shared FAISS index; each lane filters by `content_type`. Method classes: `backend/app/rag/methods/`. Orchestrator: `RagPipeline` in `rag/pipeline.py`.
 
-Trace (SSE + `metadata.rag_trace`): `rag_config` snapshot, query transform step, `retrieval` with `lanes[]` and merged hits, optional `rerank`. Each chunk includes `retrieval_lane` and chapter `section`.
+Trace (SSE + `metadata.rag_trace`): `rag_config` snapshot, query transform step, `retrieval` with `lanes[]` and merged hits, optional `rerank`, optional `decision_tree` / `decision_tree_generation`. Each chunk includes `retrieval_lane` and chapter `section`.
 
 Full architecture: [ARCHITECTURE.md](docs/ARCHITECTURE.md). Product requirements: [PRD.md](docs/PRD.md).
 

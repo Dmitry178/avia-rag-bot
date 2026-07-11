@@ -149,8 +149,11 @@ HyDE, Multi-Query и Query Rewriting **взаимоисключающие** (в 
         → параллельные lane (фильтр по content_type):
             SOP гл.01–12 (8) | FAQ (5) | деревья решений (3) | сценарии (3)
         → dedupe → [опциональный Rerank → top_chunks]
-        → статические гл.00 + гл.13 в system prompt + контекст из retrieval → LLM
+        → статические гл.00 + гл.13 в system prompt + контекст из retrieval → LLM (общий ответ)
+        → [если совпадение в lane decision_tree ≥ 0.30] отдельная проработка дерева → карточка в UI
 ```
+
+**Деревья решений (гл. 16):** при достаточно релевантном чанке из lane `decision_tree` backend запускает **отдельную проработку** (`app/rag/decision_tree.py`) — независимо от общего RAG-ответа. Чанки decision tree исключаются из основного контекста. Frontend показывает результат в карточке **«Оперативный алгоритм»** с предупреждающим цветом рамки и фона над текстом ассистента (`metadata.decision_tree_guidance`).
 
 | Lane | Источник | Квота |
 |------|----------|-------|
@@ -161,7 +164,7 @@ HyDE, Multi-Query и Query Rewriting **взаимоисключающие** (в 
 
 Lane выполняются параллельно (`app/rag/retrieval_lanes.py`, `VectorRetriever.search_lanes()`). Один общий FAISS-индекс; каждый lane фильтрует по `content_type`. Классы методов: `backend/app/rag/methods/`. Оркестратор: `RagPipeline` в `rag/pipeline.py`.
 
-Трассировка (SSE + `metadata.rag_trace`): снимок `rag_config`, шаг query transform, `retrieval` с `lanes[]` и объединёнными hits, опциональный `rerank`. У каждого чанка — `retrieval_lane` и глава в `section`.
+Трассировка (SSE + `metadata.rag_trace`): снимок `rag_config`, шаг query transform, `retrieval` с `lanes[]` и объединёнными hits, опциональный `rerank`, опциональные `decision_tree` / `decision_tree_generation`. У каждого чанка — `retrieval_lane` и глава в `section`.
 
 Подробная архитектура: [ARCHITECTURE_RU.md](docs/ARCHITECTURE_RU.md). Продуктовые требования: [PRD_RU.md](docs/PRD_RU.md).
 
