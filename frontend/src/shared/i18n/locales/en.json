@@ -52,7 +52,9 @@
   "common": {
     "send": "Send",
     "cancel": "Cancel",
-    "ok": "OK"
+    "ok": "OK",
+    "yes": "Yes",
+    "no": "No"
   },
   "errors": {
     "loadChats": "Failed to load chat list",
@@ -98,6 +100,14 @@
     "chunkScore": "score {{score}}",
     "chunkSimilarity": "similarity",
     "retrievalSummary": "Queries: {{queryCount}}, candidates: {{candidateCount}}",
+    "retrievalLanes": "Retrieval by corpus",
+    "laneHitCount": "{{count}} / {{topK}}",
+    "laneNoHits": "No hits in this corpus.",
+    "appliedRagConfig": "RAG settings for this answer",
+    "appliedMethods": "Query transform / rerank",
+    "appliedMethodsDirect": "Direct vector search (no transform)",
+    "appliedHistoryUnknown": "not recorded",
+    "staticChaptersHint": "Chapters 00 and 13 are always included in the system prompt (scope and usage policy), not via retrieval.",
     "chunkNodeId": "node_id",
     "chunkTokens": "tokens",
     "chunkSourceQuery": "query",
@@ -112,7 +122,14 @@
       "multi_query": "Multi-Query",
       "query_rewriting": "Query Rewriting",
       "faq_match": "FAQ match",
-      "guard": "Guard"
+      "guard": "Guard",
+      "rag_config": "RAG settings"
+    },
+    "lanes": {
+      "sop": "SOP (ch. 01–12)",
+      "faq": "FAQ",
+      "decision_tree": "Decision trees",
+      "scenario": "Scenarios"
     }
   }
 }

@@ -52,7 +52,9 @@
   "common": {
     "send": "Отправить",
     "cancel": "Отмена",
-    "ok": "ОК"
+    "ok": "ОК",
+    "yes": "Да",
+    "no": "Нет"
   },
   "errors": {
     "loadChats": "Не удалось загрузить список чатов",
@@ -98,6 +100,14 @@
     "chunkScore": "score {{score}}",
     "chunkSimilarity": "близость",
     "retrievalSummary": "Запросов: {{queryCount}}, кандидатов: {{candidateCount}}",
+    "retrievalLanes": "Поиск по корпусам",
+    "laneHitCount": "{{count}} / {{topK}}",
+    "laneNoHits": "В этом корпусе совпадений нет.",
+    "appliedRagConfig": "Настройки RAG для этого ответа",
+    "appliedMethods": "Преобразование запроса / rerank",
+    "appliedMethodsDirect": "Прямой vector search (без transform)",
+    "appliedHistoryUnknown": "не зафиксировано",
+    "staticChaptersHint": "Главы 00 и 13 всегда в системном промпте (scope и политика), не через retrieval.",
     "chunkNodeId": "node_id",
     "chunkTokens": "токены",
     "chunkSourceQuery": "запрос",
@@ -112,7 +122,14 @@
       "multi_query": "Multi-Query",
       "query_rewriting": "Query Rewriting",
       "faq_match": "FAQ",
-      "guard": "Защита"
+      "guard": "Защита",
+      "rag_config": "Настройки RAG"
+    },
+    "lanes": {
+      "sop": "SOP (гл. 01–12)",
+      "faq": "FAQ",
+      "decision_tree": "Деревья решений",
+      "scenario": "Сценарии"
     }
   }
 }
