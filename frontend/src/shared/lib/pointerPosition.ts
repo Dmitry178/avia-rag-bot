@@ -24,6 +24,8 @@ export function isPointerOverElement(element: Element | null): boolean {
     return false;
   }
 
+  ensurePointerListener();
+
   const rect = element.getBoundingClientRect();
 
   return (
@@ -32,10 +34,4 @@ export function isPointerOverElement(element: Element | null): boolean {
     pointer.y >= rect.top &&
     pointer.y <= rect.bottom
   );
-}
-
-export function findElementUnderPointer(selector: string): Element | null {
-  ensurePointerListener();
-
-  return document.elementFromPoint(pointer.x, pointer.y)?.closest(selector) ?? null;
 }
