@@ -12,6 +12,7 @@ import { useLlmSettingsStore } from "@/features/llm/llmSettingsStore";
 import { useRagSettingsStore } from "@/features/rag/ragSettingsStore";
 import { useSelectedChatId } from "@/features/chats/store";
 import { useElementHover } from "@/shared/hooks/useElementHover";
+import { copyToClipboard } from "@/shared/lib/clipboard";
 import { useTranslation } from "@/shared/i18n";
 import { useChatDetailQuery, useDeleteMessageMutation, useSendMessageMutation } from "../hooks/useChat";
 import { useComposerAutoResize } from "../hooks/useComposerAutoResize";
@@ -76,7 +77,7 @@ function MessageBubble({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(content);
+      await copyToClipboard(content);
       showSuccessToast(t("chat.copyMessageSuccess"), t("common.ok"));
     } catch {
       showErrorToast(t("chat.copyMessageFailed"), t("errors.sseTitle"));
