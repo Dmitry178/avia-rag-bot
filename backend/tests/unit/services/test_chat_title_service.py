@@ -13,6 +13,12 @@ from app.services.chat_title import _generate_and_persist
 
 
 @pytest.fixture(autouse=True)
+async def _skip_title_generation_delay() -> None:
+    with patch("app.services.chat_title.asyncio.sleep", new_callable=AsyncMock):
+        yield
+
+
+@pytest.fixture(autouse=True)
 async def _init_database() -> None:
     await init_db()
 
@@ -101,7 +107,7 @@ async def test_generate_and_persist_skips_non_default_title() -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_and_persist_publishes_sse_on_generation_failure() -> None:
+async def test_generate_and_persist_uses_message_fallback_on_generation_failure() -> None:
     async with DBManager(SessionLocal) as db:
         chat = await db.chat.chats.create(title="New chat", chat_type=ChatType.LLM)
         chat_id = chat.id
@@ -118,7 +124,45 @@ async def test_generate_and_persist_publishes_sse_on_generation_failure() -> Non
         await _generate_and_persist(
             chat_id=chat_id,
             client_id="test-client",
-            user_message="Hello",
+            user_message="what can i do?",
+            chat_type=ChatType.LLM,
+            custom_system_prompt=None,
+            app_settings=settings,
+        )
+
+    publish_mock.assert_awaited_once()
+    assert publish_mock.await_args.args[0] == "test-client"
+    assert publish_mock.await_args.args[1] == "chat_title"
+    assert publish_mock.await_args.args[2] == {
+        "chat_id": chat_id,
+        "title": "what can i do",
+    }
+
+    async with DBManager(SessionLocal) as db:
+        chat = await db.chat.chats.get_by_id(chat_id)
+        assert chat is not None
+        assert chat.title == "what can i do"
+
+
+@pytest.mark.asyncio
+async def test_generate_and_persist_publishes_sse_on_empty_fallback() -> None:
+    async with DBManager(SessionLocal) as db:
+        chat = await db.chat.chats.create(title="New chat", chat_type=ChatType.LLM)
+        chat_id = chat.id
+        await db.commit()
+
+    with (
+        patch(
+            "app.services.chat_title.generate_chat_title",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("model does not support tool use"),
+        ),
+        patch("app.services.chat_title.sse_manager.publish", new_callable=AsyncMock) as publish_mock,
+    ):
+        await _generate_and_persist(
+            chat_id=chat_id,
+            client_id="test-client",
+            user_message="   ",
             chat_type=ChatType.LLM,
             custom_system_prompt=None,
             app_settings=settings,
