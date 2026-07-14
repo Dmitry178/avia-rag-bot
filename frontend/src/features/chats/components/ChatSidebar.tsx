@@ -1,10 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ProgressSpinner } from "primereact/progressspinner";
 
 import { NewChatButton, PanelHeader } from "@/app/layout/AppHeader";
-import { useChatModeStore } from "@/features/chat/modeStore";
 import { useDeleteConfirmStore } from "@/shared/components/deleteConfirmStore";
-import { usePointerHoverSync } from "@/shared/hooks/usePointerHoverSync";
 import { useTranslation } from "@/shared/i18n";
 import { formatDateTime } from "@/shared/lib/format";
 import { useSelectedChatId, useChatUiStore } from "../store";
@@ -12,9 +10,7 @@ import { useChatsQuery, useCreateChatMutation, useDeleteChatMutation } from "../
 
 export function ChatSidebar() {
   const { t, locale } = useTranslation();
-  const chatMode = useChatModeStore((state) => state.mode);
   const [selectedChatId, setSelectedChatId] = useSelectedChatId();
-  const [hoveredChatId, setHoveredChatId] = useState<number | null>(null);
   const requestComposerFocus = useChatUiStore((state) => state.requestComposerFocus);
   const chatsQuery = useChatsQuery();
   const createChatMutation = useCreateChatMutation();
@@ -22,17 +18,6 @@ export function ChatSidebar() {
   const openDeleteConfirm = useDeleteConfirmStore((state) => state.open);
   const closeDeleteConfirm = useDeleteConfirmStore((state) => state.close);
   const setDeleteConfirmPending = useDeleteConfirmStore((state) => state.setPending);
-
-  usePointerHoverSync({
-    resetDeps: [chatMode, chatsQuery.data],
-    selector: ".chat-list__row",
-    getId: (element) => {
-      const chatId = element.getAttribute("data-chat-id");
-
-      return chatId ? Number(chatId) : null;
-    },
-    onSync: setHoveredChatId,
-  });
 
   useEffect(() => {
     if (!chatsQuery.isSuccess || selectedChatId === null || chatsQuery.isFetching) {
@@ -86,9 +71,7 @@ export function ChatSidebar() {
               data-chat-id={chat.id}
               className={`chat-list__row${
                 selectedChatId === chat.id ? " chat-list__row--active" : ""
-              }${hoveredChatId === chat.id ? " chat-list__row--hovered" : ""}`}
-              onMouseEnter={() => setHoveredChatId(chat.id)}
-              onMouseLeave={() => setHoveredChatId(null)}
+              }`}
             >
               <button
                 type="button"
