@@ -8,7 +8,8 @@ from app.core.db_manager import DBManager
 from app.core.logs import logger
 from app.core.sse_manager import sse_manager
 from app.db.session import SessionLocal
-from app.llm.chat_title import generate_chat_title
+from app.llm.chat_title import generate_chat_title, parse_chat_title_response
+from app.llm.http_retry import TITLE_GENERATION_INITIAL_DELAY_SEC
 from app.models.chat import ChatType
 
 _background_tasks: set[asyncio.Task[None]] = set()
@@ -50,6 +51,9 @@ async def _generate_and_persist(
     custom_system_prompt: str | None,
     app_settings: Settings,
 ) -> None:
+    # Let the main chat completion finish first to reduce simultaneous 429s.
+    await asyncio.sleep(TITLE_GENERATION_INITIAL_DELAY_SEC)
+
     try:
         title = await generate_chat_title(
             app_settings.llm,
@@ -58,22 +62,36 @@ async def _generate_and_persist(
             custom_system_prompt=custom_system_prompt,
         )
     except Exception as exc:
+        try:
+            fallback = parse_chat_title_response(user_message.strip())
+        except ValueError:
+            fallback = ""
+
+        if not fallback:
+            logger.warning(
+                "chat_title_generation_failed",
+                chat_id=chat_id,
+                error=str(exc),
+            )
+            if client_id:
+                await sse_manager.publish(
+                    client_id,
+                    "error",
+                    {
+                        "message": str(exc),
+                        "chat_id": chat_id,
+                        "error_code": "chat_title_error",
+                    },
+                )
+            return
+
         logger.warning(
-            "chat_title_generation_failed",
+            "chat_title_generation_failed_using_fallback",
             chat_id=chat_id,
             error=str(exc),
+            title=fallback,
         )
-        if client_id:
-            await sse_manager.publish(
-                client_id,
-                "error",
-                {
-                    "message": str(exc),
-                    "chat_id": chat_id,
-                    "error_code": "chat_title_error",
-                },
-            )
-        return
+        title = fallback
 
     try:
         async with DBManager(SessionLocal) as db:
