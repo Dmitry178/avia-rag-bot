@@ -22,3 +22,11 @@ def test_build_system_prompt_without_language_returns_base() -> None:
 
     assert "Reply entirely in Russian" not in base
     assert len(with_hint) > len(base)
+
+
+def test_build_system_prompt_targets_airport_staff_only() -> None:
+    prompt = build_system_prompt()
+
+    assert "airport or airline employee" in prompt
+    assert "never a passenger" in prompt
+    assert "do not offer separate guidance for passengers" in prompt
