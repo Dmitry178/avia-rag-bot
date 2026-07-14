@@ -528,11 +528,13 @@ textarea {
   display: flex;
   gap: 0.25rem;
   opacity: 0;
+  pointer-events: none;
 }
 
 .chat-message__actions--visible,
-.chat-message:focus-within .chat-message__actions {
+.chat-message__actions:has(.chat-message__action:focus-visible) {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .chat-message__action {
