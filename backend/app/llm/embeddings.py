@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Callable
 
 from app.core.config import LLMSettings
 from app.exceptions.service import ServiceError
+from app.llm.http_retry import post_with_retry
 
 EMBED_BATCH_SIZE = 32
 
@@ -44,7 +45,8 @@ class EmbeddingClient:
 
         headers = {"Authorization": f"Bearer {self._settings.api_key}"} if self._settings.api_key else {}
         base_url = self._settings.base_url.rstrip("/")
-        response = await client.post(
+        response = await post_with_retry(
+            client,
             f"{base_url}/embeddings",
             headers=headers,
             json={"model": self._settings.embedding_model, "input": batch},
