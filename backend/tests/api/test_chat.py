@@ -6,7 +6,9 @@ from contextlib import contextmanager
 from httpx import AsyncClient
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.rag.types import RagPipelineResult, RagTraceStep
+from app.models.chunk_meta import ChunkMeta
+from app.rag.types import RagPipelineResult, RagTraceStep, RetrievedChunk
+from etl.types import ContentType
 
 LLM_MOCK_RETURN = (
     "Test reply",
@@ -34,6 +36,45 @@ def mock_rag_pipeline():
     pipeline.build_generation_prompt = MagicMock(return_value="RAG system prompt")
 
     with patch("app.services.chat.RagPipeline", return_value=pipeline):
+        yield pipeline
+
+
+@contextmanager
+def mock_rag_pipeline_with_decision_tree(*, llm_side_effect):
+    chunk = ChunkMeta(
+        id=708,
+        content="Сработала пожарная сигнализация...",
+        content_type=ContentType.DECISION_TREE.value,
+        section="16. Decision Trees",
+        title="Обнаружение пожара",
+        node_id="node-708",
+    )
+    tree_hit = RetrievedChunk(
+        chunk=chunk,
+        score=0.45,
+        vector_similarity=0.45,
+        retrieval_lane="decision_tree",
+    )
+    pipeline = MagicMock()
+    pipeline.run = AsyncMock(
+        return_value=RagPipelineResult(
+            context="[1] Baggage rules",
+            chunks=[tree_hit],
+            trace=[RagTraceStep(step="retrieval", duration_ms=1, data={"candidate_count": 1})],
+            search_queries=["пожар"],
+            applicable_decision_trees=[tree_hit],
+        ),
+    )
+    pipeline.build_generation_prompt = MagicMock(return_value="RAG system prompt")
+
+    with (
+        patch("app.services.chat.RagPipeline", return_value=pipeline),
+        patch(
+            "app.services.chat.ChatCompletionClient.complete",
+            new_callable=AsyncMock,
+            side_effect=llm_side_effect,
+        ),
+    ):
         yield pipeline
 
 
@@ -372,6 +413,67 @@ async def test_send_message_persists_rag_metadata_and_message_count(client: Asyn
     assert detail.json()["message_count"] == 2
     assert detail.json()["rag_config"]["use_hyde"] is True
     assert detail.json()["use_history"] is True
+
+
+@pytest.mark.asyncio
+async def test_send_message_skips_decision_tree_guidance_on_no_match(client: AsyncClient) -> None:
+    """
+    A no-match decision-tree codeword must not be stored in assistant metadata.
+    """
+
+    create = await client.post("/api/chats", json={"title": "DT no match", "chat_type": "rag"})
+    chat_id = create.json()["id"]
+    llm_calls = {"count": 0}
+
+    async def llm_side_effect(*_args, **_kwargs):
+        llm_calls["count"] += 1
+        if llm_calls["count"] == 1:
+            return ("NO_DECISION_TREE_MATCH", {"latency_ms": 1})
+        return LLM_MOCK_RETURN
+
+    with mock_rag_pipeline_with_decision_tree(llm_side_effect=llm_side_effect):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "что делать, если груз высыпался на ВПП?"},
+        )
+
+    assert send.status_code == 200
+    assistant_meta = send.json()["assistant_message"]["metadata"]
+    assert "decision_tree_guidance" not in assistant_meta
+    assert send.json()["assistant_message"]["content"] == "Test reply"
+
+
+@pytest.mark.asyncio
+async def test_send_message_skips_decision_tree_guidance_when_token_follows_explanation(
+    client: AsyncClient,
+) -> None:
+    """
+    Multi-line no-match replies must not produce a decision-tree guidance card.
+    """
+
+    create = await client.post("/api/chats", json={"title": "DT no match multiline", "chat_type": "rag"})
+    chat_id = create.json()["id"]
+    llm_calls = {"count": 0}
+
+    async def llm_side_effect(*_args, **_kwargs):
+        llm_calls["count"] += 1
+        if llm_calls["count"] == 1:
+            return (
+                "The decision tree is about a suspicious object, but your question does not fit.\n\n"
+                "NO_DECISION_TREE_MATCH",
+                {"latency_ms": 1},
+            )
+        return LLM_MOCK_RETURN
+
+    with mock_rag_pipeline_with_decision_tree(llm_side_effect=llm_side_effect):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "what can i do"},
+        )
+
+    assert send.status_code == 200
+    assistant_meta = send.json()["assistant_message"]["metadata"]
+    assert "decision_tree_guidance" not in assistant_meta
 
 
 @pytest.mark.asyncio
