@@ -41,7 +41,7 @@ export const DEFAULT_RAG_CONFIG: Required<{
 
 export const DEFAULT_RAG_CREATE_PAYLOAD = {
   rag_config: DEFAULT_RAG_CONFIG,
-  use_history: false,
+  use_history: true,
 } as const;
 
 export const RAG_TOP_CHUNKS_MIN = 3;
