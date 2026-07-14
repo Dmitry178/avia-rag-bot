@@ -30,11 +30,26 @@ def test_build_title_user_prompt_rag_uses_question_only() -> None:
         user_message="Where is baggage claim?",
         chat_type=ChatType.RAG,
         custom_system_prompt="You are a pirate.",
+        reply_language="en",
     )
 
     assert "baggage claim" in prompt
     assert "pirate" not in prompt
-    assert "same language" in prompt.lower()
+    assert "never translate" in prompt.lower()
+    assert "entirely in English" in prompt
+    assert "Do not use Russian" in prompt
+
+
+def test_build_title_user_prompt_russian_uses_russian_hint() -> None:
+    prompt = build_title_user_prompt(
+        user_message="Где получить багаж?",
+        chat_type=ChatType.RAG,
+        reply_language="ru",
+    )
+
+    assert "Где получить багаж?" in prompt
+    assert "entirely in Russian" in prompt
+    assert "Do not use English" in prompt
 
 
 def test_build_title_user_prompt_llm_custom_includes_system_prompt() -> None:
@@ -42,11 +57,12 @@ def test_build_title_user_prompt_llm_custom_includes_system_prompt() -> None:
         user_message="Issue 1000 coins to the army",
         chat_type=ChatType.LLM,
         custom_system_prompt="You are the royal treasurer.",
+        reply_language="en",
     )
 
     assert "royal treasurer" in prompt
     assert "1000 coins" in prompt
-    assert "same language" in prompt.lower()
+    assert "entirely in English" in prompt
 
 
 def test_build_title_user_prompt_llm_builtin_uses_question_only() -> None:
