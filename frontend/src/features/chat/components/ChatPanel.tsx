@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import { Button } from "primereact/button";
 import { InputTextarea } from "primereact/inputtextarea";
 import { ProgressSpinner } from "primereact/progressspinner";
@@ -63,7 +63,7 @@ function MessageBubble({
   hoverResetKey: unknown;
 }) {
   const { t } = useTranslation();
-  const { ref, hovered, hoverProps } = useElementHover([hoverResetKey]);
+  const { ref, hovered, syncHover, hoverProps } = useElementHover([hoverResetKey]);
   const decisionTreeGuidance =
     role === "assistant" && metadata ? parseDecisionTreeGuidance(metadata) : null;
   const label =
@@ -75,13 +75,24 @@ function MessageBubble({
 
   const showActions = role === "user" || role === "assistant";
 
-  const handleCopy = async () => {
-    try {
-      await copyToClipboard(content);
-      showSuccessToast(t("chat.copyMessageSuccess"), t("common.ok"));
-    } catch {
-      showErrorToast(t("chat.copyMessageFailed"), t("errors.sseTitle"));
-    }
+  const resetMessageActions = (button: HTMLButtonElement) => {
+    button.blur();
+    syncHover();
+  };
+
+  const handleCopy = (event: MouseEvent<HTMLButtonElement>) => {
+    const button = event.currentTarget;
+
+    void copyToClipboard(content)
+      .then(() => {
+        showSuccessToast(t("chat.copyMessageSuccess"), t("common.ok"));
+      })
+      .catch(() => {
+        showErrorToast(t("chat.copyMessageFailed"), t("errors.sseTitle"));
+      })
+      .finally(() => {
+        resetMessageActions(button);
+      });
   };
 
   const bubble = (
@@ -102,7 +113,8 @@ function MessageBubble({
             type="button"
             className="chat-message__action chat-message__action--copy"
             aria-label={t("chat.copyMessage")}
-            onClick={() => void handleCopy()}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={handleCopy}
           >
             <i className="pi pi-copy" aria-hidden="true" />
           </button>
@@ -111,6 +123,7 @@ function MessageBubble({
             className="chat-message__action chat-message__action--delete"
             aria-label={t("chat.deleteMessage")}
             disabled={isDeleteDisabled}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={() => onDelete(messageId)}
           >
             <i className="pi pi-trash" aria-hidden="true" />
