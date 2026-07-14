@@ -144,7 +144,18 @@ def test_is_decision_tree_no_match_recognizes_token() -> None:
     assert is_decision_tree_no_match("NO_DECISION_TREE_MATCH") is True
     assert is_decision_tree_no_match("  no_decision_tree_match  ") is True
     assert is_decision_tree_no_match("NO_DECISION_TREE_MATCH\n") is True
+    assert is_decision_tree_no_match("NO_DECISION_TREE_MATCH.") is True
+    assert is_decision_tree_no_match("`NO_DECISION_TREE_MATCH`") is True
+    assert is_decision_tree_no_match("**NO_DECISION_TREE_MATCH**") is True
     assert is_decision_tree_no_match("") is True
+    assert (
+        is_decision_tree_no_match(
+            "The decision tree is about a suspicious object, but your question does not fit.\n\n"
+            "NO_DECISION_TREE_MATCH",
+        )
+        is True
+    )
+    assert is_decision_tree_no_match("1. Сообщить в пожарную службу.") is False
 
 
 @pytest.mark.asyncio
@@ -175,6 +186,72 @@ async def test_generate_decision_tree_guidance_returns_none_on_no_match_token() 
         query="что делать, если при погрузке негабаритного груза он высыпался на ВПП?",
         tree=tree,
         reply_language="ru",
+    )
+
+    assert guidance is None
+
+
+@pytest.mark.asyncio
+async def test_generate_decision_tree_guidance_returns_none_on_formatted_no_match_token() -> None:
+    """
+    Markdown-wrapped no-match tokens must not be persisted as guidance.
+    """
+
+    llm = MagicMock()
+    llm.complete = AsyncMock(
+        return_value=(
+            "**NO_DECISION_TREE_MATCH**",
+            {"latency_ms": 5},
+        ),
+    )
+
+    tree = _retrieved(
+        chunk_id=2,
+        score=0.45,
+        content_type=ContentType.DECISION_TREE.value,
+        title="Реагирование на подозрительный предмет",
+        lane="decision_tree",
+    )
+
+    guidance = await generate_decision_tree_guidance(
+        llm,
+        query="подозрительная сумка",
+        tree=tree,
+        reply_language="ru",
+    )
+
+    assert guidance is None
+
+
+@pytest.mark.asyncio
+async def test_generate_decision_tree_guidance_returns_none_when_token_follows_explanation() -> None:
+    """
+    Explanatory text plus the no-match token must still be discarded.
+    """
+
+    llm = MagicMock()
+    llm.complete = AsyncMock(
+        return_value=(
+            "The decision tree provided is about responding to a suspicious object, "
+            'but your question "what can i do" does not match.\n\n'
+            "NO_DECISION_TREE_MATCH",
+            {"latency_ms": 5},
+        ),
+    )
+
+    tree = _retrieved(
+        chunk_id=2,
+        score=0.45,
+        content_type=ContentType.DECISION_TREE.value,
+        title="Реагирование на подозрительный предмет",
+        lane="decision_tree",
+    )
+
+    guidance = await generate_decision_tree_guidance(
+        llm,
+        query="what can i do",
+        tree=tree,
+        reply_language="en",
     )
 
     assert guidance is None
