@@ -1,5 +1,7 @@
 """Decision-tree detection and dedicated operational guidance generation."""
 
+import re
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -86,21 +88,28 @@ def exclude_decision_tree_chunks(chunks: list[RetrievedChunk]) -> list[Retrieved
     return [item for item in chunks if item.chunk.content_type != ContentType.DECISION_TREE.value]
 
 
+def _normalize_decision_tree_no_match_line(line: str) -> str:
+    """
+    Strip wrappers and punctuation from one response line.
+    """
+
+    stripped = line.strip()
+    without_wrappers = re.sub(r"^[`\"'*_\s]+|[`\"'*_\s.:;,!?]+$", "", stripped)
+
+    return without_wrappers.upper()
+
+
 def is_decision_tree_no_match(response: str) -> bool:
     """
     Return True when the model signals that the tree does not answer the question.
     """
 
-    normalized = response.strip()
-    if not normalized:
+    if not response.strip():
         return True
 
     token = DECISION_TREE_NO_MATCH_TOKEN.upper()
-    if normalized.upper() == token:
-        return True
 
-    first_line = normalized.splitlines()[0].strip().upper()
-    return first_line == token
+    return any(_normalize_decision_tree_no_match_line(line) == token for line in response.splitlines())
 
 
 def build_decision_tree_system_prompt(
