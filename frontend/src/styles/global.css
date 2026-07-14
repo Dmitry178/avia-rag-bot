@@ -366,7 +366,7 @@ textarea {
   opacity: 0;
 }
 
-.chat-list__row--hovered .chat-list__delete,
+.chat-list__row:hover .chat-list__delete,
 .chat-list__row:focus-within .chat-list__delete {
   opacity: 1;
 }
