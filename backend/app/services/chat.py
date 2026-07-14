@@ -567,7 +567,7 @@ class ChatService:
 
         if body.chat_type == ChatType.RAG:
             if use_history is None:
-                use_history = False
+                use_history = True
 
             if rag_config is None:
                 rag_config = {
