@@ -17,6 +17,7 @@ export function useElementHover(resetDeps: readonly unknown[] = []) {
   return {
     ref,
     hovered,
+    syncHover,
     hoverProps: {
       onMouseEnter: () => setHovered(true),
       onMouseLeave: () => setHovered(false),
