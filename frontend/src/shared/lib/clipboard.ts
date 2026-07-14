@@ -1,18 +1,8 @@
 /**
- * Copy text to the system clipboard.
- *
- * Uses the async Clipboard API when available, with a textarea fallback
- * for non-secure contexts or when the API rejects the write.
+ * Copy text via a hidden textarea (synchronous, for use inside a click handler).
  */
-export async function copyToClipboard(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // Fall through to the legacy copy path.
-    }
-  }
+function copyViaExecCommand(text: string): void {
+  const activeElement = document.activeElement;
 
   const textarea = document.createElement("textarea");
   textarea.value = text;
@@ -20,7 +10,10 @@ export async function copyToClipboard(text: string): Promise<void> {
   textarea.style.position = "fixed";
   textarea.style.left = "-9999px";
   textarea.style.top = "0";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
   document.body.appendChild(textarea);
+  textarea.focus({ preventScroll: true });
   textarea.select();
   textarea.setSelectionRange(0, text.length);
 
@@ -30,5 +23,25 @@ export async function copyToClipboard(text: string): Promise<void> {
     }
   } finally {
     document.body.removeChild(textarea);
+
+    if (activeElement instanceof HTMLElement) {
+      activeElement.focus({ preventScroll: true });
+    }
   }
+}
+
+/**
+ * Copy text to the system clipboard.
+ *
+ * Prefers the async Clipboard API. Falls back to execCommand when the API is
+ * unavailable or rejects the write (e.g. non-secure context).
+ */
+export function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => {
+      copyViaExecCommand(text);
+    });
+  }
+
+  return Promise.resolve(copyViaExecCommand(text));
 }
