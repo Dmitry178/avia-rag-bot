@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, type MouseEvent } from "react";
 import { Button } from "primereact/button";
 import { InputTextarea } from "primereact/inputtextarea";
 import { ProgressSpinner } from "primereact/progressspinner";
@@ -177,6 +177,7 @@ export function ChatPanel() {
   const panelBodyRef = useRef<HTMLDivElement>(null);
   const prevChatIdRef = useRef<number | null>(null);
   const prevMessageCountRef = useRef(0);
+  const isSendingRef = useRef(false);
 
   const isChatClosed = chatQuery.data?.is_closed === true;
 
@@ -190,7 +191,9 @@ export function ChatPanel() {
     isSendPending: sendMutation.isPending,
   });
 
-  useComposerAutoResize({ textareaRef, value: draft });
+  useEffect(() => {
+    isSendingRef.current = false;
+  }, [selectedChatId]);
 
   const inputPlaceholder =
     selectedChatId === null
@@ -235,22 +238,45 @@ export function ChatPanel() {
     return () => cancelAnimationFrame(frameId);
   }, [selectedChatId, chatQuery.isSuccess, chatQuery.data?.messages.length]);
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const content = draft.trim();
-    if (!content || selectedChatId === null || sendMutation.isPending) {
+
+    if (
+      !content ||
+      selectedChatId === null ||
+      isSendingRef.current ||
+      sendMutation.isPending
+    ) {
       return;
     }
 
+    isSendingRef.current = true;
+    const contentToSend = content;
+    clearDraft();
+
     sendMutation.mutate(
       {
-        content,
+        content: contentToSend,
         rag_config: chatMode === "rag" ? toRagConfig() : undefined,
       },
       {
-        onSuccess: () => clearDraft(),
+        onError: () => {
+          setDraft((current) => (current ? current : contentToSend));
+        },
+        onSettled: () => {
+          isSendingRef.current = false;
+        },
       },
     );
-  };
+  }, [
+    chatMode,
+    clearDraft,
+    draft,
+    selectedChatId,
+    sendMutation,
+    setDraft,
+    toRagConfig,
+  ]);
 
   return (
     <>
@@ -320,12 +346,13 @@ export function ChatPanel() {
               }}
             />
             <Button
+              type="button"
               className="chat-composer__send"
               icon="pi pi-send"
               label={t("common.send")}
               onClick={handleSend}
               loading={sendMutation.isPending}
-              disabled={selectedChatId === null || !draft.trim()}
+              disabled={isComposerDisabled || !draft.trim()}
             />
           </>
         )}
