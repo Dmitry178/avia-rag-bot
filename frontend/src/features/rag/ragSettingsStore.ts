@@ -63,7 +63,7 @@ function mergeRagConfig(ragConfig: RagConfig | null | undefined): RagConfig {
 
 export const useRagSettingsStore = create<RagSettingsState>((set, get) => ({
   ...DEFAULT_RAG_CONFIG,
-  use_history: false,
+  use_history: true,
   setMethodEnabled: (method, enabled) => {
     if (method === "rerank") {
       set({ use_rerank: enabled });
@@ -85,7 +85,7 @@ export const useRagSettingsStore = create<RagSettingsState>((set, get) => ({
   hydrateFromChat: (ragConfig, useHistory) =>
     set({
       ...mergeRagConfig(ragConfig),
-      use_history: useHistory ?? false,
+      use_history: useHistory ?? true,
     }),
   toConfig: () => {
     const { use_hyde, use_multi_query, use_query_rewriting, use_rerank, top_chunks } = get();
