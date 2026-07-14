@@ -245,13 +245,13 @@ async def test_get_chat_returns_empty_messages(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_create_rag_chat_applies_default_settings(client: AsyncClient) -> None:
     """
-    New RAG chats should start with all methods off, five chunks, and no history.
+    New RAG chats should start with all methods off, five chunks, and history enabled.
     """
 
     create = await client.post("/api/chats", json={"title": "RAG defaults", "chat_type": "rag"})
     assert create.status_code == 200
     data = create.json()
-    assert data["use_history"] is False
+    assert data["use_history"] is True
     assert data["rag_config"]["use_hyde"] is False
     assert data["rag_config"]["use_multi_query"] is False
     assert data["rag_config"]["use_query_rewriting"] is False
