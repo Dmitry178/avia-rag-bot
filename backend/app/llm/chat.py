@@ -7,6 +7,7 @@ from typing import Any
 
 from app.core.config import LLMSettings
 from app.exceptions.service import ServiceError
+from app.llm.http_retry import post_with_retry
 from app.llm.prompt_guard import harden_messages_for_llm
 from app.llm.prompts import SYSTEM_PROMPT
 
@@ -66,7 +67,8 @@ class ChatCompletionClient:
         started = time.perf_counter()
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
+            response = await post_with_retry(
+                client,
                 f"{base_url}/chat/completions",
                 headers=headers,
                 json={
