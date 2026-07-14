@@ -115,7 +115,7 @@ export function RagSettingsPanel() {
           <li className="rag-settings__item rag-settings__item--history">
             <InputSwitch
               className="rag-settings__switch"
-              checked={settings.use_history ?? false}
+              checked={settings.use_history ?? true}
               onChange={(event) => {
                 settings.setUseHistory(event.value);
                 persistSettings();
