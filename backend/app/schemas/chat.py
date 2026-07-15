@@ -117,6 +117,12 @@ class SendMessageRequest(BaseModel):
         default=None,
         description="Optional SSE client id to receive error sideband events",
     )
+    client_message_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="Client-generated idempotency key; retries with the same value return the existing reply.",
+    )
     rag_config: RagConfig | None = Field(
         default=None,
         description="RAG pipeline toggles for this request; updates chat when provided.",
