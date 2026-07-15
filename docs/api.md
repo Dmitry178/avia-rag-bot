@@ -4,7 +4,7 @@
 
 HTTP contract for **avia-bot** backend. Base path: `/api`. Interactive OpenAPI: `http://127.0.0.1:8000/docs` when running locally.
 
-Schemas are defined in `backend/app/schemas/`. See [architecture.md](architecture.md) for behavioral context.
+Schemas are defined in `backend/app/schemas/`. See [ARCHITECTURE.md](ARCHITECTURE.md) for behavioral context.
 
 ---
 
@@ -253,6 +253,6 @@ sequenceDiagram
 
 | Document | Content |
 |----------|---------|
-| [architecture.md](architecture.md) | RAG pipeline, SSE internals |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | RAG pipeline, SSE internals |
 | [frontend.md](frontend.md) | How the SPA calls this API |
 | [operations.md](operations.md) | ETL and troubleshooting |

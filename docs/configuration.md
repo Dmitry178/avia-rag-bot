@@ -6,7 +6,7 @@ All backend settings are loaded via **pydantic-settings** from `backend/.env` an
 
 Example: `LLM__BASE_URL` → `settings.llm.base_url`.
 
-See also: [deployment.md](deployment.md), [architecture.md](architecture.md#configuration).
+See also: [deployment.md](deployment.md), [ARCHITECTURE.md](ARCHITECTURE.md#configuration).
 
 ---
 
@@ -95,16 +95,6 @@ Override per ingest via API `source_path` or CLI `--source`.
 | `LLM__EMBEDDING_MODEL` | **Yes** (for ETL/RAG) | Embeddings model name |
 
 **Important:** changing `LLM__EMBEDDING_MODEL` requires a full re-ingest (`rebuild=true`). The manifest stores the model used at build time; mismatch raises `etl_embedding_mismatch`.
-
----
-
-## Telegram (`TELEGRAM__`) — planned
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `TELEGRAM__BOT_TOKEN` | string | `""` | Bot token (not used in current MVP) |
-
-See [telegram.md](telegram.md).
 
 ---
 

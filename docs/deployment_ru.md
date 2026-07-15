@@ -170,4 +170,4 @@ flowchart TB
 |----------|------------|
 | [operations_ru.md](operations_ru.md) | Бэкапы, ETL, troubleshooting |
 | [configuration_ru.md](configuration_ru.md) | Справочник env |
-| [architecture_ru.md](architecture_ru.md) | Архитектура |
+| [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md) | Архитектура |

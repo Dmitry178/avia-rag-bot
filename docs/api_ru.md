@@ -4,7 +4,7 @@
 
 HTTP-контракт backend **avia-bot**. Базовый путь: `/api`. Интерактивный OpenAPI: `http://127.0.0.1:8000/docs` при локальном запуске.
 
-Схемы: `backend/app/schemas/`. Поведение — [architecture_ru.md](architecture_ru.md).
+Схемы: `backend/app/schemas/`. Поведение — [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md).
 
 ---
 
@@ -232,6 +232,6 @@ sequenceDiagram
 
 | Документ | Содержание |
 |----------|------------|
-| [architecture_ru.md](architecture_ru.md) | RAG pipeline, SSE |
+| [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md) | RAG pipeline, SSE |
 | [frontend_ru.md](frontend_ru.md) | Вызовы API из SPA |
 | [operations_ru.md](operations_ru.md) | ETL и troubleshooting |

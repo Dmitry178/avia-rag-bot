@@ -170,4 +170,4 @@ See [roadmap.md](roadmap.md) for planned improvements.
 |----------|---------|
 | [operations.md](operations.md) | Backups, ETL maintenance, troubleshooting |
 | [configuration.md](configuration.md) | Full env reference |
-| [architecture.md](architecture.md) | System design |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design |

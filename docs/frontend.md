@@ -2,7 +2,7 @@
 
 **English** · [Русский](frontend_ru.md)
 
-Structure and conventions of the **avia-bot** React SPA. Backend contract: [api.md](api.md). System context: [architecture.md](architecture.md#frontend-architecture).
+Structure and conventions of the **avia-bot** React SPA. Backend contract: [api.md](api.md). System context: [ARCHITECTURE.md](ARCHITECTURE.md#frontend-architecture).
 
 ---
 
@@ -159,4 +159,4 @@ make frontend-typecheck
 |----------|---------|
 | [api.md](api.md) | Endpoints and SSE events |
 | [deployment.md](deployment.md) | Vite proxy and Docker Nginx |
-| [architecture.md](architecture.md) | Full system design |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Full system design |

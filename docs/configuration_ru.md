@@ -6,7 +6,7 @@
 
 Пример: `LLM__BASE_URL` → `settings.llm.base_url`.
 
-См. также: [deployment_ru.md](deployment_ru.md), [architecture_ru.md](architecture_ru.md).
+См. также: [deployment_ru.md](deployment_ru.md), [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md).
 
 ---
 
@@ -95,16 +95,6 @@ SQLite автоматически преобразуется в async (`sqlite+a
 | `LLM__EMBEDDING_MODEL` | **Да** (для ETL/RAG) | Модель эмбеддингов |
 
 **Важно:** смена `LLM__EMBEDDING_MODEL` требует полного re-ingest (`rebuild=true`). Модель фиксируется в manifest; несовпадение даёт `etl_embedding_mismatch`.
-
----
-
-## Telegram (`TELEGRAM__`) — планируется
-
-| Переменная | Тип | По умолчанию | Описание |
-|------------|-----|--------------|----------|
-| `TELEGRAM__BOT_TOKEN` | string | `""` | Токен бота (не используется в текущем MVP) |
-
-См. [telegram_ru.md](telegram_ru.md).
 
 ---
 

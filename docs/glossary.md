@@ -80,5 +80,5 @@ Terms used across **avia-bot** product and engineering documentation.
 
 | Document | Content |
 |----------|---------|
-| [architecture.md](architecture.md) | Technical detail |
-| [prd.md](prd.md) | Business personas and scope |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Technical detail |
+| [PRD.md](PRD.md) | Business personas and scope |

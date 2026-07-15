@@ -80,5 +80,5 @@
 
 | Документ | Содержание |
 |----------|------------|
-| [architecture_ru.md](architecture_ru.md) | Технические детали |
-| [prd_ru.md](prd_ru.md) | Персоны и scope |
+| [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md) | Технические детали |
+| [PRD_RU.md](PRD_RU.md) | Персоны и scope |
