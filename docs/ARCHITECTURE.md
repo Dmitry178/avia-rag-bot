@@ -468,8 +468,12 @@ Full request/response shapes are in `app/schemas/`.
 
 | Document | Content |
 |----------|---------|
+| [README.md](README.md) | Documentation index |
 | [README.md](../README.md) | Quick start, UI screenshots, feature list |
 | [PRD.md](PRD.md) | Product requirements (business view) |
+| [api.md](api.md) | HTTP API reference |
+| [deployment.md](deployment.md) | Deployment runbook |
+| [operations.md](operations.md) | ETL, backups, troubleshooting |
 | [backend/etl/README.md](../backend/etl/README.md) | Parser/chunker internals |
 | [backend/tests/README.md](../backend/tests/README.md) | Test layout and commands |
-| `.cursor/rules/backend-layered-architecture.mdc` | Layer rules for contributors |
+| [adr/](adr/) | Architecture Decision Records |

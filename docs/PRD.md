@@ -196,7 +196,6 @@ Per documentation chapters 00 and 13:
 | US-08 | Report an incorrect answer (feedback) | Described in KB, **UI not implemented** |
 | US-09 | Escalation to operator / service | Policy in KB, **automatic routing not implemented** |
 | US-10 | Glossary term search (ch. 15) | **Disabled in MVP** |
-| US-11 | Access via Telegram on mobile | Config stub present, **bot not implemented** |
 
 ### 8.3. Could have (roadmap)
 
@@ -370,7 +369,7 @@ flowchart TB
 | **0. Demo (now)** | Educational KB, RAG comparison | Proof of concept for stakeholders |
 | **1. Pilot** | Real KB for one service, SSO, feedback | Measurable KPIs on a limited group |
 | **2. Expansion** | All services, glossary, roles, analytics | Scale across the airport |
-| **3. Channels** | Telegram / mobile, integrations | Access in the field, at the counter |
+| **3. Channels** | Mobile web, integrations | Access in the field, at the counter |
 | **4. Operations** | HA, monitoring, KB versioning | Production SLA |
 
 ---
@@ -422,7 +421,7 @@ flowchart TB
 
 ## 17. Open business questions
 
-1. **Access channel:** web in corporate network only, or also Telegram/mobile for frontline staff?
+1. **Access channel:** corporate web only, or also mobile browser for frontline staff?
 2. **LLM model:** cloud vs on-prem — balance of cost, quality, and compliance.
 3. **Feedback loop:** who handles incorrect-answer reports and how fast is the KB updated?
 4. **Roles:** different access to sections (security vs check-in)?
@@ -443,5 +442,7 @@ flowchart TB
 | Document | Content |
 |----------|---------|
 | [README.md](../README.md) | Product overview, quick start, features |
+| [README.md](README.md) | Documentation index |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Technical architecture |
+| [roadmap.md](roadmap.md) | Product roadmap |
 | [backend/data/rag-document.md](../backend/data/rag-document.md) | Educational knowledge base |

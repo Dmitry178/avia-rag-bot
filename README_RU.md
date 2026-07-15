@@ -167,7 +167,7 @@ Lane выполняются параллельно (`app/rag/retrieval_lanes.py`
 
 Трассировка (SSE + `metadata.rag_trace`): снимок `rag_config`, шаг query transform, `retrieval` с `lanes[]` и объединёнными hits, опциональный `rerank`, опциональные `decision_tree` / `decision_tree_generation`. У каждого чанка — `retrieval_lane` и глава в `section`.
 
-Полная документация: [docs/readme_ru.md](docs/readme_ru.md). Архитектура: [architecture_ru.md](docs/architecture_ru.md). Продуктовые требования: [prd_ru.md](docs/prd_ru.md).
+Полная документация: [docs/README_RU.md](docs/README_RU.md). Архитектура: [ARCHITECTURE_RU.md](docs/ARCHITECTURE_RU.md). Продуктовые требования: [PRD_RU.md](docs/PRD_RU.md).
 
 **Требование:** перед использованием RAG нужен построенный индекс (`make etl-ingest`). Без индекса API вернёт `503 rag_index_missing`.
 

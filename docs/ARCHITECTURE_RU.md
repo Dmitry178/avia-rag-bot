@@ -468,8 +468,12 @@ React 19 SPA с feature-based структурой папок.
 
 | Документ | Содержание |
 |----------|------------|
+| [README_RU.md](README_RU.md) | Индекс документации |
 | [README_RU.md](../README_RU.md) | Быстрый старт, скриншоты, список возможностей |
 | [PRD_RU.md](PRD_RU.md) | Продуктовые требования (бизнес-вид) |
+| [api_ru.md](api_ru.md) | Справочник HTTP API |
+| [deployment_ru.md](deployment_ru.md) | Runbook развёртывания |
+| [operations_ru.md](operations_ru.md) | ETL, бэкапы, troubleshooting |
 | [backend/etl/README_RU.md](../backend/etl/README_RU.md) | Внутренности parser/chunker |
 | [backend/tests/README_RU.md](../backend/tests/README_RU.md) | Структура тестов и команды |
-| `.cursor/rules/backend-layered-architecture.mdc` | Правила слоёв для контрибьюторов |
+| [adr/](adr/) | Architecture Decision Records |
