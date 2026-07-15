@@ -30,6 +30,33 @@ class ChatMessageRepository:
 
         return list(result.scalars().all())
 
+    async def find_user_message_by_client_id(
+        self,
+        chat_id: int,
+        client_message_id: str,
+    ) -> ChatMessage | None:
+        """
+        Return the newest non-deleted user message tagged with client_message_id.
+        """
+
+        statement = (
+            select(ChatMessage)
+            .where(
+                ChatMessage.chat_id == chat_id,
+                ChatMessage.role == MessageRole.USER.value,
+                ChatMessage.is_deleted.is_(False),
+            )
+            .order_by(ChatMessage.created_at.desc())
+            .limit(50)
+        )
+        result = await self.session.execute(statement)
+
+        for message in result.scalars().all():
+            if message.message_metadata.get("client_message_id") == client_message_id:
+                return message
+
+        return None
+
     async def get_by_id(self, message_id: int, chat_id: int) -> ChatMessage | None:
         """
         Return a message scoped to chat_id or None if missing or soft-deleted.
