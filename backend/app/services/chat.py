@@ -519,6 +519,45 @@ class ChatService:
             {"message": detail, "chat_id": chat_id, "error_code": error_code},
         )
 
+    @staticmethod
+    def _assistant_reply_after(
+        history: list,
+        user_message,
+    ):
+        """
+        Return the assistant message that immediately follows the given user message.
+        """
+
+        seen_user = False
+
+        for message in history:
+            if message.id == user_message.id:
+                seen_user = True
+                continue
+
+            if seen_user and message.role == MessageRole.ASSISTANT.value:
+                return message
+
+        return None
+
+    async def _build_send_message_response(
+        self,
+        user_message,
+        assistant_message,
+    ) -> SendMessageResponse:
+        """
+        Build API response for an existing user/assistant pair.
+        """
+
+        chunk_map = await self._load_chunk_map_for_metadata(
+            [user_message.message_metadata, assistant_message.message_metadata],
+        )
+
+        return SendMessageResponse(
+            user_message=self._message_to_response(user_message, chunk_map=chunk_map),
+            assistant_message=self._message_to_response(assistant_message, chunk_map=chunk_map),
+        )
+
     async def _get_open_chat(self, chat_id: int):
         chat = await self.db.chat.chats.get_by_id(chat_id)
         if chat is None:
@@ -695,7 +734,35 @@ class ChatService:
         chat = await self.db.chat.chats.get_by_id(chat_id)
         assert chat is not None
 
-        should_generate_title = chat.message_count == 0 and is_default_chat_title(chat.title)
+        resume_user_message = None
+        if body.client_message_id:
+            resume_user_message = await self.db.chat.messages.find_user_message_by_client_id(
+                chat_id,
+                body.client_message_id,
+            )
+
+            if resume_user_message is not None:
+                history = await self.db.chat.messages.list_by_chat(chat_id)
+                resume_assistant = self._assistant_reply_after(history, resume_user_message)
+
+                if resume_assistant is not None:
+                    logger.info(
+                        "chat_message_replayed",
+                        chat_id=chat_id,
+                        client_message_id=body.client_message_id,
+                        user_message_id=resume_user_message.id,
+                        assistant_message_id=resume_assistant.id,
+                    )
+                    return await self._build_send_message_response(
+                        resume_user_message,
+                        resume_assistant,
+                    )
+
+        should_generate_title = (
+            chat.message_count == 0
+            and is_default_chat_title(chat.title)
+            and resume_user_message is None
+        )
 
         chat_type = ChatType(chat.chat_type)
         use_history_value = self._resolve_use_history(body, chat)
@@ -732,14 +799,21 @@ class ChatService:
             use_history_value,
         )
 
-        user_message = await self.db.chat.messages.create(
-            chat_id=chat_id,
-            role=MessageRole.USER,
-            content=body.content,
-            message_metadata=settings_metadata,
-        )
+        if body.client_message_id:
+            settings_metadata["client_message_id"] = body.client_message_id
 
-        history = await self.db.chat.messages.list_by_chat(chat_id)
+        if resume_user_message is None:
+            user_message = await self.db.chat.messages.create(
+                chat_id=chat_id,
+                role=MessageRole.USER,
+                content=body.content,
+                message_metadata=settings_metadata,
+            )
+            history = await self.db.chat.messages.list_by_chat(chat_id)
+        else:
+            user_message = resume_user_message
+            history = await self.db.chat.messages.list_by_chat(chat_id)
+
         llm_messages = self._build_llm_messages(history, body.content, use_history_value)
 
         client = ChatCompletionClient(self.settings.llm)
@@ -747,7 +821,7 @@ class ChatService:
         free_mode = chat_type == ChatType.LLM and self._is_llm_free_mode(llm_snapshot)
         block_reason = None if free_mode else evaluate_user_message(body.content)
 
-        if block_reason is not None:
+        if block_reason is not None and resume_user_message is None:
             assistant_text = blocked_refusal(body.content)
             llm_metadata: dict = {
                 "model": self.settings.llm.model,
@@ -775,9 +849,10 @@ class ChatService:
         else:
             # Commit the user message before LLM/RAG I/O so SQLite is not write-locked
             # for the duration of external calls (title generation, other chats, etc.).
-            await self.db.chat.chats.touch(chat_id)
-            await self.db.chat.chats.adjust_message_count(chat_id, 1)
-            await self.db.commit()
+            if resume_user_message is None:
+                await self.db.chat.chats.touch(chat_id)
+                await self.db.chat.chats.adjust_message_count(chat_id, 1)
+                await self.db.commit()
 
             try:
                 reply_language = reply_language_for_user_text(body.content)
