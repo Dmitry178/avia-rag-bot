@@ -12,7 +12,7 @@ Test suite for `avia-bot-backend`. Split into three areas:
 
 Stack: **pytest**, **pytest-asyncio** (`auto` mode), **httpx** (ASGI transport).
 
-Currently **88 tests** across all areas.
+Currently **148 tests** across all areas (53 API).
 
 ## Directory layout
 
@@ -24,7 +24,9 @@ tests/
 ├── paths.py            # shared paths to test data
 ├── api/
 │   ├── conftest.py     # client fixture (lifespan + AsyncClient)
+│   ├── mocks.py        # shared mock payloads for ETL API tests
 │   ├── test_chat.py    # chat CRUD, settings, messages, guards, titles
+│   ├── test_chat_events.py  # SSE subscription endpoint
 │   ├── test_etl.py     # ETL endpoints
 │   └── test_health.py  # healthz / readyz
 ├── exceptions/
@@ -98,11 +100,14 @@ Boot the full application (`app.main:app`) with lifespan initialization (table c
 
 ### Coverage
 
+See also the **API test coverage** table in [docs/api.md](../docs/api.md) (EN) / [docs/api_ru.md](../docs/api_ru.md) (RU).
+
 | File | Endpoints | Tests |
 |------|-----------|-------|
-| `test_health.py` | `GET /api/healthz`, `GET /api/readyz` | liveness and readiness return `{"status": "ok"}` |
-| `test_chat.py` | `POST/GET/PATCH/DELETE /api/chats`, `POST/DELETE /api/chats/{id}/messages` | create, list, filter by `chat_type`; `rag_config` / `llm_config` / `use_history` on create and PATCH; empty messages on new chat; send LLM message (mocked `ChatCompletionClient`) with custom-prompt mode skipping guards; LLM failure keeps user message; send RAG message (mocked `RagPipeline`) persisting metadata, trace, and `message_count`; soft-delete chat and message; prompt injection closes chat → 409 on follow-up; off-topic blocked without closing; first message schedules background title generation (default and custom-prompt context); second message skips title generation |
-| `test_etl.py` | `GET /api/etl/stats`, `GET /api/etl/manifest` | chunk statistics; manifest without index → 404 |
+| `test_health.py` | `GET /api/healthz`, `GET /api/readyz` | ok status, JSON content-type, method validation; readiness `503` when DB unreachable (mocked) |
+| `test_etl.py` | `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest` | ingest success/rebuild/error (mocked `ETLService`); stats empty DB + mocked distribution; manifest 404 + mocked metadata |
+| `test_chat_events.py` | `GET /api/chats/events` | missing/empty `client_id` → 422; handler returns `EventSourceResponse` |
+| `test_chat.py` | chat CRUD, messages, close, edit, rating | create, list, filter by `chat_type`; settings on create/PATCH; get/delete 404; close chat + idempotent close; edit user/assistant/missing message; rate assistant/user/missing; send messages (mocked LLM/RAG); guards, titles, idempotency |
 
 Message tests patch external I/O (`ChatCompletionClient.complete`, `RagPipeline`) so no LLM or FAISS index is required.
 
@@ -230,7 +235,7 @@ Use when adding unit tests that need files from disk.
 2. **Docstrings** — in English, briefly describe expected behavior (see existing tests).
 3. **API tests** — only in `tests/api/`; HTTP fixtures in `tests/api/conftest.py`; DB isolation in the root `tests/conftest.py`.
 4. **Unit tests** — mirror code layout: `app/services/chat.py` → `tests/unit/services/test_chat.py`, `etl/parser.py` → `tests/unit/etl/test_parser.py`.
-5. **New API routers** — add `tests/api/test_<router>.py`; do not mix with unit tests.
+5. **New API routers** — add `tests/api/test_<router>.py` with **2–3 tests per endpoint**; see `.cursor/rules/backend-api-tests.mdc`; do not mix with unit tests.
 6. **Async** — mark API tests with `@pytest.mark.asyncio` (or rely on `asyncio_mode = "auto"`).
 7. **External I/O in API tests** — patch LLM, RAG, and FAISS at the service boundary (`unittest.mock.patch`) so tests stay fast and offline.
 
