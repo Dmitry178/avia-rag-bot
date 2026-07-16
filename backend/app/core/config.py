@@ -193,14 +193,6 @@ class LogSettings(BaseModel):
     format: LogFormat = LogFormat.TEXT
 
 
-class TelegramSettings(BaseModel):
-    """
-    Telegram bot settings.
-    """
-
-    bot_token: str = ""
-
-
 class Settings(BaseSettings):
     """
     Root settings loaded from environment variables.
@@ -220,7 +212,6 @@ class Settings(BaseSettings):
     faiss: FaissSettings = Field(default_factory=FaissSettings)
     etl: ETLSettings = Field(default_factory=ETLSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
-    telegram: TelegramSettings = Field(default_factory=TelegramSettings)
 
     @property
     def repo_root(self) -> Path:
