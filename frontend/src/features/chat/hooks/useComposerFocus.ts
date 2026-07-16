@@ -2,11 +2,14 @@ import { type RefObject, useCallback, useEffect, useRef } from "react";
 
 import { useChatUiStore } from "@/features/chats/store";
 
+import { useComposerAutoResize } from "./useComposerAutoResize";
+
 interface UseComposerFocusOptions {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   selectedChatId: number | null;
   isComposerDisabled: boolean;
   isSendPending: boolean;
+  value: string;
 }
 
 export function useComposerFocus({
@@ -14,7 +17,9 @@ export function useComposerFocus({
   selectedChatId,
   isComposerDisabled,
   isSendPending,
+  value,
 }: UseComposerFocusOptions): void {
+  useComposerAutoResize({ textareaRef, value });
   const composerFocusNonce = useChatUiStore((state) => state.composerFocusNonce);
   const pendingChatIdRef = useRef<number | null>(null);
   const wasSendPendingRef = useRef(false);
