@@ -68,6 +68,7 @@ export function sendMessage(
   content: string,
   options?: {
     clientId?: string;
+    clientMessageId?: string;
     ragConfig?: RagConfig;
     llmConfig?: LlmConfig;
     useHistory?: boolean | null;
@@ -77,6 +78,10 @@ export function sendMessage(
     content,
     client_id: options?.clientId ?? null,
   };
+
+  if (options?.clientMessageId) {
+    body.client_message_id = options.clientMessageId;
+  }
 
   if (options?.ragConfig) {
     body.rag_config = options.ragConfig;
