@@ -710,3 +710,250 @@ async def test_send_message_is_idempotent_by_client_message_id(client: AsyncClie
     detail = await client.get(f"/api/chats/{chat_id}")
     assert detail.status_code == 200
     assert len(detail.json()["messages"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_chat_returns_404_for_missing_chat(client: AsyncClient) -> None:
+    """
+    Fetching an unknown chat id should return 404.
+    """
+
+    response = await client.get("/api/chats/999999")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "chat_not_found"
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_returns_404_for_missing_chat(client: AsyncClient) -> None:
+    """
+    Deleting an unknown chat id should return 404.
+    """
+
+    response = await client.delete("/api/chats/999999")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "chat_not_found"
+
+
+@pytest.mark.asyncio
+async def test_close_chat_marks_thread_closed(client: AsyncClient) -> None:
+    """
+    Closing a chat should set is_closed and block further messages.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Close me"})
+    chat_id = create.json()["id"]
+
+    closed = await client.post(f"/api/chats/{chat_id}/close")
+    assert closed.status_code == 200
+    assert closed.json()["is_closed"] is True
+    assert closed.json()["closed_at"] is not None
+
+    follow_up = await client.post(
+        f"/api/chats/{chat_id}/messages",
+        json={"content": "Hello after close"},
+    )
+    assert follow_up.status_code == 409
+    assert follow_up.json()["error_code"] == "chat_closed"
+
+
+@pytest.mark.asyncio
+async def test_close_chat_returns_404_for_missing_chat(client: AsyncClient) -> None:
+    """
+    Closing an unknown chat id should return 404.
+    """
+
+    response = await client.post("/api/chats/999999/close")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "chat_not_found"
+
+
+@pytest.mark.asyncio
+async def test_close_chat_is_idempotent_for_already_closed_chat(client: AsyncClient) -> None:
+    """
+    Closing an already closed chat should keep is_closed true.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Already closed"})
+    chat_id = create.json()["id"]
+
+    first = await client.post(f"/api/chats/{chat_id}/close")
+    second = await client.post(f"/api/chats/{chat_id}/close")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["is_closed"] is True
+
+
+@pytest.mark.asyncio
+async def test_edit_user_message_updates_content(client: AsyncClient) -> None:
+    """
+    PATCH on a user message should persist the new body.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Edit chat"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        return_value=LLM_MOCK_RETURN,
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "Original text"},
+        )
+
+    message_id = send.json()["user_message"]["id"]
+
+    edited = await client.patch(
+        f"/api/chats/{chat_id}/messages/{message_id}",
+        json={"content": "Updated text"},
+    )
+
+    assert edited.status_code == 200
+    assert edited.json()["content"] == "Updated text"
+
+
+@pytest.mark.asyncio
+async def test_edit_assistant_message_returns_400(client: AsyncClient) -> None:
+    """
+    Only user messages are editable.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Edit assistant"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        return_value=LLM_MOCK_RETURN,
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "Question"},
+        )
+
+    assistant_id = send.json()["assistant_message"]["id"]
+
+    edited = await client.patch(
+        f"/api/chats/{chat_id}/messages/{assistant_id}",
+        json={"content": "Cannot edit assistant"},
+    )
+
+    assert edited.status_code == 400
+    assert edited.json()["error_code"] == "message_not_editable"
+
+
+@pytest.mark.asyncio
+async def test_edit_message_returns_404_for_missing_message(client: AsyncClient) -> None:
+    """
+    Editing an unknown message id should return 404.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Missing message"})
+    chat_id = create.json()["id"]
+
+    response = await client.patch(
+        f"/api/chats/{chat_id}/messages/999999",
+        json={"content": "Ghost message"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "message_not_found"
+
+
+@pytest.mark.asyncio
+async def test_rate_assistant_message_persists_rating(client: AsyncClient) -> None:
+    """
+    Rating an assistant reply should store rating and optional comment.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Rate chat"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        return_value=LLM_MOCK_RETURN,
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "How are you?"},
+        )
+
+    assistant_id = send.json()["assistant_message"]["id"]
+
+    rated = await client.post(
+        f"/api/chats/{chat_id}/messages/{assistant_id}/rating",
+        json={"rating": 5, "comment": "Helpful answer"},
+    )
+
+    assert rated.status_code == 200
+    assert rated.json()["rating"] == 5
+    assert rated.json()["rating_comment"] == "Helpful answer"
+
+
+@pytest.mark.asyncio
+async def test_rate_user_message_returns_400(client: AsyncClient) -> None:
+    """
+    Only assistant messages can be rated.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Rate user"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        return_value=LLM_MOCK_RETURN,
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "Question"},
+        )
+
+    user_id = send.json()["user_message"]["id"]
+
+    rated = await client.post(
+        f"/api/chats/{chat_id}/messages/{user_id}/rating",
+        json={"rating": 4},
+    )
+
+    assert rated.status_code == 400
+    assert rated.json()["error_code"] == "message_not_rateable"
+
+
+@pytest.mark.asyncio
+async def test_rate_message_returns_404_for_missing_message(client: AsyncClient) -> None:
+    """
+    Rating an unknown message id should return 404.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Missing rating"})
+    chat_id = create.json()["id"]
+
+    response = await client.post(
+        f"/api/chats/{chat_id}/messages/999999/rating",
+        json={"rating": 3},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "message_not_found"
+
+
+@pytest.mark.asyncio
+async def test_delete_message_returns_404_for_missing_message(client: AsyncClient) -> None:
+    """
+    Deleting an unknown message id should return 404.
+    """
+
+    create = await client.post("/api/chats", json={"title": "Delete missing"})
+    chat_id = create.json()["id"]
+
+    response = await client.delete(f"/api/chats/{chat_id}/messages/999999")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "message_not_found"
