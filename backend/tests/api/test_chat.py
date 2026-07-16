@@ -670,3 +670,43 @@ async def test_second_message_does_not_schedule_title_generation(client: AsyncCl
 
     assert second.status_code == 200
     schedule_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_message_is_idempotent_by_client_message_id(client: AsyncClient) -> None:
+    """
+    Retries with the same client_message_id should return the original reply without duplicating rows.
+    """
+
+    create = await client.post("/api/chats", json={"title": "New chat", "chat_type": "llm"})
+    chat_id = create.json()["id"]
+
+    with patch(
+        "app.services.chat.ChatCompletionClient.complete",
+        new_callable=AsyncMock,
+        return_value=LLM_MOCK_RETURN,
+    ):
+        first = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={
+                "content": "drunk captain",
+                "client_message_id": "retry-key-1",
+            },
+        )
+        assert first.status_code == 200
+
+        second = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={
+                "content": "drunk captain",
+                "client_message_id": "retry-key-1",
+            },
+        )
+
+    assert second.status_code == 200
+    assert second.json()["user_message"]["id"] == first.json()["user_message"]["id"]
+    assert second.json()["assistant_message"]["id"] == first.json()["assistant_message"]["id"]
+
+    detail = await client.get(f"/api/chats/{chat_id}")
+    assert detail.status_code == 200
+    assert len(detail.json()["messages"]) == 2
