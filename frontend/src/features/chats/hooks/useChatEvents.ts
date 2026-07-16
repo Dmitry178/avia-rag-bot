@@ -1,33 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { chatDetailQueryKey } from "@/features/chat/hooks/useChat";
-import { chatsQueryKey } from "@/features/chats/hooks/useChats";
+import { applyChatTitle } from "@/features/chats/lib/chatTitle";
 import { useChatUiStore } from "@/features/chats/store";
 import { apiUrl } from "@/shared/config/env";
 import { useTranslation } from "@/shared/i18n";
 import { showErrorToast } from "@/shared/toast/showToast";
-import type { ChatMode, ChatSSEErrorPayload, ChatSummary } from "@/shared/api/types";
+import type { ChatSSEErrorPayload } from "@/shared/api/types";
 
 interface ChatTitleEventPayload {
   chat_id: number;
   title: string;
-}
-
-function applyChatTitle(
-  queryClient: ReturnType<typeof useQueryClient>,
-  chatId: number,
-  title: string,
-) {
-  for (const chatType of ["llm", "rag"] satisfies ChatMode[]) {
-    queryClient.setQueryData<ChatSummary[]>(chatsQueryKey(chatType), (current) =>
-      current?.map((item) => (item.id === chatId ? { ...item, title } : item)),
-    );
-  }
-
-  queryClient.setQueryData(chatDetailQueryKey(chatId), (current) =>
-    current ? { ...current, title } : current,
-  );
 }
 
 /**
@@ -37,6 +20,9 @@ export function useChatEvents() {
   const clientId = useChatUiStore((state) => state.clientId);
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const tRef = useRef(t);
+
+  tRef.current = t;
 
   useEffect(() => {
     const url = apiUrl(`/api/chats/events?client_id=${encodeURIComponent(clientId)}`);
@@ -69,7 +55,7 @@ export function useChatEvents() {
           return;
         }
 
-        showErrorToast(payload.message, t("errors.chatTitleFailed"));
+        showErrorToast(payload.message, tRef.current("errors.chatTitleFailed"));
       } catch {
         // Ignore malformed SSE payloads.
       }
@@ -83,5 +69,5 @@ export function useChatEvents() {
       source.removeEventListener("error", onError);
       source.close();
     };
-  }, [clientId, queryClient, t]);
+  }, [clientId, queryClient]);
 }
