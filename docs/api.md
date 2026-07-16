@@ -6,6 +6,35 @@ HTTP contract for **avia-bot** backend. Base path: `/api`. Interactive OpenAPI: 
 
 Schemas are defined in `backend/app/schemas/`. See [ARCHITECTURE.md](ARCHITECTURE.md) for behavioral context.
 
+Test suite layout: [backend/tests/README.md](../backend/tests/README.md). Cursor rule for new endpoints: `.cursor/rules/backend-api-tests.mdc`.
+
+---
+
+## API test coverage
+
+Each endpoint should have **2–3 HTTP tests** in `backend/tests/api/` (mocked external I/O where needed).
+
+| Method | Path | Tests | Status |
+|--------|------|-------|--------|
+| `GET` | `/api/healthz` | `test_health.py` | covered |
+| `GET` | `/api/readyz` | `test_health.py` | covered |
+| `POST` | `/api/etl/ingest` | `test_etl.py` | covered |
+| `GET` | `/api/etl/stats` | `test_etl.py` | covered |
+| `GET` | `/api/etl/manifest` | `test_etl.py` | covered |
+| `GET` | `/api/chats/events` | `test_chat_events.py` | covered |
+| `GET` | `/api/chats` | `test_chat.py` | covered |
+| `POST` | `/api/chats` | `test_chat.py` | covered |
+| `GET` | `/api/chats/{chat_id}` | `test_chat.py` | covered |
+| `PATCH` | `/api/chats/{chat_id}` | `test_chat.py` | covered |
+| `DELETE` | `/api/chats/{chat_id}` | `test_chat.py` | covered |
+| `POST` | `/api/chats/{chat_id}/close` | `test_chat.py` | covered |
+| `POST` | `/api/chats/{chat_id}/messages` | `test_chat.py` | covered |
+| `PATCH` | `/api/chats/{chat_id}/messages/{message_id}` | `test_chat.py` | covered |
+| `POST` | `/api/chats/{chat_id}/messages/{message_id}/rating` | `test_chat.py` | covered |
+| `DELETE` | `/api/chats/{chat_id}/messages/{message_id}` | `test_chat.py` | covered |
+
+Run API tests: `make backend-test-api` or `uv run pytest tests/api` from `backend/`.
+
 ---
 
 ## Conventions
