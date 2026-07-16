@@ -74,24 +74,6 @@ export function useCreateChatMutation() {
   });
 }
 
-function pickNextChatId(chats: ChatSummary[], deletedChatId: number): number | null {
-  const index = chats.findIndex((chat) => chat.id === deletedChatId);
-
-  if (index === -1) {
-    return null;
-  }
-
-  if (index > 0) {
-    return chats[index - 1].id;
-  }
-
-  if (chats.length > 1) {
-    return chats[index + 1].id;
-  }
-
-  return null;
-}
-
 export function useDeleteChatMutation() {
   const queryClient = useQueryClient();
   const chatType = useChatModeStore((state) => state.mode);
@@ -108,7 +90,7 @@ export function useDeleteChatMutation() {
 
       if (previousChats) {
         if (previousSelectedChatId === chatId) {
-          setSelectedChatId(chatType, pickNextChatId(previousChats, chatId));
+          setSelectedChatId(chatType, null);
         }
 
         queryClient.setQueryData<ChatSummary[]>(
