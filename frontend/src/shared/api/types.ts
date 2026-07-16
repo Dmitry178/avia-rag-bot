@@ -47,6 +47,7 @@ export interface ChatDetail extends ChatSummary {
 
 export interface SendMessagePayload {
   content: string;
+  client_message_id?: string;
   rag_config?: RagConfig;
   llm_config?: LlmConfig;
   use_history?: boolean | null;
