@@ -15,7 +15,6 @@ import { useElementHover } from "@/shared/hooks/useElementHover";
 import { copyToClipboard } from "@/shared/lib/clipboard";
 import { useTranslation } from "@/shared/i18n";
 import { useChatDetailQuery, useDeleteMessageMutation, useSendMessageMutation } from "../hooks/useChat";
-import { useComposerAutoResize } from "../hooks/useComposerAutoResize";
 import { useComposerDraft } from "../hooks/useComposerDraft";
 import { useComposerFocus } from "../hooks/useComposerFocus";
 import {
@@ -178,6 +177,12 @@ export function ChatPanel() {
   const prevChatIdRef = useRef<number | null>(null);
   const prevMessageCountRef = useRef(0);
   const isSendingRef = useRef(false);
+  const pendingSendRef = useRef<{ id: string; content: string } | null>(null);
+
+  const createClientMessageId = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `msg-${Date.now()}`;
 
   const isChatClosed = chatQuery.data?.is_closed === true;
 
@@ -189,10 +194,12 @@ export function ChatPanel() {
     selectedChatId,
     isComposerDisabled,
     isSendPending: sendMutation.isPending,
+    value: draft,
   });
 
   useEffect(() => {
     isSendingRef.current = false;
+    pendingSendRef.current = null;
   }, [selectedChatId]);
 
   const inputPlaceholder =
@@ -252,14 +259,24 @@ export function ChatPanel() {
 
     isSendingRef.current = true;
     const contentToSend = content;
+    const clientMessageId =
+      pendingSendRef.current?.content === contentToSend
+        ? pendingSendRef.current.id
+        : createClientMessageId();
+
+    pendingSendRef.current = { id: clientMessageId, content: contentToSend };
     clearDraft();
 
     sendMutation.mutate(
       {
         content: contentToSend,
+        client_message_id: clientMessageId,
         rag_config: chatMode === "rag" ? toRagConfig() : undefined,
       },
       {
+        onSuccess: () => {
+          pendingSendRef.current = null;
+        },
         onError: () => {
           setDraft((current) => (current ? current : contentToSend));
         },
