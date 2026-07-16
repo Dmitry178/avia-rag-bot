@@ -65,10 +65,28 @@ class SSEManager:
     async def publish(self, client_id: str, event: str, data: dict[str, Any]) -> None:
         """
         Push event to all queues for client_id.
+
+        When no subscriber exists for ``client_id`` (e.g. SSE reconnect window),
+        ``chat_title`` events are broadcast to every active connection so the
+        sidebar still updates.
         """
 
         async with self._lock:
             queues = list(self._queues.get(client_id, []))
+
+            if not queues and event == "chat_title":
+                queues = [
+                    queue
+                    for client_queues in self._queues.values()
+                    for queue in client_queues
+                ]
+
+                if queues:
+                    logger.debug(
+                        "sse_broadcast_fallback",
+                        client_id=client_id,
+                        sse_event=event,
+                    )
 
         for queue in queues:
             await queue.put({"event": event, "data": data})
