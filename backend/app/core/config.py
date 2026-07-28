@@ -6,8 +6,76 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.exceptions.service import ServiceError
+
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _BACKEND_ROOT.parent
+
+DEFAULT_KB_LANGUAGE = "ru"
+
+
+class KbLanguageEntry(BaseModel):
+    """
+    Static knowledge-base language: code, markdown source path, display label.
+    """
+
+    code: str = Field(description="Language code used in DB columns and API (e.g. ru, en).")
+    document_path: str = Field(
+        description="Path to the markdown KB file (relative to backend root or absolute).",
+    )
+    display_name: str = Field(description="Human-readable language label for logs and docs.")
+
+
+KB_LANGUAGES: dict[str, KbLanguageEntry] = {
+    "ru": KbLanguageEntry(
+        code="ru",
+        document_path="data/rag-document-ru.md",
+        display_name="Русский",
+    ),
+    "en": KbLanguageEntry(
+        code="en",
+        document_path="data/rag-document-en.md",
+        display_name="English",
+    ),
+}
+
+
+def list_kb_language_codes() -> list[str]:
+    """
+    Return supported KB language codes in stable order.
+    """
+
+    return list(KB_LANGUAGES.keys())
+
+
+def get_kb_language(language_code: str) -> KbLanguageEntry:
+    """
+    Return a language definition or raise when the code is unknown.
+    """
+
+    language = KB_LANGUAGES.get(language_code)
+    if language is None:
+        raise ServiceError(
+            detail=f"Unknown knowledge-base language: {language_code}",
+            error_code="kb_language_unknown",
+            status_code=404,
+        )
+
+    return language
+
+
+def resolve_kb_document_path(language_code: str, backend_root: Path) -> Path:
+    """
+    Return absolute path to the markdown document for a KB language.
+    """
+
+    language = get_kb_language(language_code)
+    path = Path(language.document_path)
+
+    if path.is_absolute():
+        return path
+
+    return backend_root / path
 
 
 class AppSettings(BaseModel):
@@ -133,42 +201,29 @@ class FaissSettings(BaseModel):
     FAISS vector index artifact directory (data-only, not a Python package).
     """
 
-    dir: str = Field(default="./data", description="Directory for faiss.index (relative to backend root).")
-    index_file: str = Field(default="faiss.index", description="FAISS index filename inside dir.")
+    dir: str = Field(default="./data", description="Directory for per-language FAISS indexes (relative to backend root).")
+    index_file: str = Field(
+        default="faiss-{language_code}.index",
+        description="FAISS index filename pattern; {language_code} is replaced per KB language.",
+    )
 
-    def index_path(self, backend_root: Path) -> Path:
+    def index_path(self, backend_root: Path, language_code: str) -> Path:
         """
-        Resolve absolute path to the FAISS index file.
+        Resolve absolute path to the FAISS index file for a language.
         """
 
         base = Path(self.dir) if Path(self.dir).is_absolute() else backend_root / self.dir
-        return base / self.index_file
+        filename = self.index_file.format(language_code=language_code)
+
+        return base / filename
 
     def ensure_exists(self, backend_root: Path) -> None:
         """
         Create FAISS artifact directory if missing.
         """
 
-        self.index_path(backend_root).parent.mkdir(parents=True, exist_ok=True)
-
-
-class ETLSettings(BaseModel):
-    """
-    ETL pipeline settings.
-    """
-
-    document_path: str = "data/rag-document.md"
-
-    def resolve_document_path(self, backend_root: Path) -> Path:
-        """
-        Return absolute path to the knowledge base markdown document.
-        """
-
-        path = Path(self.document_path)
-        if path.is_absolute():
-            return path
-
-        return backend_root / path
+        base = Path(self.dir) if Path(self.dir).is_absolute() else backend_root / self.dir
+        base.mkdir(parents=True, exist_ok=True)
 
 
 class LLMSettings(BaseModel):
@@ -210,7 +265,6 @@ class Settings(BaseSettings):
     db: DBSettings = Field(default_factory=DBSettings)
     data: DataSettings = Field(default_factory=DataSettings)
     faiss: FaissSettings = Field(default_factory=FaissSettings)
-    etl: ETLSettings = Field(default_factory=ETLSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
 
     @property
