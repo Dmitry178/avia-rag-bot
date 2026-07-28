@@ -36,6 +36,11 @@ class Chat(SQLModel, table=True):
         default=ChatType.LLM.value,
         description="Chat pipeline mode: llm (plain LLM) or rag (RAG assistant).",
     )
+    language_code: str = Field(
+        default="ru",
+        max_length=16,
+        description="Knowledge-base / UI language this chat belongs to (ru or en).",
+    )
     is_closed: bool = Field(
         default=False,
         description="When true, no new messages can be sent to this chat.",
