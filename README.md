@@ -169,7 +169,7 @@ Trace (SSE + `metadata.rag_trace`): `rag_config` snapshot, query transform step,
 
 Full documentation: [docs/README.md](docs/README.md). Architecture: [ARCHITECTURE.md](docs/ARCHITECTURE.md). Product requirements: [PRD.md](docs/PRD.md).
 
-**Requirement:** build the index before using RAG (`make etl-ingest`). Without it, the API returns `503 rag_index_missing`.
+**Requirement:** build indexes before using RAG (`make etl-ingest-all` for both languages, or `etl-ingest-ru` / `etl-ingest-en`). Without them, the API returns `503 rag_index_missing`.
 
 ## Prompt injection protection
 
@@ -205,7 +205,9 @@ RAG method help texts: `rag-methods.ru.json` / `rag-methods.en.json`.
 ```bash
 cp backend/.env.example backend/.env   # fill in LLM__*
 make backend-install
-make etl-ingest                        # required for RAG
+make etl-ingest-all                    # required for RAG (ru + en)
+make etl-ingest-ru                     # or one language only
+make etl-ingest-en
 make etl-stats
 make etl-manifest
 ```
@@ -214,7 +216,7 @@ API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 
 **FAISS / AVX:** `faiss-cpu` from PyPI ships a generic build. On startup you may see INFO messages that AVX512/AVX2 modules are missing; FAISS then loads the default library (`Successfully loaded faiss.`). This is expected and does not require action. Loader noise is suppressed to WARNING in app logging.
 
-**Interrupting ingest:** `Ctrl+C` during `make etl-ingest` saves the embedding checkpoint after the last completed batch and exits with code 130. Re-run the same command to resume.
+**Interrupting ingest:** `Ctrl+C` during ingest saves the embedding checkpoint after the last completed batch and exits with code 130. Re-run the same target to resume.
 
 Default document: `backend/data/rag-document.md` (`ETL__DOCUMENT_PATH`).  
 Low-level ETL module details: [`backend/etl/README.md`](backend/etl/README.md).
@@ -222,8 +224,8 @@ Low-level ETL module details: [`backend/etl/README.md`](backend/etl/README.md).
 | Path | Purpose |
 |------|---------|
 | `backend/data/app.db` | SQLite: chunks, manifest, chats |
-| `backend/data/faiss.index` | FAISS index |
-| `backend/data/manifest.json` | manifest copy for tooling |
+| `backend/data/faiss-ru.index`, `faiss-en.index` | FAISS indexes per language |
+| `backend/data/manifest-ru.json`, `manifest-en.json` | manifest copies for tooling |
 | `backend/data/rag-document.md` | source markdown for ETL |
 
 ## Knowledge base document
@@ -286,7 +288,7 @@ Requirements: Python 3.13 + [uv](https://docs.astral.sh/uv/), Node.js 20+.
 cp backend/.env.example backend/.env
 # LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
 make backend-install
-make etl-ingest                        # for RAG mode
+make etl-ingest-all                    # for RAG mode
 make backend-dev                       # http://127.0.0.1:8000
 
 # 2. Frontend (separate terminal)
