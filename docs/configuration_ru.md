@@ -69,18 +69,21 @@ SQLite автоматически преобразуется в async (`sqlite+a
 
 | Переменная | Тип | По умолчанию | Описание |
 |------------|-----|--------------|----------|
-| `FAISS__DIR` | string | `./data` | Каталог файла векторного индекса |
-| `FAISS__INDEX_FILE` | string | `faiss.index` | Имя файла индекса в `FAISS__DIR` |
+| `FAISS__DIR` | string | `./data` | Каталог файлов векторного индекса по языкам |
+| `FAISS__INDEX_FILE` | string | `faiss-{language_code}.index` | Шаблон имени файла (`{language_code}` → `ru`, `en`) |
 
 ---
 
-## ETL (`ETL__`)
+## Языки базы знаний (код, не env)
 
-| Переменная | Тип | По умолчанию | Описание |
-|------------|-----|--------------|----------|
-| `ETL__DOCUMENT_PATH` | string | `data/rag-document.md` | Markdown базы знаний (относительно `backend/` или абсолютный) |
+Пути к markdown задаются в **`backend/app/core/config.py`** → `KB_LANGUAGES`:
 
-Переопределение на ingest: API `source_path` или CLI `--source`.
+| Код | Документ |
+|-----|----------|
+| `ru` | `data/rag-document-ru.md` |
+| `en` | `data/rag-document-en.md` |
+
+Чтобы изменить пути — правка `KB_LANGUAGES` и повторный ingest. Переопределение на запрос: API `source_path` или CLI `--source` у `POST /api/etl/ingest`.
 
 ---
 
@@ -114,7 +117,7 @@ SQLite автоматически преобразуется в async (`sqlite+a
 DATA__DIR: ./data
 DB__URL: sqlite:///./data/app.db
 FAISS__DIR: ./data
-ETL__DOCUMENT_PATH: data/rag-document.md
+FAISS__INDEX_FILE: faiss-{language_code}.index
 APP__CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
 ```
 

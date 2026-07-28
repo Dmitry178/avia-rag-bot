@@ -69,18 +69,21 @@ Created on startup if missing.
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `FAISS__DIR` | string | `./data` | Directory for vector index file |
-| `FAISS__INDEX_FILE` | string | `faiss.index` | Index filename inside `FAISS__DIR` |
+| `FAISS__DIR` | string | `./data` | Directory for per-language vector index files |
+| `FAISS__INDEX_FILE` | string | `faiss-{language_code}.index` | Index filename pattern (`{language_code}` → `ru`, `en`) |
 
 ---
 
-## ETL (`ETL__`)
+## Knowledge-base languages (code, not env)
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `ETL__DOCUMENT_PATH` | string | `data/rag-document.md` | Knowledge base markdown (relative to `backend/` or absolute) |
+Markdown sources for each language are defined in **`backend/app/core/config.py`** → `KB_LANGUAGES`:
 
-Override per ingest via API `source_path` or CLI `--source`.
+| Code | Document |
+|------|----------|
+| `ru` | `data/rag-document-ru.md` |
+| `en` | `data/rag-document-en.md` |
+
+To change paths, edit `KB_LANGUAGES` and re-run ingest. Per-request override: API `source_path` or CLI `--source` on `POST /api/etl/ingest`.
 
 ---
 
@@ -114,7 +117,7 @@ Override per ingest via API `source_path` or CLI `--source`.
 DATA__DIR: ./data
 DB__URL: sqlite:///./data/app.db
 FAISS__DIR: ./data
-ETL__DOCUMENT_PATH: data/rag-document.md
+FAISS__INDEX_FILE: faiss-{language_code}.index
 APP__CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
 ```
 
