@@ -60,13 +60,17 @@ async def list_chats(
         default=None,
         description="Filter chats by pipeline mode: llm or rag.",
     ),
+    language_code: str | None = Query(
+        default=None,
+        description="Filter chats by knowledge-base language (e.g. ru, en).",
+    ),
     db: DBManager = Depends(get_db),
 ) -> list[ChatSummaryResponse]:
     """
     List chat threads for the sidebar.
     """
 
-    return await ChatService(db).list_chats(chat_type=chat_type)
+    return await ChatService(db).list_chats(chat_type=chat_type, language_code=language_code)
 
 
 @router.post(
