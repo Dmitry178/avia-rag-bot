@@ -11,20 +11,30 @@ import type {
 
 const BASE = "/api/chats";
 
-export function listChats(chatType: ChatMode): Promise<ChatSummary[]> {
-  return apiRequest<ChatSummary[]>(`${BASE}?chat_type=${chatType}`);
+export function listChats(chatType: ChatMode, languageCode: string): Promise<ChatSummary[]> {
+  const params = new URLSearchParams({
+    chat_type: chatType,
+    language_code: languageCode,
+  });
+
+  return apiRequest<ChatSummary[]>(`${BASE}?${params.toString()}`);
 }
 
 export function createChat(
   title: string,
   chatType: ChatMode,
+  languageCode: string,
   options?: {
     ragConfig?: RagConfig | null;
     llmConfig?: LlmConfig | null;
     useHistory?: boolean | null;
   },
 ): Promise<ChatSummary> {
-  const body: Record<string, unknown> = { title, chat_type: chatType };
+  const body: Record<string, unknown> = {
+    title,
+    chat_type: chatType,
+    language_code: languageCode,
+  };
 
   if (options?.ragConfig) {
     body.rag_config = options.ragConfig;
