@@ -23,13 +23,13 @@ Docker backend service uses `healthz` in its healthcheck.
 
 | Command | Description |
 |---------|-------------|
-| `make etl-ingest` | Incremental ingest for one language (default `ru`) |
-| `make etl-ingest LANG=en` | Ingest English KB |
-| `make etl-ingest-all` | Ingest `ru` and `en` |
-| `make etl-stats` | Chunk counts by `content_type` |
-| `make etl-manifest` | Latest index manifest |
+| `make etl-ingest-ru` | Incremental ingest — Russian KB only (`faiss-ru.index`) |
+| `make etl-ingest-en` | Incremental ingest — English KB only (`faiss-en.index`) |
+| `make etl-ingest-all` | Incremental ingest — **both** `ru` and `en` |
+| `make etl-stats` | Chunk counts by `content_type` (optional `LANG=ru\|en`) |
+| `make etl-manifest` | Latest index manifest (optional `LANG=ru\|en`) |
 
-Docker: `make docker-etl-ingest`.
+Docker: `make docker-etl-ingest` indexes **both** languages; `docker-etl-ingest-ru` / `docker-etl-ingest-en` for one language.
 
 ### API equivalents
 
@@ -68,8 +68,8 @@ Chunk `id` in SQLite must match FAISS row index per language — both are rebuil
 
 | Trigger | Action |
 |---------|--------|
-| KB content changed | `make etl-ingest` or `make etl-ingest-all` (incremental) |
-| Embedding model changed | ingest with `rebuild=true` |
+| KB content changed | `make etl-ingest-ru`, `etl-ingest-en`, or `etl-ingest-all` (incremental) |
+| Embedding model changed | same targets with `REBUILD=1` |
 | FAISS/DB corruption suspected | Stop backend → backup `backend/data/` → full rebuild |
 | Interrupted ingest | Re-run same command — checkpoint resumes |
 
@@ -141,7 +141,7 @@ Key log events: `etl_ingest_*`, `sse_subscribed`, `llm_api_error`, `rag_index_mi
 
 **Cause:** FAISS index or manifest not found.
 
-**Fix:** Run `make etl-ingest`. Verify `backend/data/faiss.index` exists.
+**Fix:** Run `make etl-ingest-all` (or the language-specific target). Verify `backend/data/faiss-ru.index` and `faiss-en.index` exist.
 
 ### `503 rag_chunks_missing`
 

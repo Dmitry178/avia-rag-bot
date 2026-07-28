@@ -23,13 +23,13 @@ Docker healthcheck backend использует `healthz`.
 
 | Команда | Описание |
 |---------|----------|
-| `make etl-ingest` | Инкрементальный ingest для одного языка (по умолчанию `ru`) |
-| `make etl-ingest LANG=en` | Ingest английской KB |
-| `make etl-ingest-all` | Ingest `ru` и `en` |
-| `make etl-stats` | Количество чанков по `content_type` |
-| `make etl-manifest` | Последний manifest индекса |
+| `make etl-ingest-ru` | Инкрементальный ingest — только русская KB (`faiss-ru.index`) |
+| `make etl-ingest-en` | Инкрементальный ingest — только английская KB (`faiss-en.index`) |
+| `make etl-ingest-all` | Инкрементальный ingest — **оба** языка `ru` и `en` |
+| `make etl-stats` | Количество чанков по `content_type` (опционально `LANG=ru\|en`) |
+| `make etl-manifest` | Последний manifest (опционально `LANG=ru\|en`) |
 
-Docker: `make docker-etl-ingest`.
+Docker: `make docker-etl-ingest` индексирует **оба** языка; `docker-etl-ingest-ru` / `docker-etl-ingest-en` — один язык.
 
 ### API-эквиваленты
 
@@ -68,8 +68,8 @@ Docker: `make docker-etl-ingest`.
 
 | Событие | Действие |
 |---------|----------|
-| Изменился контент KB | `make etl-ingest` или `make etl-ingest-all` (инкрементально) |
-| Сменилась embedding model | `make etl-ingest` с `rebuild=true` |
+| Изменился контент KB | `make etl-ingest-ru`, `etl-ingest-en` или `etl-ingest-all` (инкрементально) |
+| Сменилась embedding model | те же цели с `REBUILD=1` |
 | Подозрение на рассинхрон FAISS/БД | Остановить backend → бэкап `backend/data/` → полный rebuild |
 | Прерванный ingest | Повторить ту же команду — checkpoint продолжит |
 
@@ -141,7 +141,7 @@ backend/data/rag-document-en.md
 
 **Причина:** нет FAISS-индекса или manifest.
 
-**Решение:** `make etl-ingest`. Проверить `backend/data/faiss.index`.
+**Решение:** `make etl-ingest-all` (или цель для конкретного языка). Проверить `backend/data/faiss-ru.index` и `faiss-en.index`.
 
 ### `503 rag_chunks_missing`
 
