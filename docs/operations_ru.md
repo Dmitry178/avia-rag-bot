@@ -23,8 +23,9 @@ Docker healthcheck backend использует `healthz`.
 
 | Команда | Описание |
 |---------|----------|
-| `make etl-ingest` | Инкрементальный ingest (по умолчанию) |
-| `make etl-ingest SOURCE=path/to/doc.md` | Ingest произвольного markdown |
+| `make etl-ingest` | Инкрементальный ingest для одного языка (по умолчанию `ru`) |
+| `make etl-ingest LANG=en` | Ingest английской KB |
+| `make etl-ingest-all` | Ingest `ru` и `en` |
 | `make etl-stats` | Количество чанков по `content_type` |
 | `make etl-manifest` | Последний manifest индекса |
 
@@ -34,33 +35,47 @@ Docker: `make docker-etl-ingest`.
 
 | Метод | Путь |
 |-------|------|
-| `POST` | `/api/etl/ingest` — body: `{ "rebuild": false, "source_path": null }` |
-| `GET` | `/api/etl/stats` |
-| `GET` | `/api/etl/manifest` |
+| `POST` | `/api/etl/ingest` — body: `{ "rebuild": false, "language_code": "ru", "source_path": null }` |
+| `POST` | `/api/etl/ingest-all` — body: `{ "rebuild": false }` |
+| `GET` | `/api/etl/stats` — опционально `?language_code=ru` |
+| `GET` | `/api/etl/manifest` — `?language_code=ru` |
+
+### Языки базы знаний
+
+Поддерживаемые языки **захардкожены** в `backend/app/core/config.py` (`KB_LANGUAGES`, не в БД):
+
+| Код | Документ | Метка |
+|-----|----------|-------|
+| `ru` | `backend/data/rag-document-ru.md` | Русский |
+| `en` | `backend/data/rag-document-en.md` | English |
+
+В чатах, чанках и manifest используется столбец `language_code` со значениями `ru` или `en`.
+
+### Артефакты на диске
+
+| Файл | Назначение |
+|------|------------|
+| `backend/data/app.db` | SQLite (чанки, чаты, manifests) |
+| `backend/data/faiss-ru.index` | FAISS (русская KB) |
+| `backend/data/faiss-en.index` | FAISS (английская KB) |
+| `backend/data/manifest-ru.json` | Метаданные последней сборки (ru) |
+| `backend/data/manifest-en.json` | Метаданные последней сборки (en) |
+| `backend/data/ingest_checkpoint_{lang}.json` | Checkpoint resume (временный) |
+
+`id` чанка в SQLite должен совпадать с позицией строки в FAISS **внутри языка** — при полном ingest пересобираются вместе.
 
 ### Когда перезапускать ingest
 
 | Событие | Действие |
 |---------|----------|
-| Изменился контент KB | `make etl-ingest` (инкрементально) |
+| Изменился контент KB | `make etl-ingest` или `make etl-ingest-all` (инкрементально) |
 | Сменилась embedding model | `make etl-ingest` с `rebuild=true` |
 | Подозрение на рассинхрон FAISS/БД | Остановить backend → бэкап `backend/data/` → полный rebuild |
 | Прерванный ingest | Повторить ту же команду — checkpoint продолжит |
 
 ### Checkpoint ingest
 
-Файл: `backend/data/ingest_checkpoint.json`. Сохраняется между батчами эмбеддингов. При `Ctrl+C` CLI выводит инструкцию по resume (`exit code 130`).
-
-### Артефакты на диске
-
-| Файл | Назначение |
-|------|------------|
-| `backend/data/app.db` | SQLite (чанки, чаты, manifest) |
-| `backend/data/faiss.index` | FAISS-индекс |
-| `backend/data/manifest.json` | Метаданные последней сборки |
-| `backend/data/ingest_checkpoint.json` | Состояние resume (временный) |
-
-`id` чанка в SQLite должен совпадать с позицией строки в FAISS — при полном ingest пересобираются вместе.
+Файлы: `backend/data/ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Сохраняются между батчами эмбеддингов. При `Ctrl+C` CLI выводит инструкцию по resume (`exit code 130`).
 
 ---
 
@@ -72,9 +87,12 @@ Docker: `make docker-etl-ingest`.
 
 ```
 backend/data/app.db
-backend/data/faiss.index
-backend/data/manifest.json
-backend/data/rag-document.md   # исходная KB
+backend/data/faiss-ru.index
+backend/data/faiss-en.index
+backend/data/manifest-ru.json
+backend/data/manifest-en.json
+backend/data/rag-document-ru.md
+backend/data/rag-document-en.md
 ```
 
 ### Процедура
@@ -145,7 +163,7 @@ backend/data/rag-document.md   # исходная KB
 
 ### `etl_source_not_found`
 
-**Причина:** `ETL__DOCUMENT_PATH` или `source_path` указывает на несуществующий файл.
+**Причина:** путь в `KB_LANGUAGES` или `source_path` при ingest указывает на несуществующий файл.
 
 **Решение:** путь относительно `backend/` или абсолютный.
 

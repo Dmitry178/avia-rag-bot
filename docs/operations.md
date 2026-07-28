@@ -23,8 +23,9 @@ Docker backend service uses `healthz` in its healthcheck.
 
 | Command | Description |
 |---------|-------------|
-| `make etl-ingest` | Incremental ingest (default) |
-| `make etl-ingest SOURCE=path/to/doc.md` | Ingest custom markdown |
+| `make etl-ingest` | Incremental ingest for one language (default `ru`) |
+| `make etl-ingest LANG=en` | Ingest English KB |
+| `make etl-ingest-all` | Ingest `ru` and `en` |
 | `make etl-stats` | Chunk counts by `content_type` |
 | `make etl-manifest` | Latest index manifest |
 
@@ -34,33 +35,47 @@ Docker: `make docker-etl-ingest`.
 
 | Method | Path |
 |--------|------|
-| `POST` | `/api/etl/ingest` — body: `{ "rebuild": false, "source_path": null }` |
-| `GET` | `/api/etl/stats` |
-| `GET` | `/api/etl/manifest` |
+| `POST` | `/api/etl/ingest` — body: `{ "rebuild": false, "language_code": "ru", "source_path": null }` |
+| `POST` | `/api/etl/ingest-all` — body: `{ "rebuild": false }` |
+| `GET` | `/api/etl/stats` — optional `?language_code=ru` |
+| `GET` | `/api/etl/manifest` — `?language_code=ru` |
 
-### When to re-ingest
+### Knowledge-base languages
 
-| Trigger | Action |
-|---------|--------|
-| KB content changed | `make etl-ingest` (incremental) |
-| Embedding model changed | `make etl-ingest` with `rebuild=true` |
-| FAISS/DB corruption suspected | Stop backend → backup `backend/data/` → full rebuild |
-| Interrupted ingest | Re-run same command — checkpoint resumes |
+Supported languages are **hardcoded** in `backend/app/core/config.py` (`KB_LANGUAGES`, not stored in the database):
 
-### Ingest checkpoint
+| Code | Document | UI label |
+|------|----------|----------|
+| `ru` | `backend/data/rag-document-ru.md` | Русский |
+| `en` | `backend/data/rag-document-en.md` | English |
 
-File: `backend/data/ingest_checkpoint.json`. Saved during embedding batches. On `Ctrl+C`, CLI prints resume instructions (`exit code 130`).
+Chats, chunks, and manifests use `language_code` column values `ru` or `en`. To change paths, edit `KB_LANGUAGES` in `config.py` and re-run ingest.
 
 ### On-disk artifacts
 
 | File | Purpose |
 |------|---------|
-| `backend/data/app.db` | SQLite (chunks, chats, manifest) |
-| `backend/data/faiss.index` | FAISS vector index |
-| `backend/data/manifest.json` | Latest build metadata (sidecar) |
-| `backend/data/ingest_checkpoint.json` | Resume state (transient) |
+| `backend/data/app.db` | SQLite (chunks, chats, manifests) |
+| `backend/data/faiss-ru.index` | FAISS vectors (Russian KB) |
+| `backend/data/faiss-en.index` | FAISS vectors (English KB) |
+| `backend/data/manifest-ru.json` | Latest Russian build metadata |
+| `backend/data/manifest-en.json` | Latest English build metadata |
+| `backend/data/ingest_checkpoint_{lang}.json` | Resume state per language (transient) |
 
-Chunk `id` in SQLite must match FAISS row index — both are rebuilt together on full ingest.
+Chunk `id` in SQLite must match FAISS row index per language — both are rebuilt together on full ingest.
+
+### When to re-ingest
+
+| Trigger | Action |
+|---------|--------|
+| KB content changed | `make etl-ingest` or `make etl-ingest-all` (incremental) |
+| Embedding model changed | ingest with `rebuild=true` |
+| FAISS/DB corruption suspected | Stop backend → backup `backend/data/` → full rebuild |
+| Interrupted ingest | Re-run same command — checkpoint resumes |
+
+### Ingest checkpoint
+
+Files: `backend/data/ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Saved during embedding batches. On `Ctrl+C`, CLI prints resume instructions (`exit code 130`).
 
 ---
 
@@ -72,9 +87,12 @@ Minimum for RAG recovery:
 
 ```
 backend/data/app.db
-backend/data/faiss.index
-backend/data/manifest.json
-backend/data/rag-document.md   # source KB
+backend/data/faiss-ru.index
+backend/data/faiss-en.index
+backend/data/manifest-ru.json
+backend/data/manifest-en.json
+backend/data/rag-document-ru.md
+backend/data/rag-document-en.md
 ```
 
 ### Suggested procedure
@@ -145,7 +163,7 @@ Key log events: `etl_ingest_*`, `sse_subscribed`, `llm_api_error`, `rag_index_mi
 
 ### `etl_source_not_found`
 
-**Cause:** `ETL__DOCUMENT_PATH` or `source_path` points to missing file.
+**Cause:** `KB_LANGUAGES` path or ingest `source_path` points to missing file.
 
 **Fix:** Verify path relative to `backend/` or use absolute path.
 
