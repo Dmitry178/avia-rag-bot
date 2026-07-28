@@ -22,6 +22,7 @@ def _chunk(
     title: str = "Title",
 ) -> ChunkMeta:
     return ChunkMeta(
+        language_code="ru",
         id=chunk_id,
         content=f"content-{chunk_id}",
         content_type=content_type,
