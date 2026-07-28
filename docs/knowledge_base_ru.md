@@ -10,9 +10,8 @@
 
 | Параметр | Значение |
 |----------|----------|
-| Путь по умолчанию | `backend/data/rag-document.md` |
-| Оглавление (только для людей) | `backend/data/rag-doc-index.md` — **ETL не использует** |
-| После правок | `make etl-ingest` |
+| Пути по умолчанию | `backend/data/rag-document-ru.md`, `backend/data/rag-document-en.md` (см. `KB_LANGUAGES` в `config.py`) |
+| После правок | `make etl-ingest-all` |
 
 ---
 

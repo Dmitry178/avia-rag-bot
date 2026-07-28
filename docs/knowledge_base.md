@@ -10,9 +10,8 @@ How to structure, write, and update the markdown knowledge base for **avia-bot**
 
 | Item | Value |
 |------|-------|
-| Default path | `backend/data/rag-document.md` |
-| Outline (human only) | `backend/data/rag-doc-index.md` — **not used by ETL** |
-| After edits | Run `make etl-ingest` |
+| Default paths | `backend/data/rag-document-ru.md`, `backend/data/rag-document-en.md` (see `KB_LANGUAGES` in `config.py`) |
+| After edits | Run `make etl-ingest-all` |
 
 ---
 
