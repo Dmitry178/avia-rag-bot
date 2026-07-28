@@ -280,7 +280,12 @@ class ChatService:
 
         return chunk_ids
 
-    async def _load_chunk_map_for_metadata(self, metadata_list: list[dict]) -> dict[int, ChunkMeta]:
+    async def _load_chunk_map_for_metadata(
+        self,
+        metadata_list: list[dict],
+        *,
+        language_code: str,
+    ) -> dict[int, ChunkMeta]:
         chunk_ids: set[int] = set()
 
         for metadata in metadata_list:
@@ -289,7 +294,8 @@ class ChatService:
         if not chunk_ids:
             return {}
 
-        chunks = await self.db.etl.chunks.list_by_ids(list(chunk_ids))
+        chunks = await self.db.etl.chunks.list_by_ids(language_code, list(chunk_ids))
+
         return {chunk.id: chunk for chunk in chunks if chunk.id is not None}
 
     @staticmethod
@@ -477,6 +483,7 @@ class ChatService:
             id=chat.id,
             title=chat.title,
             chat_type=ChatType(chat.chat_type),
+            language_code=chat.language_code,
             is_closed=chat.is_closed,
             message_count=chat.message_count,
             rag_config=ChatService._parse_rag_config(chat.rag_config),
@@ -544,6 +551,8 @@ class ChatService:
         self,
         user_message,
         assistant_message,
+        *,
+        language_code: str,
     ) -> SendMessageResponse:
         """
         Build API response for an existing user/assistant pair.
@@ -551,6 +560,7 @@ class ChatService:
 
         chunk_map = await self._load_chunk_map_for_metadata(
             [user_message.message_metadata, assistant_message.message_metadata],
+            language_code=language_code,
         )
 
         return SendMessageResponse(
@@ -576,12 +586,17 @@ class ChatService:
         return chat
 
     @handle_basic_db_errors
-    async def list_chats(self, chat_type: ChatType | None = None) -> list[ChatSummaryResponse]:
+    async def list_chats(
+        self,
+        chat_type: ChatType | None = None,
+        language_code: str | None = None,
+    ) -> list[ChatSummaryResponse]:
         """
         Return active (non-deleted) chats for the sidebar.
         """
 
-        chats = await self.db.chat.chats.list_active(chat_type=chat_type)
+        chats = await self.db.chat.chats.list_active(chat_type=chat_type, language_code=language_code)
+
         return [self._chat_to_summary(chat) for chat in chats]
 
     @handle_basic_db_errors
@@ -620,6 +635,7 @@ class ChatService:
         chat = await self.db.chat.chats.create(
             title=body.title,
             chat_type=body.chat_type,
+            language_code=body.language_code,
             rag_config=rag_config,
             llm_config=llm_config,
             use_history=use_history,
@@ -645,12 +661,14 @@ class ChatService:
         messages = await self.db.chat.messages.list_by_chat(chat_id)
         chunk_map = await self._load_chunk_map_for_metadata(
             [message.message_metadata for message in messages],
+            language_code=chat.language_code,
         )
 
         return ChatDetailResponse(
             id=chat.id,
             title=chat.title,
             chat_type=ChatType(chat.chat_type),
+            language_code=chat.language_code,
             is_closed=chat.is_closed,
             message_count=chat.message_count,
             rag_config=self._parse_rag_config(chat.rag_config),
@@ -756,6 +774,7 @@ class ChatService:
                     return await self._build_send_message_response(
                         resume_user_message,
                         resume_assistant,
+                        language_code=chat.language_code,
                     )
 
         should_generate_title = (
@@ -855,7 +874,7 @@ class ChatService:
                 await self.db.commit()
 
             try:
-                reply_language = reply_language_for_user_text(body.content)
+                reply_language = chat.language_code or reply_language_for_user_text(body.content)
 
                 if chat_type == ChatType.RAG:
                     rag_config = rag_snapshot or RagConfig()
@@ -866,6 +885,7 @@ class ChatService:
                             history=self._rag_history_messages(history, use_history=use_history_value),
                             rag_config=rag_config,
                             reply_language=reply_language,
+                            language_code=chat.language_code,
                         ),
                     )
                     await self._publish_rag_trace(body.client_id, rag_result.trace)
@@ -912,6 +932,7 @@ class ChatService:
                         system_prompt=pipeline.build_generation_prompt(
                             context=context_for_general,
                             reply_language=reply_language,
+                            language_code=chat.language_code,
                         ),
                     )
                 elif free_mode:
@@ -943,6 +964,7 @@ class ChatService:
 
         chunk_map = await self._load_chunk_map_for_metadata(
             [user_message.message_metadata, assistant_message.message_metadata],
+            language_code=chat.language_code,
         )
 
         logger.info(
