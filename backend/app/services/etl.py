@@ -10,6 +10,7 @@ from pathlib import Path
 from app.core.config import Settings, settings
 from app.core.db_manager import DBManager
 from app.core.faiss_manager import faiss_manager
+from app.core.config import KbLanguageEntry, get_kb_language, list_kb_language_codes, resolve_kb_document_path
 from app.core.logs import logger
 from app.exceptions import handle_basic_db_errors
 from app.exceptions.ingest import IngestInterruptedError
@@ -17,7 +18,7 @@ from app.exceptions.service import ServiceError
 from app.llm.embeddings import EmbeddingClient
 from app.models.chunk_meta import ChunkMeta
 from app.models.index_manifest import IndexManifest
-from app.schemas.etl import ChunkStatsResponse, IngestResponse, ManifestResponse
+from app.schemas.etl import ChunkStatsResponse, IngestAllResponse, IngestResponse, ManifestResponse
 from app.services.etl_checkpoint import IngestCheckpoint, IngestCheckpointStore
 from app.services.etl_plan import plan_ingest
 from app.services.etl_progress import IngestProgress, IngestProgressCallback
@@ -32,15 +33,16 @@ class ETLService:
 
     Pure parse/chunk logic lives in the `etl/` package; this service wires I/O and persistence.
     Supports resume from checkpoint and incremental sync when the document changes.
+    Each knowledge-base language has its own chunk set, FAISS index, and manifest.
     """
 
     def __init__(self, db: DBManager, app_settings: Settings | None = None) -> None:
         self.db = db
         self.settings = app_settings or settings
 
-    def _resolve_source_path(self, source_path: str | None) -> Path:
+    def _resolve_source_path(self, language: KbLanguageEntry, source_path: str | None) -> Path:
         """
-        API/CLI override or default from ETL__DOCUMENT_PATH (relative to backend root).
+        API/CLI override or document_path from the hardcoded language map.
         """
 
         if source_path:
@@ -49,17 +51,18 @@ class ETLService:
                 path = self.settings.backend_root / path
             return path
 
-        return self.settings.etl.resolve_document_path(self.settings.backend_root)
+        return resolve_kb_document_path(language.code, self.settings.backend_root)
 
-    def _faiss_index_path(self) -> Path:
-        return self.settings.faiss.index_path(self.settings.backend_root)
+    def _faiss_index_path(self, language_code: str) -> Path:
+        return self.settings.faiss.index_path(self.settings.backend_root, language_code)
 
-    def _manifest_json_path(self) -> Path:
-        # Duplicate of index_manifest row for tooling / Docker bootstrap without DB access.
-        return self.settings.resolve_data_dir() / "manifest.json"
+    def _manifest_json_path(self, language_code: str) -> Path:
+        return self.settings.resolve_data_dir() / f"manifest-{language_code}.json"
 
-    def _checkpoint_store(self) -> IngestCheckpointStore:
-        return IngestCheckpointStore(self.settings.resolve_data_dir() / "ingest_checkpoint.json")
+    def _checkpoint_store(self, language_code: str) -> IngestCheckpointStore:
+        return IngestCheckpointStore(
+            self.settings.resolve_data_dir() / f"ingest_checkpoint_{language_code}.json",
+        )
 
     @staticmethod
     def _report_progress(
@@ -224,24 +227,25 @@ class ETLService:
     async def ingest(
         self,
         *,
+        language_code: str,
         rebuild: bool = False,
         source_path: str | None = None,
         on_progress: IngestProgressCallback | None = None,
     ) -> IngestResponse:
         """
-        Parse document, embed chunks, and persist index artifacts.
+        Parse document, embed chunks, and persist index artifacts for one language.
 
         Incremental by default: reuses unchanged chunk vectors, embeds new/changed only.
         Writes a checkpoint during embedding so a failed run can resume.
         """
 
-        checkpoint_store = self._checkpoint_store()
+        language = get_kb_language(language_code)
+        checkpoint_store = self._checkpoint_store(language.code)
 
         if rebuild:
             checkpoint_store.clear()
 
-        # --- Phase 1: read and chunk (no DB) ---
-        path = self._resolve_source_path(source_path)
+        path = self._resolve_source_path(language, source_path)
 
         if not path.is_file():
             raise ServiceError(
@@ -272,20 +276,21 @@ class ETLService:
         )
 
         embedding_model = self.settings.llm.embedding_model
-        latest_manifest = await self.db.etl.index_manifest.get_latest()
+        latest_manifest = await self.db.etl.index_manifest.get_latest(language.code)
         can_reuse_existing = self._can_reuse_existing_vectors(latest_manifest, source=source, rebuild=rebuild)
-
-        existing_chunks = await self.db.etl.chunks.list_all_ordered()
+        existing_chunks = await self.db.etl.chunks.list_all_ordered(language.code)
         existing_vectors: list[list[float]] = []
+        faiss_path = self._faiss_index_path(language.code)
 
-        if can_reuse_existing and self._faiss_index_path().is_file():
-            existing_vectors = await faiss_manager.reconstruct_vectors_async(self._faiss_index_path())
+        if can_reuse_existing and faiss_path.is_file():
+            existing_vectors = await faiss_manager.reconstruct_vectors_async(faiss_path)
 
         loaded_checkpoint = checkpoint_store.load()
         checkpoint_vectors: dict[str, list[float]] = {}
 
         if loaded_checkpoint is not None and checkpoint_store.is_compatible(
             loaded_checkpoint,
+            language_code=language.code,
             source_path=source,
             doc_hash=doc_hash,
             embedding_model=embedding_model,
@@ -305,6 +310,7 @@ class ETLService:
         )
 
         checkpoint = IngestCheckpoint(
+            language_code=language.code,
             source_path=source,
             doc_hash=doc_hash,
             embedding_model=embedding_model,
@@ -318,7 +324,6 @@ class ETLService:
 
         checkpoint_store.save(checkpoint)
 
-        # --- Phase 2: embeddings (external LLM API, with checkpoint) ---
         vectors = await self._embed_missing(
             drafts,
             plan.embed_indices,
@@ -328,7 +333,6 @@ class ETLService:
             on_progress,
         )
 
-        # --- Phase 3: SQLite (chunk_meta + index_manifest) ---
         self._report_progress(
             on_progress,
             phase="persisting",
@@ -346,6 +350,7 @@ class ETLService:
             parent_id = draft.parent_chunk_index if draft.parent_chunk_index is not None else None
             chunk_models.append(
                 ChunkMeta(
+                    language_code=language.code,
                     id=index,
                     content=draft.content,
                     content_type=draft.content_type.value,
@@ -360,10 +365,11 @@ class ETLService:
                 )
             )
 
-        await self.db.etl.chunks.replace_all(chunk_models)
-        await self.db.etl.index_manifest.delete_all()
+        await self.db.etl.chunks.replace_for_language(language.code, chunk_models)
+        await self.db.etl.index_manifest.delete_for_language(language.code)
 
         manifest = IndexManifest(
+            language_code=language.code,
             source_path=source,
             doc_hash=doc_hash,
             embedding_model=embedding_model,
@@ -374,7 +380,6 @@ class ETLService:
         saved_manifest = await self.db.etl.index_manifest.insert(manifest)
         await self.db.commit()
 
-        # --- Phase 4: FAISS + manifest.json (after DB commit) ---
         self._report_progress(
             on_progress,
             phase="faiss",
@@ -388,9 +393,10 @@ class ETLService:
         data_dir = self.settings.resolve_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
         self.settings.faiss.ensure_exists(self.settings.backend_root)
-        await faiss_manager.save_async(vectors, self._faiss_index_path())
+        await faiss_manager.save_async(vectors, faiss_path)
 
         manifest_payload = {
+            "language_code": language.code,
             "source_path": source,
             "doc_hash": doc_hash,
             "embedding_model": embedding_model,
@@ -398,7 +404,7 @@ class ETLService:
             "chunk_count": len(chunk_models),
             "built_at": built_at.isoformat(),
         }
-        self._manifest_json_path().write_text(
+        self._manifest_json_path(language.code).write_text(
             json.dumps(manifest_payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
@@ -417,6 +423,7 @@ class ETLService:
 
         logger.info(
             "etl_ingest_completed",
+            language_code=language.code,
             chunk_count=len(chunk_models),
             source_path=source,
             doc_hash=doc_hash,
@@ -428,6 +435,7 @@ class ETLService:
         )
 
         return IngestResponse(
+            language_code=language.code,
             chunk_count=len(chunk_models),
             doc_hash=doc_hash,
             embedding_model=embedding_model,
@@ -441,32 +449,61 @@ class ETLService:
         )
 
     @handle_basic_db_errors
-    async def stats(self) -> ChunkStatsResponse:
+    async def ingest_all(
+        self,
+        *,
+        rebuild: bool = False,
+        on_progress: IngestProgressCallback | None = None,
+    ) -> IngestAllResponse:
         """
-        Return chunk counts grouped by content type.
+        Ingest all active knowledge-base languages sequentially.
         """
 
-        by_type = await self.db.etl.chunks.count_by_content_type()
-        total = await self.db.etl.chunks.total_count()
+        results: list[IngestResponse] = []
 
-        return ChunkStatsResponse(total=total, by_content_type=by_type)
+        for code in list_kb_language_codes():
+            results.append(
+                await self.ingest(
+                    language_code=code,
+                    rebuild=rebuild,
+                    on_progress=on_progress,
+                ),
+            )
+
+        return IngestAllResponse(results=results)
 
     @handle_basic_db_errors
-    async def manifest(self) -> ManifestResponse:
+    async def stats(self, language_code: str | None = None) -> ChunkStatsResponse:
         """
-        Return metadata for the latest index build.
+        Return chunk counts grouped by content type, optionally for one language.
         """
 
-        latest = await self.db.etl.index_manifest.get_latest()
+        if language_code is not None:
+            get_kb_language(language_code)
+
+        by_type = await self.db.etl.chunks.count_by_content_type(language_code)
+        total = await self.db.etl.chunks.total_count(language_code)
+
+        return ChunkStatsResponse(language_code=language_code, total=total, by_content_type=by_type)
+
+    @handle_basic_db_errors
+    async def manifest(self, language_code: str) -> ManifestResponse:
+        """
+        Return metadata for the latest index build of a language.
+        """
+
+        get_kb_language(language_code)
+        latest = await self.db.etl.index_manifest.get_latest(language_code)
 
         if latest is None:
             raise ServiceError(
-                detail="Index has not been built yet",
+                detail=f"Index has not been built yet for language: {language_code}",
                 error_code="etl_not_indexed",
                 status_code=404,
             )
 
         return ManifestResponse(
+            language_code=latest.language_code,
             source_path=latest.source_path,
             doc_hash=latest.doc_hash,
             embedding_model=latest.embedding_model,
