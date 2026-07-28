@@ -16,7 +16,12 @@ class ChatRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def list_active(self, chat_type: ChatType | None = None) -> list[Chat]:
+    async def list_active(
+        self,
+        *,
+        chat_type: ChatType | None = None,
+        language_code: str | None = None,
+    ) -> list[Chat]:
         """
         Return non-deleted chats ordered by last activity.
         """
@@ -25,6 +30,9 @@ class ChatRepository:
 
         if chat_type is not None:
             statement = statement.where(Chat.chat_type == chat_type.value)
+
+        if language_code is not None:
+            statement = statement.where(Chat.language_code == language_code)
 
         statement = statement.order_by(Chat.updated_at.desc())
         result = await self.session.execute(statement)
@@ -46,6 +54,7 @@ class ChatRepository:
         title: str = "New chat",
         chat_type: ChatType = ChatType.LLM,
         *,
+        language_code: str = "ru",
         rag_config: dict | None = None,
         llm_config: dict | None = None,
         use_history: bool | None = None,
@@ -58,6 +67,7 @@ class ChatRepository:
         chat = Chat(
             title=title,
             chat_type=chat_type.value,
+            language_code=language_code,
             message_count=0,
             rag_config=rag_config,
             llm_config=llm_config,
