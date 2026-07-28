@@ -23,7 +23,7 @@ async def lifespan(_app: FastAPI):
         "application_started",
         data_dir=str(settings.resolve_data_dir()),
         db_path=str(settings.db.sqlite_file_path(settings.backend_root)),
-        faiss_index=str(settings.faiss.index_path(settings.backend_root)),
+        faiss_index_pattern=settings.faiss.index_file,
     )
 
     yield
