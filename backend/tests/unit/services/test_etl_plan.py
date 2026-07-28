@@ -18,6 +18,7 @@ def _draft(node_id: str, content: str, content_hash: str) -> ChunkDraft:
 
 def _chunk(node_id: str, content_hash: str, chunk_id: int = 0) -> ChunkMeta:
     return ChunkMeta(
+        language_code="ru",
         id=chunk_id,
         content="body",
         content_type="sop",
