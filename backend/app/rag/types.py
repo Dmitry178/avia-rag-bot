@@ -17,6 +17,7 @@ class RagQueryContext:
     history: list[dict[str, str]]
     rag_config: RagConfig
     reply_language: str
+    language_code: str
 
 
 @dataclass
