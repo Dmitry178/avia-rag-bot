@@ -11,6 +11,7 @@ import { chatsQueryKey } from "@/features/chats/hooks/useChats";
 import { getChat, deleteMessage, sendMessage } from "@/shared/api/chats";
 import { findSendMessageResponse, isNetworkError } from "@/shared/api/networkError";
 import type { ChatSummary, SendMessagePayload, SendMessageResponse } from "@/shared/api/types";
+import { useI18nStore } from "@/shared/i18n/store";
 import { useChatUiStore } from "@/features/chats/store";
 
 export function chatDetailQueryKey(chatId: number) {
@@ -29,6 +30,7 @@ export function useSendMessageMutation(chatId: number | null) {
   const queryClient = useQueryClient();
   const clientId = useChatUiStore((state) => state.clientId);
   const chatMode = useChatModeStore((state) => state.mode);
+  const locale = useI18nStore((state) => state.locale);
   const ragToPayload = useRagSettingsStore((state) => state.toPayload);
   const llmToPayload = useLlmSettingsStore((state) => state.toPayload);
 
@@ -71,7 +73,7 @@ export function useSendMessageMutation(chatId: number | null) {
         return { needsTitleRefresh: false };
       }
 
-      const chats = queryClient.getQueryData<ChatSummary[]>(chatsQueryKey(chatMode));
+      const chats = queryClient.getQueryData<ChatSummary[]>(chatsQueryKey(chatMode, locale));
       const summary = chats?.find((item) => item.id === chatId);
 
       return {
@@ -89,7 +91,7 @@ export function useSendMessageMutation(chatId: number | null) {
       void queryClient.invalidateQueries({ queryKey: ["chats"] });
 
       if (context?.needsTitleRefresh && chatId !== null) {
-        scheduleTitleRefreshFallback(queryClient, chatId, chatMode);
+        scheduleTitleRefreshFallback(queryClient, chatId, chatMode, locale);
       }
     },
   });
