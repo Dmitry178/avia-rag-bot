@@ -228,9 +228,7 @@ Low-level ETL module details: [`backend/etl/README.md`](backend/etl/README.md).
 
 ## Knowledge base document
 
-The RAG source is a single markdown file: [`backend/data/rag-document.md`](backend/data/rag-document.md) (~6800 lines). It is structured as numbered H1 chapters and is intentionally heterogeneous: operational procedures, FAQs, decision trees, and scenarios live in different chapter groups with different chunking rules.
-
-`backend/data/rag-doc-index.md` is a **short structural outline** for humans (headings only, plus a few full examples). It is **not** used by ETL or RAG.
+The RAG source is two markdown files per language: [`backend/data/rag-document-ru.md`](backend/data/rag-document-ru.md) and [`backend/data/rag-document-en.md`](backend/data/rag-document-en.md). Each is structured as numbered H1 chapters and is intentionally heterogeneous: operational procedures, FAQs, decision trees, and scenarios live in different chapter groups with different chunking rules.
 
 ### Chapter groups
 

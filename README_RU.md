@@ -228,9 +228,7 @@ API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 
 ## База знаний
 
-Источник RAG — один markdown-файл: [`backend/data/rag-document.md`](backend/data/rag-document.md) (~6800 строк). Документ разбит на пронумерованные главы (H1) и намеренно неоднороден: процедуры, FAQ, деревья решений и сценарии относятся к разным группам глав и чанкуются по разным правилам.
-
-`backend/data/rag-doc-index.md` — **сокращённый структурный оглавление** для человека (в основном заголовки и несколько полных примеров). В ETL и RAG **не используется**.
+Источники RAG — два markdown-файла по языкам: [`backend/data/rag-document-ru.md`](backend/data/rag-document-ru.md) и [`backend/data/rag-document-en.md`](backend/data/rag-document-en.md). Каждый разбит на пронумерованные главы (H1) и намеренно неоднороден: процедуры, FAQ, деревья решений и сценарии относятся к разным группам глав и чанкуются по разным правилам.
 
 ### Группы глав
 
