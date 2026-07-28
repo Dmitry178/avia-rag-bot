@@ -207,8 +207,6 @@ FAQ chunks unify **chapter 14** and **per-chapter FAQ blocks** at the end of SOP
 
 Chapters **00** and **13** are loaded at runtime by `app/llm/kb_static_context.py` and appended in `RagPipeline.build_generation_prompt()` — they never pass through FAISS. For MVP the full chapter text is included (not summarized).
 
-`backend/data/rag-doc-index.md` is a human-readable outline only; ETL and RAG do not use it.
-
 ## RAG pipeline
 
 Orchestrator: `RagPipeline` in `app/rag/pipeline.py`.

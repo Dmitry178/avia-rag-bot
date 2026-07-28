@@ -207,8 +207,6 @@ FAQ-чанки объединяют **главу 14** и **блоки FAQ в к�
 
 Главы **00** и **13** загружаются в runtime через `app/llm/kb_static_context.py` и добавляются в `RagPipeline.build_generation_prompt()` — через FAISS не проходят. В MVP в промпт попадает полный текст глав (без суммаризации).
 
-`backend/data/rag-doc-index.md` — только человекочитаемый оглавление; ETL и RAG его не используют.
-
 ## RAG-пайплайн
 
 Оркестратор: `RagPipeline` в `app/rag/pipeline.py`.
