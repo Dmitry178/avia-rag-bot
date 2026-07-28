@@ -7,15 +7,19 @@ from sqlmodel import Field, SQLModel
 
 class ChunkMeta(SQLModel, table=True):
     """
-    Text chunk with metadata; primary key matches FAISS row index.
+    Text chunk with metadata; primary key (language_code, id) matches FAISS row index per language.
     """
 
     __tablename__ = "chunk_meta"
 
-    id: int | None = Field(
-        default=None,
+    language_code: str = Field(
         primary_key=True,
-        description="Chunk row id; equals the vector position in FAISS index (0..N-1).",
+        max_length=16,
+        description="Knowledge-base language this chunk belongs to (ru or en).",
+    )
+    id: int = Field(
+        primary_key=True,
+        description="Chunk row id within the language; equals the vector position in that language's FAISS index.",
     )
     content: str = Field(
         description="Full chunk text with retrieval prefix ([Раздел:], [Тип:]) for embedding and LLM context.",
@@ -39,8 +43,7 @@ class ChunkMeta(SQLModel, table=True):
     )
     parent_id: int | None = Field(
         default=None,
-        foreign_key="chunk_meta.id",
-        description="Parent chunk id when an SOP section was split by ### subheadings; null otherwise.",
+        description="Parent chunk id (same language_code) when an SOP section was split by ### subheadings.",
     )
     token_count: int = Field(
         default=0,
