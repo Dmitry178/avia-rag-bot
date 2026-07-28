@@ -67,21 +67,29 @@ async def _with_db[T](handler: Callable[[DBManager], Coroutine[Any, Any, T]]) ->
         await dispose_engine()
 
 
-async def cmd_ingest(source_path: str | None, *, rebuild: bool) -> int:
+async def cmd_ingest(
+    language_code: str,
+    source_path: str | None,
+    *,
+    rebuild: bool,
+) -> int:
     """
     Run document ingest (incremental by default, with progress output).
     """
 
-    result = await _with_db(
-        lambda db: ETLService(db).ingest(
+    async def _run(db: DBManager):
+        return await ETLService(db).ingest(
+            language_code=language_code,
             rebuild=rebuild,
             source_path=source_path,
             on_progress=_print_progress,
-        ),
-    )
+        )
+
+    result = await _with_db(_run)
 
     print(file=sys.stderr)
     print("Ingest completed.")
+    print(f"  language_code:   {result.language_code}")
     print(f"  source_path:     {result.source_path}")
     print(f"  chunk_count:     {result.chunk_count}")
     print(f"  doc_hash:        {result.doc_hash}")
@@ -96,13 +104,33 @@ async def cmd_ingest(source_path: str | None, *, rebuild: bool) -> int:
     return 0
 
 
-async def cmd_stats() -> int:
+async def cmd_ingest_all(*, rebuild: bool) -> int:
+    """
+    Run document ingest for all active knowledge-base languages.
+    """
+
+    async def _run(db: DBManager):
+        return await ETLService(db).ingest_all(rebuild=rebuild, on_progress=_print_progress)
+
+    result = await _with_db(_run)
+
+    print(file=sys.stderr)
+    print("Ingest-all completed.")
+
+    for item in result.results:
+        print(f"  [{item.language_code}] chunks={item.chunk_count} embedded={item.embedded}")
+
+    return 0
+
+
+async def cmd_stats(language_code: str | None) -> int:
     """
     Print chunk counts by content type.
     """
 
-    result = await _with_db(lambda db: ETLService(db).stats())
-    print(f"Total chunks: {result.total}")
+    result = await _with_db(lambda db: ETLService(db).stats(language_code=language_code))
+    prefix = f"[{result.language_code}] " if result.language_code else ""
+    print(f"{prefix}Total chunks: {result.total}")
 
     for content_type, count in sorted(result.by_content_type.items()):
         print(f"  {content_type}: {count}")
@@ -110,13 +138,14 @@ async def cmd_stats() -> int:
     return 0
 
 
-async def cmd_manifest() -> int:
+async def cmd_manifest(language_code: str) -> int:
     """
     Print latest index manifest.
     """
 
-    result = await _with_db(lambda db: ETLService(db).manifest())
+    result = await _with_db(lambda db: ETLService(db).manifest(language_code=language_code))
 
+    print(f"language_code:   {result.language_code}")
     print(f"source_path:     {result.source_path}")
     print(f"doc_hash:        {result.doc_hash}")
     print(f"embedding_model: {result.embedding_model}")
@@ -138,10 +167,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Parse document, embed chunks, update SQLite + FAISS (incremental by default)",
     )
     ingest.add_argument(
+        "--lang",
+        metavar="CODE",
+        default="ru",
+        help="Knowledge-base language code (default: ru)",
+    )
+    ingest.add_argument(
         "--source",
         metavar="PATH",
         default=None,
-        help="Markdown source path (relative to repo root or absolute); default from ETL__DOCUMENT_PATH",
+        help="Markdown source path override (relative to backend root or absolute)",
     )
     ingest.add_argument(
         "--rebuild",
@@ -149,8 +184,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Force full re-embed (ignore reusable vectors and checkpoint)",
     )
 
-    subparsers.add_parser("stats", help="Show chunk counts by content_type")
-    subparsers.add_parser("manifest", help="Show latest index manifest")
+    ingest_all = subparsers.add_parser(
+        "ingest-all",
+        help="Ingest all active knowledge-base languages",
+    )
+    ingest_all.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Force full re-embed for every language",
+    )
+
+    stats = subparsers.add_parser("stats", help="Show chunk counts by content_type")
+    stats.add_argument(
+        "--lang",
+        metavar="CODE",
+        default=None,
+        help="Filter stats to one language",
+    )
+
+    manifest = subparsers.add_parser("manifest", help="Show latest index manifest")
+    manifest.add_argument(
+        "--lang",
+        metavar="CODE",
+        default="ru",
+        help="Knowledge-base language code (default: ru)",
+    )
 
     return parser
 
@@ -162,9 +220,10 @@ def main() -> None:
 
     args = _build_parser().parse_args()
     commands: dict[str, Callable[[], Coroutine[Any, Any, int]]] = {
-        "ingest": lambda: cmd_ingest(args.source, rebuild=args.rebuild),
-        "stats": cmd_stats,
-        "manifest": cmd_manifest,
+        "ingest": lambda: cmd_ingest(args.lang, args.source, rebuild=args.rebuild),
+        "ingest-all": lambda: cmd_ingest_all(rebuild=args.rebuild),
+        "stats": lambda: cmd_stats(args.lang),
+        "manifest": lambda: cmd_manifest(args.lang),
     }
 
     try:
