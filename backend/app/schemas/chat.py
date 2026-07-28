@@ -19,6 +19,7 @@ class ChatSummaryResponse(BaseModel):
     id: int
     title: str
     chat_type: ChatType
+    language_code: str
     is_closed: bool
     message_count: int
     rag_config: RagConfig | None = None
@@ -53,6 +54,7 @@ class ChatDetailResponse(BaseModel):
     id: int
     title: str
     chat_type: ChatType
+    language_code: str
     is_closed: bool
     message_count: int
     rag_config: RagConfig | None = None
@@ -73,6 +75,12 @@ class CreateChatRequest(BaseModel):
     chat_type: ChatType = Field(
         default=ChatType.LLM,
         description="Chat pipeline mode: llm or rag.",
+    )
+    language_code: str = Field(
+        default="ru",
+        min_length=2,
+        max_length=16,
+        description="Knowledge-base / UI language for this chat (e.g. ru, en).",
     )
     rag_config: RagConfig | None = Field(
         default=None,
