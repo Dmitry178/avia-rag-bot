@@ -7,7 +7,7 @@ from sqlmodel import Field, SQLModel
 
 class IndexManifest(SQLModel, table=True):
     """
-    Metadata about a single vector index build (one row per ingest run).
+    Metadata about a single vector index build (one row per ingest run per language).
     """
 
     __tablename__ = "index_manifest"
@@ -16,6 +16,10 @@ class IndexManifest(SQLModel, table=True):
         default=None,
         primary_key=True,
         description="Surrogate primary key for the manifest row.",
+    )
+    language_code: str = Field(
+        max_length=16,
+        description="Knowledge-base language this manifest belongs to (ru or en).",
     )
     source_path: str = Field(
         description="Resolved path to the markdown file that was ingested.",
