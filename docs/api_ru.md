@@ -19,6 +19,7 @@ HTTP-контракт backend **avia-bot**. Базовый путь: `/api`. И�
 | `GET` | `/api/healthz` | `test_health.py` | покрыт |
 | `GET` | `/api/readyz` | `test_health.py` | покрыт |
 | `POST` | `/api/etl/ingest` | `test_etl.py` | покрыт |
+| `POST` | `/api/etl/ingest-all` | `test_etl.py` | покрыт |
 | `GET` | `/api/etl/stats` | `test_etl.py` | покрыт |
 | `GET` | `/api/etl/manifest` | `test_etl.py` | покрыт |
 | `GET` | `/api/chats/events` | `test_chat_events.py` | покрыт |
@@ -71,15 +72,18 @@ HTTP-статус по типу исключения (обычно `400`, `404`,
 
 ## ETL (`/api/etl`)
 
+Каждый **язык** KB (`ru`, `en`) имеет свой набор чанков в SQLite, файл FAISS (`faiss-{code}.index`) и sidecar-манифест (`manifest-{code}.json`). Маппинг язык → документ **захардкожен** в `backend/app/core/config.py` (`KB_LANGUAGES`; см. [руководство по эксплуатации](operations_ru.md#языки-базы-знаний)).
+
 ### `POST /ingest`
 
-Парсинг документа KB, эмбеддинг чанков, обновление SQLite + FAISS.
+Парсинг документа KB для одного языка, эмбеддинг чанков, обновление SQLite + FAISS.
 
 **Тело запроса:**
 
 ```json
 {
   "rebuild": false,
+  "language_code": "ru",
   "source_path": null
 }
 ```
@@ -87,17 +91,29 @@ HTTP-статус по типу исключения (обычно `400`, `404`,
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `rebuild` | boolean | Полный re-embed (`false` = инкрементально) |
-| `source_path` | string \| null | Путь к markdown; по умолчанию `ETL__DOCUMENT_PATH` |
+| `language_code` | string \| null | Код языка KB (по умолчанию `ru`) |
+| `source_path` | string \| null | Путь к markdown; по умолчанию из `config.py` (`KB_LANGUAGES`) |
 
-**Ответ `200`:** `IngestResponse` — `chunk_count`, `doc_hash`, `embedding_model`, `source_path`, `built_at`, `added`, `updated`, `unchanged`, `removed`, `embedded`.
+**Ответ `200`:** `IngestResponse` — `language_code`, `chunk_count`, `doc_hash`, `embedding_model`, `source_path`, `built_at`, `added`, `updated`, `unchanged`, `removed`, `embedded`.
+
+### `POST /ingest-all`
+
+Ingest всех настроенных языков (`ru`, `en`) последовательно.
+
+**Тело:** `{ "rebuild": false }`  
+**Ответ `200`:** `{ "results": [ IngestResponse, ... ] }`
 
 ### `GET /stats`
 
-**Ответ `200`:** `{ "total": int, "by_content_type": { "sop": int, ... } }`
+**Query:** `language_code` (опционально) — фильтр по языку.
+
+**Ответ `200`:** `{ "language_code": string \| null, "total": int, "by_content_type": { "sop": int, ... } }`
 
 ### `GET /manifest`
 
-**Ответ `200`:** метаданные последней сборки индекса.
+**Query:** `language_code` (по умолчанию `ru`).
+
+**Ответ `200`:** метаданные последней сборки индекса для языка.
 
 ---
 
@@ -121,7 +137,7 @@ HTTP-статус по типу исключения (обычно `400`, `404`,
 
 Список неудалённых чатов, сначала недавние.
 
-**Query:** `chat_type` — фильтр `llm` | `rag`.
+**Query:** `chat_type` — фильтр `llm` | `rag`; `language_code` — фильтр по языку KB (например `ru`, `en`).
 
 ### `POST /`
 
