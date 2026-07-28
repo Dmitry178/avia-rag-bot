@@ -2,17 +2,22 @@ BACKEND_DIR := backend
 FRONTEND_DIR := frontend
 
 .PHONY: help \
-	etl-ingest etl-stats etl-manifest \
+	etl-ingest-ru etl-ingest-en etl-ingest-all etl-stats etl-manifest \
 	backend-install backend-dev backend-test backend-test-api backend-test-unit backend-lint backend-typecheck \
 	frontend-install frontend-dev frontend-build frontend-typecheck \
-	docker-up docker-down docker-build docker-etl-ingest docker-logs
+	docker-up docker-down docker-build \
+	docker-etl-ingest docker-etl-ingest-ru docker-etl-ingest-en docker-logs
 
 help:
 	@echo "Targets:"
-	@echo "  make etl-ingest          Run full ETL ingest (rebuild index)"
-	@echo "  make etl-ingest SOURCE=path/to/doc.md   Ingest from custom markdown"
-	@echo "  make etl-stats           Show chunk counts by content_type"
-	@echo "  make etl-manifest        Show latest index manifest"
+	@echo "ETL — index knowledge base (creates faiss-<lang>.index per language):"
+	@echo "  make etl-ingest-ru       Index Russian KB only  (ru → faiss-ru.index)"
+	@echo "  make etl-ingest-en       Index English KB only (en → faiss-en.index)"
+	@echo "  make etl-ingest-all      Index both ru and en"
+	@echo "  Optional: REBUILD=1      Force full re-embed"
+	@echo "  Optional: SOURCE=path    Override markdown file (with -ru or -en targets)"
+	@echo "  make etl-stats           Chunk counts (optional LANG=ru|en)"
+	@echo "  make etl-manifest        Latest manifest (optional LANG=ru|en, default ru)"
 	@echo ""
 	@echo "Backend:"
 	@echo "  make backend-install     Install backend deps (uv sync)"
@@ -30,22 +35,36 @@ help:
 	@echo "  make frontend-typecheck  Run TypeScript check"
 	@echo ""
 	@echo "Docker:"
-	@echo "  make docker-up           Build and start backend + frontend (:8080)"
-	@echo "  make docker-down         Stop containers"
-	@echo "  make docker-build        Build images only"
-	@echo "  make docker-etl-ingest   Run ETL ingest inside backend container"
-	@echo "  make docker-logs         Follow compose logs"
+	@echo "  make docker-up              Build and start backend + frontend (:8080)"
+	@echo "  make docker-down            Stop containers"
+	@echo "  make docker-build           Build images only"
+	@echo "  make docker-etl-ingest      Index ru + en inside backend container"
+	@echo "  make docker-etl-ingest-ru   Index ru only inside backend container"
+	@echo "  make docker-etl-ingest-en   Index en only inside backend container"
+	@echo "  make docker-logs            Follow compose logs"
 
-# Parse, embed, and rebuild SQLite + FAISS (same as POST /api/etl/ingest).
-etl-ingest:
-	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest \
-		$(if $(SOURCE),--source $(SOURCE),)
+# Index one language or both (same as POST /api/etl/ingest and /api/etl/ingest-all).
+etl-ingest-ru:
+	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest --lang ru \
+		$(if $(SOURCE),--source $(SOURCE),) \
+		$(if $(REBUILD),--rebuild,)
+
+etl-ingest-en:
+	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest --lang en \
+		$(if $(SOURCE),--source $(SOURCE),) \
+		$(if $(REBUILD),--rebuild,)
+
+etl-ingest-all:
+	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest-all \
+		$(if $(REBUILD),--rebuild,)
 
 etl-stats:
-	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py stats
+	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py stats \
+		$(if $(LANG),--lang $(LANG),)
 
 etl-manifest:
-	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py manifest
+	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py manifest \
+		--lang $(or $(LANG),ru)
 
 backend-install:
 	cd $(BACKEND_DIR) && uv sync
@@ -90,7 +109,16 @@ docker-build:
 	docker compose build
 
 docker-etl-ingest:
-	docker compose exec backend uv run python scripts/run_etl.py ingest
+	docker compose exec backend uv run python scripts/run_etl.py ingest-all \
+		$(if $(REBUILD),--rebuild,)
+
+docker-etl-ingest-ru:
+	docker compose exec backend uv run python scripts/run_etl.py ingest --lang ru \
+		$(if $(REBUILD),--rebuild,)
+
+docker-etl-ingest-en:
+	docker compose exec backend uv run python scripts/run_etl.py ingest --lang en \
+		$(if $(REBUILD),--rebuild,)
 
 docker-logs:
 	docker compose logs -f
