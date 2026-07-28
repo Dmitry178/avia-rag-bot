@@ -42,6 +42,7 @@ def mock_rag_pipeline():
 @contextmanager
 def mock_rag_pipeline_with_decision_tree(*, llm_side_effect):
     chunk = ChunkMeta(
+        language_code="ru",
         id=708,
         content="Сработала пожарная сигнализация...",
         content_type=ContentType.DECISION_TREE.value,
@@ -223,6 +224,67 @@ async def test_list_chats_filters_by_chat_type(client: AsyncClient) -> None:
     assert llm_chat.json()["id"] not in rag_ids
     assert rag_chat.json()["id"] in rag_ids
     assert rag_chat.json()["id"] not in llm_ids
+
+
+@pytest.mark.asyncio
+async def test_list_chats_filters_by_language_code(client: AsyncClient) -> None:
+    """
+    Chat list should be filterable by knowledge-base language.
+    """
+
+    ru_chat = await client.post(
+        "/api/chats",
+        json={"title": "RU chat", "language_code": "ru"},
+    )
+    en_chat = await client.post(
+        "/api/chats",
+        json={"title": "EN chat", "language_code": "en"},
+    )
+    assert ru_chat.status_code == 200
+    assert en_chat.status_code == 200
+
+    ru_listing = await client.get("/api/chats", params={"language_code": "ru"})
+    en_listing = await client.get("/api/chats", params={"language_code": "en"})
+    assert ru_listing.status_code == 200
+    assert en_listing.status_code == 200
+
+    ru_ids = {item["id"] for item in ru_listing.json()}
+    en_ids = {item["id"] for item in en_listing.json()}
+    assert ru_chat.json()["id"] in ru_ids
+    assert ru_chat.json()["id"] not in en_ids
+    assert en_chat.json()["id"] in en_ids
+    assert en_chat.json()["id"] not in ru_ids
+
+
+@pytest.mark.asyncio
+async def test_create_chat_defaults_language_code_to_ru(client: AsyncClient) -> None:
+    """
+    New chats should default to Russian when language_code is omitted.
+    """
+
+    response = await client.post("/api/chats", json={"title": "Default language"})
+
+    assert response.status_code == 200
+    assert response.json()["language_code"] == "ru"
+
+
+@pytest.mark.asyncio
+async def test_create_chat_persists_explicit_language_code(client: AsyncClient) -> None:
+    """
+    Create chat should persist the requested language_code.
+    """
+
+    response = await client.post(
+        "/api/chats",
+        json={"title": "English chat", "language_code": "en"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["language_code"] == "en"
+
+    detail = await client.get(f"/api/chats/{response.json()['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["language_code"] == "en"
 
 
 @pytest.mark.asyncio
