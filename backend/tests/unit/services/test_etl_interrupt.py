@@ -35,6 +35,7 @@ async def test_embed_missing_saves_checkpoint_and_raises_on_cancel(tmp_path) -> 
     ]
     checkpoint_store = IngestCheckpointStore(tmp_path / "checkpoint.json")
     checkpoint = IngestCheckpoint(
+        language_code="ru",
         source_path="doc.md",
         doc_hash="doc-hash",
         embedding_model="embed-model",
