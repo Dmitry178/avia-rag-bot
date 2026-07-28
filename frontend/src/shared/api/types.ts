@@ -19,6 +19,7 @@ export interface ChatSummary {
   id: number;
   title: string;
   chat_type: ChatMode;
+  language_code: string;
   is_closed: boolean;
   message_count: number;
   rag_config: RagConfig | null;
