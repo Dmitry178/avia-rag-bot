@@ -7,6 +7,7 @@ from app.services.chat import ChatService
 def test_enrich_rag_trace_steps_adds_missing_content_preview() -> None:
     chunk_map = {
         196: ChunkMeta(
+            language_code="ru",
             id=196,
             content="[Раздел: FAQ]\n[Тип: faq]\n\nЧто такое ЧС? Ответ...",
             content_type="faq",
