@@ -17,6 +17,7 @@ def _chunk(
     section: str = "01. Test",
 ) -> ChunkMeta:
     return ChunkMeta(
+        language_code="ru",
         id=chunk_id,
         content="body",
         content_type=content_type,
