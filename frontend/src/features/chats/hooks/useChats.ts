@@ -8,35 +8,39 @@ import { useRagSettingsStore } from "@/features/rag/ragSettingsStore";
 import { DEFAULT_RAG_CREATE_PAYLOAD } from "@/features/rag/types";
 import { createChat, deleteChat, listChats, updateChat } from "@/shared/api/chats";
 import type { ChatMode, ChatSummary } from "@/shared/api/types";
+import { type Locale, useI18nStore } from "@/shared/i18n";
 import { useChatUiStore } from "../store";
 
-export const chatsQueryKey = (chatType: ChatMode) => ["chats", chatType] as const;
+export const chatsQueryKey = (chatType: ChatMode, locale: Locale) =>
+  ["chats", chatType, locale] as const;
 
 export function useChatsQuery() {
   const chatType = useChatModeStore((state) => state.mode);
+  const locale = useI18nStore((state) => state.locale);
 
   return useQuery({
-    queryKey: chatsQueryKey(chatType),
-    queryFn: () => listChats(chatType),
+    queryKey: chatsQueryKey(chatType, locale),
+    queryFn: () => listChats(chatType, locale),
   });
 }
 
 export function useCreateChatMutation() {
   const queryClient = useQueryClient();
   const chatType = useChatModeStore((state) => state.mode);
+  const locale = useI18nStore((state) => state.locale);
   const setSelectedChatId = useChatUiStore((state) => state.setSelectedChatId);
 
   return useMutation({
     mutationKey: ["createChat"],
     mutationFn: (title: string) => {
       if (chatType === "rag") {
-        return createChat(title, chatType, {
+        return createChat(title, chatType, locale, {
           ragConfig: DEFAULT_RAG_CREATE_PAYLOAD.rag_config,
           useHistory: DEFAULT_RAG_CREATE_PAYLOAD.use_history,
         });
       }
 
-      return createChat(title, chatType, {
+      return createChat(title, chatType, locale, {
         llmConfig: DEFAULT_LLM_CREATE_PAYLOAD.llm_config,
         useHistory: DEFAULT_LLM_CREATE_PAYLOAD.use_history,
       });
@@ -50,9 +54,9 @@ export function useCreateChatMutation() {
         useRagSettingsStore.getState().hydrateFromChat(chat.rag_config, chat.use_history);
       }
 
-      setSelectedChatId(chatType, chat.id);
+      setSelectedChatId(locale, chatType, chat.id);
 
-      queryClient.setQueryData<ChatSummary[]>(chatsQueryKey(chatType), (current) => {
+      queryClient.setQueryData<ChatSummary[]>(chatsQueryKey(chatType, locale), (current) => {
         if (!current) {
           return [chat];
         }
@@ -69,7 +73,7 @@ export function useCreateChatMutation() {
         messages: [],
       });
 
-      void queryClient.invalidateQueries({ queryKey: chatsQueryKey(chatType) });
+      void queryClient.invalidateQueries({ queryKey: chatsQueryKey(chatType, locale) });
     },
   });
 }
@@ -77,24 +81,26 @@ export function useCreateChatMutation() {
 export function useDeleteChatMutation() {
   const queryClient = useQueryClient();
   const chatType = useChatModeStore((state) => state.mode);
+  const locale = useI18nStore((state) => state.locale);
   const setSelectedChatId = useChatUiStore((state) => state.setSelectedChatId);
 
   return useMutation({
     mutationKey: ["deleteChat"],
     mutationFn: (chatId: number) => deleteChat(chatId),
     onMutate: async (chatId) => {
-      await queryClient.cancelQueries({ queryKey: chatsQueryKey(chatType) });
+      await queryClient.cancelQueries({ queryKey: chatsQueryKey(chatType, locale) });
 
-      const previousChats = queryClient.getQueryData<ChatSummary[]>(chatsQueryKey(chatType));
-      const previousSelectedChatId = useChatUiStore.getState().selectedByMode[chatType];
+      const previousChats = queryClient.getQueryData<ChatSummary[]>(chatsQueryKey(chatType, locale));
+      const previousSelectedChatId =
+        useChatUiStore.getState().selectedByLocaleAndMode[locale][chatType];
 
       if (previousChats) {
         if (previousSelectedChatId === chatId) {
-          setSelectedChatId(chatType, null);
+          setSelectedChatId(locale, chatType, null);
         }
 
         queryClient.setQueryData<ChatSummary[]>(
-          chatsQueryKey(chatType),
+          chatsQueryKey(chatType, locale),
           previousChats.filter((chat) => chat.id !== chatId),
         );
       }
@@ -103,18 +109,18 @@ export function useDeleteChatMutation() {
     },
     onError: (_error, chatId, context) => {
       if (context?.previousChats) {
-        queryClient.setQueryData(chatsQueryKey(chatType), context.previousChats);
+        queryClient.setQueryData(chatsQueryKey(chatType, locale), context.previousChats);
       }
 
       if (context?.previousSelectedChatId === chatId) {
-        setSelectedChatId(chatType, context.previousSelectedChatId);
+        setSelectedChatId(locale, chatType, context.previousSelectedChatId);
       }
     },
     onSuccess: (_data, chatId) => {
       queryClient.removeQueries({ queryKey: chatDetailQueryKey(chatId) });
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: chatsQueryKey(chatType) });
+      void queryClient.invalidateQueries({ queryKey: chatsQueryKey(chatType, locale) });
     },
   });
 }
@@ -122,6 +128,7 @@ export function useDeleteChatMutation() {
 export function useUpdateChatSettingsMutation(chatId: number | null) {
   const queryClient = useQueryClient();
   const chatType = useChatModeStore((state) => state.mode);
+  const locale = useI18nStore((state) => state.locale);
   const ragToPayload = useRagSettingsStore((state) => state.toPayload);
   const llmToPayload = useLlmSettingsStore((state) => state.toPayload);
 
@@ -155,7 +162,7 @@ export function useUpdateChatSettingsMutation(chatId: number | null) {
         );
       }
 
-      queryClient.setQueryData<ChatSummary[]>(chatsQueryKey(chatType), (current) =>
+      queryClient.setQueryData<ChatSummary[]>(chatsQueryKey(chatType, locale), (current) =>
         current?.map((item) => (item.id === chat.id ? { ...item, ...chat } : item)),
       );
     },
