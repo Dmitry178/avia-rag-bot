@@ -169,7 +169,7 @@ Lane выполняются параллельно (`app/rag/retrieval_lanes.py`
 
 Полная документация: [docs/README_RU.md](docs/README_RU.md). Архитектура: [ARCHITECTURE_RU.md](docs/ARCHITECTURE_RU.md). Продуктовые требования: [PRD_RU.md](docs/PRD_RU.md).
 
-**Требование:** перед использованием RAG нужен построенный индекс (`make etl-ingest`). Без индекса API вернёт `503 rag_index_missing`.
+**Требование:** перед использованием RAG нужны построенные индексы (`make etl-ingest-all` для обоих языков или `etl-ingest-ru` / `etl-ingest-en`). Без индекса API вернёт `503 rag_index_missing`.
 
 ## Защита от промпт-инъекций
 
@@ -205,7 +205,9 @@ Unit-тесты: `backend/tests/unit/llm/test_prompt_guard.py`.
 ```bash
 cp backend/.env.example backend/.env   # заполнить LLM__*
 make backend-install
-make etl-ingest                        # обязательно для RAG
+make etl-ingest-all                    # обязательно для RAG (ru + en)
+make etl-ingest-ru                     # или один язык
+make etl-ingest-en
 make etl-stats
 make etl-manifest
 ```
@@ -214,7 +216,7 @@ API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 
 **FAISS / AVX:** пакет `faiss-cpu` с PyPI поставляется с generic-сборкой. При старте могут появляться INFO-сообщения об отсутствии модулей AVX512/AVX2; затем FAISS загружает стандартную библиотеку (`Successfully loaded faiss.`). Это нормально, ничего делать не нужно. Шум `faiss.loader` подавлен до уровня WARNING в настройках логирования.
 
-**Прерывание ingest:** `Ctrl+C` во время `make etl-ingest` сохраняет checkpoint после последнего завершённого batch и завершает процесс с кодом 130. Повторный запуск той же команды продолжит с места остановки.
+**Прерывание ingest:** `Ctrl+C` во время ingest сохраняет checkpoint после последнего завершённого batch и завершает процесс с кодом 130. Повторный запуск той же цели продолжит с места остановки.
 
 Документ по умолчанию: `backend/data/rag-document.md` (`ETL__DOCUMENT_PATH`).  
 Детали модуля ETL: [`backend/etl/README_RU.md`](backend/etl/README_RU.md).
@@ -222,8 +224,8 @@ API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 | Путь | Назначение |
 |------|------------|
 | `backend/data/app.db` | SQLite: чанки, манифест, чаты |
-| `backend/data/faiss.index` | FAISS-индекс |
-| `backend/data/manifest.json` | копия манифеста |
+| `backend/data/faiss-ru.index`, `faiss-en.index` | FAISS-индексы по языкам |
+| `backend/data/manifest-ru.json`, `manifest-en.json` | копии манифестов |
 | `backend/data/rag-document.md` | исходный markdown для ETL |
 
 ## База знаний
@@ -286,7 +288,7 @@ API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 cp backend/.env.example backend/.env
 # LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
 make backend-install
-make etl-ingest                        # для режима RAG
+make etl-ingest-all                    # для режима RAG
 make backend-dev                       # http://127.0.0.1:8000
 
 # 2. Frontend (отдельный терминал)
