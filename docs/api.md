@@ -19,6 +19,7 @@ Each endpoint should have **2–3 HTTP tests** in `backend/tests/api/` (mocked e
 | `GET` | `/api/healthz` | `test_health.py` | covered |
 | `GET` | `/api/readyz` | `test_health.py` | covered |
 | `POST` | `/api/etl/ingest` | `test_etl.py` | covered |
+| `POST` | `/api/etl/ingest-all` | `test_etl.py` | covered |
 | `GET` | `/api/etl/stats` | `test_etl.py` | covered |
 | `GET` | `/api/etl/manifest` | `test_etl.py` | covered |
 | `GET` | `/api/chats/events` | `test_chat_events.py` | covered |
@@ -71,15 +72,18 @@ HTTP status follows exception type (typically `400`, `404`, `503`).
 
 ## ETL (`/api/etl`)
 
+Each knowledge-base **language** (`ru`, `en`) has its own chunk set in SQLite, FAISS file (`faiss-{code}.index`), and manifest sidecar (`manifest-{code}.json`). Language → document mapping is **hardcoded** in `backend/app/core/config.py` (`KB_LANGUAGES`; see [Operations guide](operations.md#knowledge-base-languages)).
+
 ### `POST /ingest`
 
-Parse knowledge document, embed chunks, update SQLite + FAISS.
+Parse one language's knowledge document, embed chunks, update SQLite + FAISS for that language.
 
 **Request body:**
 
 ```json
 {
   "rebuild": false,
+  "language_code": "ru",
   "source_path": null
 }
 ```
@@ -87,17 +91,29 @@ Parse knowledge document, embed chunks, update SQLite + FAISS.
 | Field | Type | Description |
 |-------|------|-------------|
 | `rebuild` | boolean | Force full re-embed (default `false` = incremental) |
-| `source_path` | string \| null | Override markdown path; default from `ETL__DOCUMENT_PATH` |
+| `language_code` | string \| null | KB language code (default `ru`) |
+| `source_path` | string \| null | Override markdown path; default from `config.py` (`KB_LANGUAGES`) |
 
-**Response `200`:** `IngestResponse` — `chunk_count`, `doc_hash`, `embedding_model`, `source_path`, `built_at`, `added`, `updated`, `unchanged`, `removed`, `embedded`.
+**Response `200`:** `IngestResponse` — `language_code`, `chunk_count`, `doc_hash`, `embedding_model`, `source_path`, `built_at`, `added`, `updated`, `unchanged`, `removed`, `embedded`.
+
+### `POST /ingest-all`
+
+Ingest every configured language (`ru`, `en`) sequentially.
+
+**Request body:** `{ "rebuild": false }`  
+**Response `200`:** `{ "results": [ IngestResponse, ... ] }`
 
 ### `GET /stats`
 
-**Response `200`:** `{ "total": int, "by_content_type": { "sop": int, ... } }`
+**Query:** `language_code` (optional) — filter to one language.
+
+**Response `200`:** `{ "language_code": string \| null, "total": int, "by_content_type": { "sop": int, ... } }`
 
 ### `GET /manifest`
 
-**Response `200`:** latest index metadata — `source_path`, `doc_hash`, `embedding_model`, `chunker_version`, `chunk_count`, `built_at`.
+**Query:** `language_code` (default `ru`).
+
+**Response `200`:** latest index metadata for the language — `language_code`, `source_path`, `doc_hash`, `embedding_model`, `chunker_version`, `chunk_count`, `built_at`.
 
 ---
 
@@ -121,7 +137,7 @@ SSE format: `event: <name>\ndata: <json>\n\n`
 
 List non-deleted chats, newest activity first.
 
-**Query:** `chat_type` — optional filter: `llm` | `rag`.
+**Query:** `chat_type` — optional filter: `llm` | `rag`; `language_code` — optional filter (e.g. `ru`, `en`).
 
 **Response:** array of `ChatSummaryResponse`.
 
@@ -135,6 +151,7 @@ Create empty chat.
 {
   "title": "New chat",
   "chat_type": "llm",
+  "language_code": "ru",
   "rag_config": null,
   "llm_config": null,
   "use_history": null
