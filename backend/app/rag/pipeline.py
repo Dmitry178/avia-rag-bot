@@ -4,7 +4,7 @@ import time
 
 from pathlib import Path
 
-from app.core.config import Settings
+from app.core.config import Settings, resolve_kb_document_path
 from app.core.db_manager import DBManager
 from app.exceptions.service import ServiceError
 from app.llm.chat import ChatCompletionClient
@@ -31,11 +31,11 @@ class RagPipeline:
         self._llm = ChatCompletionClient(app_settings.llm)
         self._embedder = EmbeddingClient(app_settings.llm)
 
-    def _index_path(self) -> Path:
-        return self._settings.faiss.index_path(self._settings.backend_root)
+    def _index_path(self, language_code: str) -> Path:
+        return self._settings.faiss.index_path(self._settings.backend_root, language_code)
 
-    async def _load_chunks(self) -> dict[int, ChunkMeta]:
-        chunks = await self._db.etl.chunks.list_all_ordered()
+    async def _load_chunks(self, language_code: str) -> dict[int, ChunkMeta]:
+        chunks = await self._db.etl.chunks.list_all_ordered(language_code)
         return {chunk.id: chunk for chunk in chunks if chunk.id is not None}
 
     @staticmethod
@@ -118,7 +118,8 @@ class RagPipeline:
         trace: list[RagTraceStep] = []
         rag_config = self._normalized_config(ctx.rag_config)
         top_chunks = rag_config.top_chunks
-        index_path = self._index_path()
+        language_code = ctx.language_code
+        index_path = self._index_path(language_code)
 
         trace.append(
             RagTraceStep(
@@ -130,17 +131,17 @@ class RagPipeline:
 
         if not index_path.is_file():
             raise ServiceError(
-                detail="Knowledge base index has not been built yet",
+                detail=f"Knowledge base index has not been built yet for language: {language_code}",
                 error_code="rag_index_missing",
                 status_code=503,
             )
 
-        chunks_by_id = await self._load_chunks()
+        chunks_by_id = await self._load_chunks(language_code)
         if not chunks_by_id:
             raise ServiceError(
                 detail=(
-                    "Knowledge base chunks are missing in the database. "
-                    "Run `make etl-ingest` to rebuild SQLite metadata and FAISS index."
+                    f"Knowledge base chunks are missing for language {language_code}. "
+                    "Run `make etl-ingest-all` to rebuild SQLite metadata and FAISS indexes."
                 ),
                 error_code="rag_chunks_missing",
                 status_code=503,
@@ -226,12 +227,28 @@ class RagPipeline:
             applicable_decision_trees=applicable_decision_trees,
         )
 
-    def build_generation_prompt(self, *, context: str, reply_language: str | None) -> str:
+    def build_generation_prompt(
+        self,
+        *,
+        context: str,
+        reply_language: str | None,
+        language_code: str,
+    ) -> str:
         """
         Build the grounded system prompt for the final LLM call.
         """
 
-        document_path = self._settings.etl.resolve_document_path(self._settings.backend_root)
+        document_path = resolve_kb_document_path(language_code, self._settings.backend_root)
+        manifest_path = self._settings.resolve_data_dir() / f"manifest-{language_code}.json"
+
+        if manifest_path.is_file():
+            import json
+
+            manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            source_path = manifest_payload.get("source_path")
+            if isinstance(source_path, str) and source_path:
+                document_path = Path(source_path)
+
         kb_static_context = load_kb_static_context(str(document_path))
 
         return build_rag_system_prompt(
