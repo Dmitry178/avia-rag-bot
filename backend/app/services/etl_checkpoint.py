@@ -31,6 +31,7 @@ class IngestCheckpoint(BaseModel):
     On-disk state for resuming an interrupted ingest run.
     """
 
+    language_code: str
     source_path: str
     doc_hash: str
     embedding_model: str
@@ -84,6 +85,7 @@ class IngestCheckpointStore:
     def is_compatible(
         checkpoint: IngestCheckpoint,
         *,
+        language_code: str,
         source_path: str,
         doc_hash: str,
         embedding_model: str,
@@ -94,7 +96,8 @@ class IngestCheckpointStore:
         """
 
         return (
-            checkpoint.source_path == source_path
+            checkpoint.language_code == language_code
+            and checkpoint.source_path == source_path
             and checkpoint.doc_hash == doc_hash
             and checkpoint.embedding_model == embedding_model
             and checkpoint.chunker_version == CHUNKER_VERSION
