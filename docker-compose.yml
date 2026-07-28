@@ -8,7 +8,8 @@ services:
       DATA__DIR: ./data
       DB__URL: sqlite:///./data/app.db
       FAISS__DIR: ./data
-      ETL__DOCUMENT_PATH: data/rag-document.md
+      # Filename template per language: faiss-ru.index + faiss-en.index (not a single index)
+      FAISS__INDEX_FILE: faiss-{language_code}.index
       APP__CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
     volumes:
       - ./backend/data:/app/data
