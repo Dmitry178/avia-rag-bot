@@ -2,6 +2,7 @@
 
 import json
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -75,11 +76,23 @@ class IngestCheckpointStore:
 
     def clear(self) -> None:
         """
-        Remove checkpoint file if it exists.
+        Remove checkpoint file and any leftover atomic-write temp sibling.
         """
 
         if self._path.is_file():
             self._path.unlink()
+
+        temp_path = self._path.with_suffix(".tmp")
+        if temp_path.is_file():
+            temp_path.unlink()
+
+    @property
+    def path(self) -> Path:
+        """
+        Return the on-disk checkpoint JSON path.
+        """
+
+        return self._path
 
     @staticmethod
     def is_compatible(
@@ -123,3 +136,34 @@ class IngestCheckpointStore:
             token_count=draft.token_count,
             source_path=draft.source_path,
         )
+
+
+def checkpoint_artifact_paths(data_dir: Path, language_code: str) -> tuple[Path, Path]:
+    """
+    Return checkpoint JSON and temp paths for a knowledge-base language.
+    """
+
+    json_path = data_dir / f"ingest_checkpoint_{language_code}.json"
+    return json_path, json_path.with_suffix(".tmp")
+
+
+def cleanup_ingest_temp_files(
+    data_dir: Path,
+    *,
+    language_codes: Iterable[str],
+) -> list[Path]:
+    """
+    Remove ingest checkpoint artifacts after a successful ingest run.
+
+    Safe to call when ingest completed: leftover files are resume-only state.
+    """
+
+    removed: list[Path] = []
+
+    for language_code in language_codes:
+        store = IngestCheckpointStore(checkpoint_artifact_paths(data_dir, language_code)[0])
+        if store.path.is_file() or store.path.with_suffix(".tmp").is_file():
+            store.clear()
+            removed.append(store.path)
+
+    return removed
