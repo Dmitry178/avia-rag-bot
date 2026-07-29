@@ -24,6 +24,7 @@ from app.services.etl_plan import plan_ingest
 from app.services.etl_progress import IngestProgress, IngestProgressCallback
 from etl.chunker import chunk_document
 from etl.hashing import CHUNKER_VERSION
+from etl.profile import get_document_profile
 from etl.types import ChunkDraft
 
 
@@ -257,7 +258,8 @@ class ETLService:
         raw_text = path.read_text(encoding="utf-8")
         doc_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
         source = str(path)
-        drafts = chunk_document(raw_text, source_path=source)
+        profile = get_document_profile(language.code, str(self.settings.backend_root))
+        drafts = chunk_document(raw_text, profile=profile, source_path=source)
 
         if not drafts:
             raise ServiceError(
