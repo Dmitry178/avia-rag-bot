@@ -3,6 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from etl.profile import get_document_profile
 from etl.static_sections import extract_static_prompt_sections
 
 _CHAPTER_00_GUIDANCE = (
@@ -17,8 +18,8 @@ _CHAPTER_13_GUIDANCE = (
 )
 
 
-@lru_cache(maxsize=4)
-def load_kb_static_context(document_path: str) -> str:
+@lru_cache(maxsize=8)
+def load_kb_static_context(document_path: str, language_code: str = "ru") -> str:
     """
     Build the static knowledge-base policy block for the RAG system prompt.
     """
@@ -27,7 +28,8 @@ def load_kb_static_context(document_path: str) -> str:
     if not path.is_file():
         return ""
 
-    sections = extract_static_prompt_sections(path.read_text(encoding="utf-8"))
+    profile = get_document_profile(language_code)
+    sections = extract_static_prompt_sections(path.read_text(encoding="utf-8"), profile)
     meta = sections.get("00", "").strip()
     out_of_scope = sections.get("13", "").strip()
 
