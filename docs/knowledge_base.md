@@ -2,7 +2,7 @@
 
 **English** · [Русский](knowledge_base_ru.md)
 
-How to structure, write, and update the markdown knowledge base for **avia-bot**. Technical parsing details: [backend/etl/README.md](../backend/etl/README.md).
+How to structure, write, and update the markdown knowledge base for **avia-bot**. Technical parsing details: [backend/etl/README.md](../backend/etl/README.md). **Multilingual ETL mapping:** [etl_profile.md](etl_profile.md).
 
 ---
 
@@ -11,6 +11,7 @@ How to structure, write, and update the markdown knowledge base for **avia-bot**
 | Item | Value |
 |------|-------|
 | Default paths | `backend/data/rag-document-ru.md`, `backend/data/rag-document-en.md` (see `KB_LANGUAGES` in `config.py`) |
+| ETL profiles | `backend/data/kb-profile-base.json` + `kb-profile-{ru,en}.json` — see [etl_profile.md](etl_profile.md) |
 | After edits | Run `make etl-ingest-all` |
 
 ---
@@ -36,7 +37,14 @@ FAQ chunks come from:
 1. **Chapter 14** — dedicated FAQ section.
 2. **Per-chapter FAQ blocks** at the end of SOP sections (01–12).
 
-Each FAQ chunk should include source metadata `[Источник: <chapter>]` for trace display.
+Use language-consistent Q/A markers (configured in the ETL profile):
+
+| Language | Question | Answer |
+|----------|----------|--------|
+| Russian | `**Вопрос:**` | `**Ответ:**` |
+| English | `**Question:**` | `**Answer:**` |
+
+Each FAQ chunk includes source metadata (`[Источник: …]` / `[Source: …]`) for trace display.
 
 ---
 
@@ -76,6 +84,8 @@ Each FAQ chunk should include source metadata `[Источник: <chapter>]` fo
 | Explicit escalation ("call supervisor") | Vague "use judgment" without criteria |
 | Current version dates in chapter headers | Outdated airline-specific codes without context |
 | Russian (demo KB language) | Mixed languages in the same chunk without reason |
+
+When authoring **English** KB content, mirror the Russian structure and use English markers from [etl_profile.md](etl_profile.md).
 
 The UI supports RU/EN interface; KB content language is independent.
 
@@ -140,3 +150,4 @@ flowchart LR
 | [rag_evaluation.md](rag_evaluation.md) | Quality testing |
 | [operations.md](operations.md) | ETL commands |
 | [backend/etl/README.md](../backend/etl/README.md) | Parser/chunker rules |
+| [etl_profile.md](etl_profile.md) | Per-language ETL JSON profiles |

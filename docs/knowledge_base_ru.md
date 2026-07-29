@@ -2,7 +2,7 @@
 
 **Русский** · [English](knowledge_base.md)
 
-Структура, написание и обновление markdown-базы знаний для **avia-bot**. Технические детали парсинга: [backend/etl/README_RU.md](../backend/etl/README_RU.md).
+Структура, написание и обновление markdown-базы знаний для **avia-bot**. Технические детали парсинга: [backend/etl/README_RU.md](../backend/etl/README_RU.md). **Мультиязычный ETL-маппинг:** [etl_profile_ru.md](etl_profile_ru.md).
 
 ---
 
@@ -11,6 +11,7 @@
 | Параметр | Значение |
 |----------|----------|
 | Пути по умолчанию | `backend/data/rag-document-ru.md`, `backend/data/rag-document-en.md` (см. `KB_LANGUAGES` в `config.py`) |
+| ETL-профили | `backend/data/kb-profile-base.json` + `kb-profile-{ru,en}.json` — см. [etl_profile_ru.md](etl_profile_ru.md) |
 | После правок | `make etl-ingest-all` |
 
 ---
@@ -36,7 +37,14 @@
 1. **Главы 14** — центральный FAQ.
 2. **Блоков FAQ** в конце SOP-глав (01–12).
 
-В каждом FAQ-чанке — метаданные `[Источник: <глава>]` для trace.
+Используйте маркеры вопрос/ответ согласно языку (настраиваются в ETL-профиле):
+
+| Язык | Вопрос | Ответ |
+|------|--------|-------|
+| Русский | `**Вопрос:**` | `**Ответ:**` |
+| English | `**Question:**` | `**Answer:**` |
+
+В каждом FAQ-чанке — метаданные `[Источник: …]` / `[Source: …]` для trace.
 
 ---
 
@@ -76,6 +84,8 @@
 | Явная эскалация («вызвать руководителя») | Размытых «действуйте по ситуации» |
 | Даты версий в заголовках | Устаревших кодов без контекста |
 | Русский (язык демо KB) | Смешения языков в одном чанке |
+
+При подготовке **английской** KB сохраняйте структуру русского документа и маркеры из [etl_profile_ru.md](etl_profile_ru.md).
 
 Язык UI (RU/EN) независим от языка KB.
 
@@ -140,3 +150,4 @@ flowchart LR
 | [rag_evaluation_ru.md](rag_evaluation_ru.md) | Тестирование качества |
 | [operations_ru.md](operations_ru.md) | Команды ETL |
 | [backend/etl/README_RU.md](../backend/etl/README_RU.md) | Парсер и чанкер |
+| [etl_profile_ru.md](etl_profile_ru.md) | JSON-профили ETL по языкам |
