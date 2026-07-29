@@ -2,6 +2,8 @@
 
 import re
 
+from etl.profile import DocumentProfile
+
 _H1_RE = re.compile(r"^# (?P<title>.+)$", re.MULTILINE)
 _SECTION_NUM_RE = re.compile(r"^(\d{2})\.\s*")
 
@@ -31,16 +33,16 @@ def _section_number(title: str) -> str | None:
     return match.group(1) if match else None
 
 
-def extract_static_prompt_sections(text: str) -> dict[str, str]:
+def extract_static_prompt_sections(text: str, profile: DocumentProfile) -> dict[str, str]:
     """
-    Return full bodies of chapters indexed for the system prompt (00 and 13).
+    Return full bodies of chapters configured for the RAG system prompt.
     """
 
     sections: dict[str, str] = {}
 
     for title, body in _split_h1_sections(text):
         number = _section_number(title)
-        if number in {"00", "13"} and body:
+        if number in profile.static_prompt_sections and body:
             sections[number] = body
 
     return sections
