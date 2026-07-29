@@ -11,7 +11,7 @@ def test_load_kb_static_context_includes_chapters_00_and_13() -> None:
     """
 
     load_kb_static_context.cache_clear()
-    context = load_kb_static_context(str(RAG_DOCUMENT))
+    context = load_kb_static_context(str(RAG_DOCUMENT), language_code="ru")
 
     assert "Chapter 00" in context
     assert "Chapter 13" in context
