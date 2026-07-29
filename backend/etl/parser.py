@@ -2,6 +2,7 @@
 
 import re
 
+from etl.profile import DocumentProfile
 from etl.types import ContentType, DocumentNode
 
 # Headings by level only: one #, two ##, three ### (not ####).
@@ -17,32 +18,24 @@ def _section_number(title: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _content_type_for_section(title: str) -> ContentType:
+def _content_type_for_section(title: str, profile: DocumentProfile) -> ContentType:
     """
-    Classify section by H1 number and keywords.
+    Classify section by H1 number and profile keyword rules.
     Sections 01–12 without special markers are treated as SOP.
     """
-    
+
     number = _section_number(title)
     lowered = title.lower()
 
-    if number == "00":
-        return ContentType.META
+    if number is not None and number in profile.section_map:
+        return profile.section_map[number]
 
-    if number == "13" or "out of scope" in lowered:
-        return ContentType.OUT_OF_SCOPE
-
-    if number == "14" or title.startswith("14.") or "faq" in lowered:
+    if number == "14" or title.startswith("14."):
         return ContentType.FAQ
 
-    if number == "15" or "глоссарий" in lowered:
-        return ContentType.GLOSSARY
-
-    if number == "16" or "decision tree" in lowered:
-        return ContentType.DECISION_TREE
-
-    if number == "17" or "практические сценарии" in lowered:
-        return ContentType.SCENARIO
+    for content_type, keywords in profile.section_keywords:
+        if any(keyword in lowered for keyword in keywords):
+            return content_type
 
     return ContentType.SOP
 
@@ -51,7 +44,7 @@ def _split_h1_sections(text: str) -> list[tuple[str, str]]:
     """
     Split document into blocks between consecutive # headings.
     """
-    
+
     matches = list(_H1_RE.finditer(text))
     if not matches:
         return []
@@ -71,7 +64,7 @@ def _split_by_heading(body: str, pattern: re.Pattern[str]) -> list[tuple[str, st
     Split section body by subheadings (## or ###).
     Returns (title, text until next heading of the same level) pairs.
     """
-    
+
     matches = list(pattern.finditer(body))
     if not matches:
         # No subheadings — treat entire body as one block with empty title.
@@ -92,12 +85,16 @@ def _make_node_id(section_num: str | None, *parts: str) -> str:
     """
     Stable node id: section number + slug of path segments in the tree.
     """
-    
+
     slug_parts = [section_num or "xx", *parts]
     return ".".join(part.strip().lower().replace(" ", "_")[:40] for part in slug_parts if part)
 
 
-def parse_markdown(text: str, source_path: str = "") -> list[DocumentNode]:
+def parse_markdown(
+    text: str,
+    profile: DocumentProfile,
+    source_path: str = "",
+) -> list[DocumentNode]:
     """
     Parse markdown into a flat list of DocumentNode records grouped by headings.
     """
@@ -106,7 +103,7 @@ def parse_markdown(text: str, source_path: str = "") -> list[DocumentNode]:
 
     for section_title, section_body in _split_h1_sections(text):
         section_num = _section_number(section_title)
-        section_type = _content_type_for_section(section_title)
+        section_type = _content_type_for_section(section_title, profile)
         section_id = _make_node_id(section_num, "root")
 
         # Special sections (FAQ, glossary, …) stay as one H1 block here;
