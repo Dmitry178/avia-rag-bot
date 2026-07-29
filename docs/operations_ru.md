@@ -60,7 +60,8 @@ Docker: `make docker-etl-ingest` индексирует **оба** языка; `
 | `backend/data/faiss-en.index` | FAISS (английская KB) |
 | `backend/data/manifest-ru.json` | Метаданные последней сборки (ru) |
 | `backend/data/manifest-en.json` | Метаданные последней сборки (en) |
-| `backend/data/ingest_checkpoint_{lang}.json` | Checkpoint resume (временный) |
+| `backend/data/ingest_checkpoint_{lang}.json` | Checkpoint resume (временный; см. ниже) |
+| `backend/data/ingest_checkpoint_{lang}.tmp` | Temp при записи checkpoint (временный) |
 
 `id` чанка в SQLite должен совпадать с позицией строки в FAISS **внутри языка** — при полном ingest пересобираются вместе.
 
@@ -73,9 +74,31 @@ Docker: `make docker-etl-ingest` индексирует **оба** языка; `
 | Подозрение на рассинхрон FAISS/БД | Остановить backend → бэкап `backend/data/` → полный rebuild |
 | Прерванный ingest | Повторить ту же команду — checkpoint продолжит |
 
-### Checkpoint ingest
+### Checkpoint ingest (временные файлы)
 
-Файлы: `backend/data/ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Сохраняются между батчами эмбеддингов. При `Ctrl+C` CLI выводит инструкцию по resume (`exit code 130`).
+Во время embedding ETL сохраняет **состояние для возобновления**, чтобы длинный ingest после сбоя или `Ctrl+C` не пересчитывал уже готовые батчи через API эмбеддингов.
+
+| Файл | Назначение | Срок жизни |
+|------|------------|------------|
+| `ingest_checkpoint_{lang}.json` | Частичный прогон: `doc_hash`, модель эмбеддингов, `vectors_by_hash` (хеш контента → вектор) | **Временный** — удаляется при успешном ingest |
+| `ingest_checkpoint_{lang}.tmp` | Временный файл атомарной записи checkpoint JSON | Удаляется вместе с checkpoint |
+| `faiss-{lang}.index.tmp` | Временный файл при записи FAISS | Заменяется при успешном сохранении индекса |
+
+По языкам: `ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Обновляются после каждого батча эмбеддингов.
+
+**При успешном завершении** (`ETLService.ingest`, CLI `ingest` / `ingest-all`):
+
+1. Сохраняются SQLite + FAISS + manifest.
+2. Checkpoint для завершённых языков **удаляется автоматически** (сервис + дополнительная очистка в CLI).
+
+**Если ingest прерван** (код выхода `130`, ошибка API, убит процесс):
+
+- Checkpoint **остаётся на диске** — повторите **ту же** команду (`make etl-ingest-en` и т.д.); совместимый checkpoint подхватится.
+- Не удаляйте checkpoint вручную, если хотите продолжить с места остановки.
+
+Файлы в `backend/data/.gitignore` — в git не коммитятся.
+
+При `Ctrl+C` CLI выводит инструкцию по resume (`exit code 130`).
 
 ---
 

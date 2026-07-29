@@ -60,7 +60,8 @@ Chats, chunks, and manifests use `language_code` column values `ru` or `en`. To 
 | `backend/data/faiss-en.index` | FAISS vectors (English KB) |
 | `backend/data/manifest-ru.json` | Latest Russian build metadata |
 | `backend/data/manifest-en.json` | Latest English build metadata |
-| `backend/data/ingest_checkpoint_{lang}.json` | Resume state per language (transient) |
+| `backend/data/ingest_checkpoint_{lang}.json` | Checkpoint resume (transient; see below) |
+| `backend/data/ingest_checkpoint_{lang}.tmp` | Temp file while writing checkpoint (transient) |
 
 Chunk `id` in SQLite must match FAISS row index per language — both are rebuilt together on full ingest.
 
@@ -73,9 +74,31 @@ Chunk `id` in SQLite must match FAISS row index per language — both are rebuil
 | FAISS/DB corruption suspected | Stop backend → backup `backend/data/` → full rebuild |
 | Interrupted ingest | Re-run same command — checkpoint resumes |
 
-### Ingest checkpoint
+### Ingest checkpoint (transient)
 
-Files: `backend/data/ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Saved during embedding batches. On `Ctrl+C`, CLI prints resume instructions (`exit code 130`).
+During embedding, ETL writes **resume state** so a long ingest can continue after a failure or `Ctrl+C` without re-calling the embeddings API for batches already completed.
+
+| File | Purpose | Lifetime |
+|------|---------|----------|
+| `ingest_checkpoint_{lang}.json` | Partial run state: `doc_hash`, embedding model, `vectors_by_hash` (content hash → vector) | **Transient** — removed when ingest succeeds |
+| `ingest_checkpoint_{lang}.tmp` | Atomic-write temp while saving the checkpoint JSON | Removed with the checkpoint (or on successful cleanup) |
+| `faiss-{lang}.index.tmp` | Atomic-write temp while saving the FAISS index | Replaced on successful FAISS save; orphan safe to delete if no ingest is running |
+
+Per language: `ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Updated after each embedding batch.
+
+**On successful completion** (`ETLService.ingest` and `scripts/run_etl.py ingest` / `ingest-all`):
+
+1. SQLite + FAISS + manifest are persisted.
+2. Checkpoint files for the finished language(s) are **deleted automatically** (service layer + CLI safety pass).
+
+**If ingest was interrupted** (exit code `130`, API error mid-embed, process killed):
+
+- Checkpoint **remains on disk** — re-run the **same** command (`make etl-ingest-en`, etc.); compatible checkpoints are resumed.
+- Do **not** delete the checkpoint manually unless you intend to restart embedding from scratch.
+
+Files are listed in `backend/data/.gitignore` — not committed to git.
+
+On `Ctrl+C`, the CLI prints resume instructions (`exit code 130`).
 
 ---
 
