@@ -15,6 +15,7 @@ from app.db.session import SessionLocal, dispose_engine
 from app.exceptions.base import BaseCustomException
 from app.exceptions.ingest import IngestInterruptedError
 from app.services.etl import ETLService
+from app.services.etl_checkpoint import cleanup_ingest_temp_files
 from app.services.etl_progress import IngestProgress
 
 
@@ -101,6 +102,8 @@ async def cmd_ingest(
     print(f"  removed:         {result.removed}")
     print(f"  embedded (API):  {result.embedded}")
 
+    cleanup_ingest_temp_files(settings.resolve_data_dir(), language_codes=[language_code])
+
     return 0
 
 
@@ -119,6 +122,11 @@ async def cmd_ingest_all(*, rebuild: bool) -> int:
 
     for item in result.results:
         print(f"  [{item.language_code}] chunks={item.chunk_count} embedded={item.embedded}")
+
+    cleanup_ingest_temp_files(
+        settings.resolve_data_dir(),
+        language_codes=[item.language_code for item in result.results],
+    )
 
     return 0
 
