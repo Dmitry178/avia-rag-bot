@@ -249,7 +249,7 @@ class RagPipeline:
             if isinstance(source_path, str) and source_path:
                 document_path = Path(source_path)
 
-        kb_static_context = load_kb_static_context(str(document_path))
+        kb_static_context = load_kb_static_context(str(document_path), language_code=language_code)
 
         return build_rag_system_prompt(
             context=context,
