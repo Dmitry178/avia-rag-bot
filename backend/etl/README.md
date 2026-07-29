@@ -89,27 +89,40 @@ flowchart TB
 
 ```
 backend/etl/
-├── README.md       # this file
-├── README_RU.md    # Russian version
+├── README.md           # this file
+├── README_RU.md        # Russian version
 ├── __init__.py
-├── types.py        # ContentType, DocumentNode, ChunkDraft
-├── parser.py       # parse_markdown() — header tree
-└── chunker.py      # chunk_document() — nodes → retrieval chunks
+├── types.py            # ContentType, DocumentNode, ChunkDraft
+├── profile.py          # DocumentProfile — load JSON, compile regexes
+├── parser.py           # parse_markdown(text, profile, …)
+├── chunker.py          # chunk_document(text, profile, …)
+└── static_sections.py  # extract_static_prompt_sections(text, profile)
 ```
+
+Per-language JSON profiles live in `backend/data/`:
+
+- `kb-profile-base.json` — shared section map, skip types, chunking limits
+- `kb-profile-ru.json`, `kb-profile-en.json` — labels and FAQ/scenario patterns
+
+See [docs/etl_profile.md](../../docs/etl_profile.md).
 
 Public entry points:
 
 ```python
+from etl.profile import get_document_profile
 from etl.parser import parse_markdown
 from etl.chunker import chunk_document
 from etl.types import ContentType, DocumentNode, ChunkDraft
+
+profile = get_document_profile("ru")
+chunks = chunk_document(text, profile=profile, source_path="data/rag-document-ru.md")
 ```
 
 ---
 
 ## Source Document
 
-Default source: `backend/data/rag-document.md` (~6800 lines, 18 `#` sections). Path is set by `ETL__DOCUMENT_PATH` (relative to the repository root; recommended value: `backend/data/rag-document.md`).
+Default sources: `backend/data/rag-document-ru.md` and `rag-document-en.md` (per `KB_LANGUAGES`). ETL behavior per language is driven by JSON profiles — see [docs/etl_profile.md](../../docs/etl_profile.md).
 
 | # | H1 Title | `content_type` |
 |---|----------|----------------|
@@ -182,7 +195,7 @@ Chunk ready for embedding and storage:
 
 ## Parser (`parser.py`)
 
-### `parse_markdown(text, source_path="") -> list[DocumentNode]`
+### `parse_markdown(text, profile, source_path="") -> list[DocumentNode]`
 
 **Step 1. Split by H1**
 
@@ -190,7 +203,7 @@ The document is split on lines matching `^# <title>$`. Each block is one top-lev
 
 **Step 2. Determine `content_type`**
 
-By section number (`00`, `13`, `14`…) and keywords in the title (`faq`, `глоссарий`, `decision tree`…). Everything else is `sop`.
+By section number (`00`, `13`, `14`…) from **`profile.section_map`** and keyword rules in **`profile.section_keywords`**. Everything else is `sop`.
 
 **Step 3. Build nodes**
 
@@ -209,21 +222,21 @@ For SOP without `##` subheaders, a single level=1 node is created.
 
 ## Chunker (`chunker.py`)
 
-### `chunk_document(text, source_path="") -> list[ChunkDraft]`
+### `chunk_document(text, profile, source_path="") -> list[ChunkDraft]`
 
-Calls `parse_markdown()`, then `chunk_node()` for each node.
+Calls `parse_markdown()`, then `chunk_node()` for each node. Locale-specific FAQ markers, scenario regex, and retrieval-prefix labels come from **`profile`**.
 
 ### Prefix in every chunk
 
 Improves retrieval: the model and search see section context.
 
 ```
-[Раздел: 04. Багаж > Приём багажа]
-[Тип: sop]
+[Section: 04. Baggage > Baggage Acceptance]   # labels from profile
+[Type: sop]
 <chunk body>
 ```
 
-(Prefix labels are in Russian to match the source document language.)
+(Prefix labels follow the locale file — Russian uses `Раздел` / `Тип`, English uses `Section` / `Type`.)
 
 ### Strategies by type
 
@@ -232,57 +245,49 @@ Improves retrieval: the model and search see section context.
 | Condition | Action |
 |-----------|--------|
 | level=2 node, ≤ 800 tokens | 1 chunk = entire `##` section |
-| level=2 node, > 800 tokens | Split on `###`; each chunk gets `Контекст: <H2 title>` |
+| level=2 node, > 800 tokens | Split on `###`; each chunk gets `{context label}: <H2 title>` from profile |
 | level=3 node | Skipped (already handled when splitting parent H2) |
 | level=1 node (fallback) | 1 chunk for the entire section |
 
-Limit: `_MAX_SOP_TOKENS = 800`, estimate: `len(text) // 4`.
+Limit: `profile.max_sop_tokens` (default 800), estimate: `len(text) // profile.chars_per_token`.
 
 On split, the first child chunk is stored in `parent_chunk_index` for linkage in `chunk_meta.parent_id`.
 
 #### `faq`
 
-Pairs extracted by regex:
+Pairs extracted using **`profile.faq_pair_re`** (built from `question_marker` / `answer_marker` in the locale JSON). List-marker variants (`* **Question:**`) are supported. **1 pair = 1 chunk.**
 
-```
-**Вопрос:** ...
-**Ответ:** ...
-```
-
-List-marker variants like `* **Вопрос:**` are supported. **1 pair = 1 chunk.**
-
-FAQ blocks inside SOP sections (not in `# 14`) remain part of the SOP node during parsing and are **not** extracted separately — only section 14 content is processed as `faq`.
+Embedded FAQ blocks at the end of SOP chapters (after `---` + `**FAQ**`) are stripped from SOP and extracted as separate `faq` chunks.
 
 #### `glossary`
 
-Lines like `**Термин:** definition` → **1 term = 1 chunk**.
+Skipped for indexing (`profile.skip_index_types`). Glossary term chunking is not enabled in the current MVP.
 
 #### `decision_tree`
 
-Split on `## 16.X. Title` → **1 tree = 1 chunk** (tree text is not split further).
+Split on `profile.decision_tree_split_re` (`## 16.X. Title`) → **1 tree = 1 chunk**.
 
 #### `scenario`
 
-Split on `## Сценарий N: ...` → **1 scenario = 1 chunk**.
+Split on `profile.scenario_split_re` → **1 scenario = 1 chunk** (e.g. `## Scenario 1:` or `## Сценарий 1:`).
 
 #### `meta` / `out_of_scope`
 
-Split on `##` within the section; if there are no subheaders — 1 chunk for the entire H1.
+Not indexed (`profile.skip_index_types`). Bodies of chapters listed in `profile.static_prompt_sections` are loaded into the RAG system prompt at runtime.
 
-### Expected volume (current document)
+### Expected volume (ru / en documents)
 
-When running `chunk_document()` on `backend/data/rag-document.md`:
+When running `chunk_document()` with the matching profile:
 
 | `content_type` | ~chunk count |
 |----------------|--------------|
-| `faq` | 473 |
-| `glossary` | 339 |
+| `faq` | ~593 |
 | `sop` | 106 |
-| `meta` | 10 |
 | `decision_tree` | 10 |
 | `scenario` | 10 |
-| `out_of_scope` | 5 |
-| **Total** | **~953** |
+| **Total indexed** | **~720** |
+
+`glossary`, `meta`, and `out_of_scope` are not embedded.
 
 ---
 
@@ -316,13 +321,24 @@ Mapping `ChunkDraft` → `ChunkMeta`:
 
 Paths relative to `backend/` (when running from `backend/`):
 
-| Path | Variable | Contents |
-|------|----------|----------|
-| `data/app.db` | `DB__URL` / `DATA__DIR` | Tables `chunk_meta`, `index_manifest`, chats |
-| `data/faiss.index` | `FAISS__DIR` | Binary FAISS `IndexFlatIP`, L2-normalized vectors |
-| `data/manifest.json` | `DATA__DIR` | `source_path`, `doc_hash`, `embedding_model`, `chunk_count`, `built_at` |
+| Path | Contents | Persistent? |
+|------|----------|-------------|
+| `data/app.db` | Tables `chunk_meta`, `index_manifest`, chats | Yes |
+| `data/faiss-{lang}.index` | Binary FAISS `IndexFlatIP`, L2-normalized vectors | Yes |
+| `data/manifest-{lang}.json` | `source_path`, `doc_hash`, `embedding_model`, `chunk_count`, `built_at` | Yes |
+| `data/ingest_checkpoint_{lang}.json` | Partial embed progress (`vectors_by_hash`) for resume after failure | **No** — removed on successful ingest |
+| `data/ingest_checkpoint_{lang}.tmp` | Atomic-write temp for checkpoint JSON | **No** |
+| `data/faiss-{lang}.index.tmp` | Atomic-write temp for FAISS index | **No** (replaced on save) |
 
-FAISS is written atomically via `FaissManager`: first `faiss.index.tmp`, then `replace`.
+FAISS is written atomically via `FaissManager`: first `faiss-{lang}.index.tmp`, then `replace`.
+
+### Ingest checkpoint (resume)
+
+While embeddings are computed, `ETLService` saves `ingest_checkpoint_{lang}.json` after each batch. If ingest is interrupted, re-run the same `make etl-ingest-*` command — already embedded chunks are reused from the checkpoint.
+
+On **successful** completion, checkpoint files are deleted by `ETLService.ingest()` and again by `scripts/run_etl.py` (`cleanup_ingest_temp_files`). Leftover checkpoint files after a successful run are safe to delete manually.
+
+Details: [docs/operations.md](../../docs/operations.md#ingest-checkpoint-transient).
 
 ---
 
@@ -446,8 +462,8 @@ API tests: `tests/api/test_etl.py` (`/api/etl/stats`, `/api/etl/manifest`); mark
 
 1. **Full rebuild only** — incremental updates for individual chunks are not implemented.
 2. **Rough token estimate** — `len(text) // 4`, no tiktoken; SOP split uses this threshold.
-3. **FAQ outside section 14** — embedded Q/A in SOP sections stay inside SOP chunks, not extracted as `faq`.
-4. **Parser tied to `rag-document.md` structure** — headers `# NN.`, pairs `**Вопрос:**/**Ответ:**`, glossary `**Термин:**`.
+3. **FAQ in SOP chapters** — trailing `**FAQ**` blocks are extracted as separate `faq` chunks (markers from locale profile).
+4. **Locale-specific patterns** — configured in `kb-profile-{code}.json`; see [docs/etl_profile.md](../../docs/etl_profile.md).
 5. **SOP level=3 nodes** are created by the parser but skipped by the chunker — splitting goes through H2 split on `###`.
 6. **CLI** — `python scripts/run_etl.py ingest|stats|manifest` or `make etl-ingest|etl-stats|etl-manifest`.
 

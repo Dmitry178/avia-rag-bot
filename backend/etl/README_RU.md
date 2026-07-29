@@ -89,27 +89,35 @@ flowchart TB
 
 ```
 backend/etl/
-├── README.md       # English version
-├── README_RU.md    # этот файл
+├── README.md           # English version
+├── README_RU.md        # этот файл
 ├── __init__.py
-├── types.py        # ContentType, DocumentNode, ChunkDraft
-├── parser.py       # parse_markdown() — дерево узлов по заголовкам
-└── chunker.py      # chunk_document() — узлы → retrieval-чанки
+├── types.py            # ContentType, DocumentNode, ChunkDraft
+├── profile.py          # DocumentProfile — загрузка JSON, компиляция regex
+├── parser.py           # parse_markdown(text, profile, …)
+├── chunker.py          # chunk_document(text, profile, …)
+└── static_sections.py  # extract_static_prompt_sections(text, profile)
 ```
+
+JSON-профили по языкам: `backend/data/kb-profile-base.json`, `kb-profile-ru.json`, `kb-profile-en.json`. См. [docs/etl_profile_ru.md](../../docs/etl_profile_ru.md).
 
 Публичные точки входа:
 
 ```python
+from etl.profile import get_document_profile
 from etl.parser import parse_markdown
 from etl.chunker import chunk_document
 from etl.types import ContentType, DocumentNode, ChunkDraft
+
+profile = get_document_profile("ru")
+chunks = chunk_document(text, profile=profile, source_path="data/rag-document-ru.md")
 ```
 
 ---
 
 ## Исходный документ
 
-Источник по умолчанию: `backend/data/rag-document.md` (~6800 строк, 18 разделов `#`). Путь задаётся `ETL__DOCUMENT_PATH` (относительно корня репозитория, рекомендуемое значение: `backend/data/rag-document.md`).
+Источники по умолчанию: `backend/data/rag-document-ru.md` и `rag-document-en.md` (см. `KB_LANGUAGES`). Поведение ETL задаётся JSON-профилями — [docs/etl_profile_ru.md](../../docs/etl_profile_ru.md).
 
 | № | Заголовок H1 | `content_type` |
 |---|--------------|----------------|
@@ -182,7 +190,7 @@ from etl.types import ContentType, DocumentNode, ChunkDraft
 
 ## Парсер (`parser.py`)
 
-### `parse_markdown(text, source_path="") -> list[DocumentNode]`
+### `parse_markdown(text, profile, source_path="") -> list[DocumentNode]`
 
 **Шаг 1. Разбиение по H1**
 
@@ -190,7 +198,7 @@ from etl.types import ContentType, DocumentNode, ChunkDraft
 
 **Шаг 2. Определение `content_type`**
 
-По номеру раздела (`00`, `13`, `14`…) и ключевым словам в заголовке (`faq`, `глоссарий`, `decision tree`…). Всё остальное — `sop`.
+По номеру раздела из **`profile.section_map`** и правилам **`profile.section_keywords`**. Всё остальное — `sop`.
 
 **Шаг 3. Построение узлов**
 
@@ -209,9 +217,9 @@ from etl.types import ContentType, DocumentNode, ChunkDraft
 
 ## Чанкер (`chunker.py`)
 
-### `chunk_document(text, source_path="") -> list[ChunkDraft]`
+### `chunk_document(text, profile, source_path="") -> list[ChunkDraft]`
 
-Вызывает `parse_markdown()`, затем для каждого узла — `chunk_node()`.
+Вызывает `parse_markdown()`, затем для каждого узла — `chunk_node()`. Маркеры FAQ, regex сценариев и метки префиксов берутся из **`profile`**.
 
 ### Prefix в каждом чанке
 
@@ -230,57 +238,45 @@ from etl.types import ContentType, DocumentNode, ChunkDraft
 | Условие | Действие |
 |---------|----------|
 | Узел level=2, ≤ 800 токенов | 1 чанк = весь `##`-раздел |
-| Узел level=2, > 800 токенов | Split по `###`; в каждый чанк добавляется `Контекст: <H2-заголовок>` |
+| Узел level=2, > 800 токенов | Split по `###`; метка контекста из профиля |
 | Узел level=3 | Пропускается (уже обработан при split родителя H2) |
 | Узел level=1 (fallback) | 1 чанк на весь раздел |
 
-Лимит: `_MAX_SOP_TOKENS = 800`, оценка: `len(text) // 4`.
+Лимит: `profile.max_sop_tokens` (по умолчанию 800), оценка: `len(text) // profile.chars_per_token`.
 
 При split первый дочерний чанк запоминается в `parent_chunk_index` для связи в `chunk_meta.parent_id`.
 
 #### `faq`
 
-Извлекаются пары по regex:
+Пары извлекаются через **`profile.faq_pair_re`** (маркеры `question_marker` / `answer_marker` в locale JSON). **1 пара = 1 чанк.**
 
-```
-**Вопрос:** ...
-**Ответ:** ...
-```
-
-Поддерживаются варианты с маркером списка `* **Вопрос:**`. **1 пара = 1 чанк.**
-
-FAQ-блоки внутри SOP-разделов (не в `# 14`) при парсинге остаются частью SOP-узла и **не** выделяются отдельно — только содержимое раздела 14 обрабатывается как `faq`.
+Хвостовые FAQ-блоки в SOP-главах (после `---` + `**FAQ**`) выделяются в отдельные `faq`-чанки.
 
 #### `glossary`
 
-Строки вида `**Термин:** определение` → **1 термин = 1 чанк**.
+Не индексируется (`profile.skip_index_types`).
 
 #### `decision_tree`
 
-Split по `## 16.X. Название` → **1 дерево = 1 чанк** (текст дерева не режется).
+Split по `profile.decision_tree_split_re` → **1 дерево = 1 чанк**.
 
 #### `scenario`
 
-Split по `## Сценарий N: ...` → **1 сценарий = 1 чанк**.
+Split по `profile.scenario_split_re` (напр. `## Сценарий N:` / `## Scenario N:`).
 
 #### `meta` / `out_of_scope`
 
-Split по `##` внутри раздела; если подзаголовков нет — 1 чанк на весь H1.
+Не индексируются. Главы из `profile.static_prompt_sections` попадают в RAG system prompt в runtime.
 
-### Ожидаемый объём (текущий документ)
-
-При прогоне `chunk_document()` на `backend/data/rag-document.md`:
+### Ожидаемый объём (ru / en)
 
 | `content_type` | ~кол-во чанков |
 |----------------|----------------|
-| `faq` | 473 |
-| `glossary` | 339 |
+| `faq` | ~593 |
 | `sop` | 106 |
-| `meta` | 10 |
 | `decision_tree` | 10 |
 | `scenario` | 10 |
-| `out_of_scope` | 5 |
-| **Итого** | **~953** |
+| **Итого в индексе** | **~720** |
 
 ---
 
@@ -314,13 +310,24 @@ from etl.chunker import chunk_document
 
 Пути относительно `backend/` (при запуске из `backend/`):
 
-| Путь | Переменная | Содержимое |
-|------|------------|------------|
-| `data/app.db` | `DB__URL` / `DATA__DIR` | Таблицы `chunk_meta`, `index_manifest`, чаты |
-| `data/faiss.index` | `FAISS__DIR` | Бинарный FAISS `IndexFlatIP`, векторы L2-нормализованы |
-| `data/manifest.json` | `DATA__DIR` | `source_path`, `doc_hash`, `embedding_model`, `chunk_count`, `built_at` |
+| Путь | Содержимое | Постоянный? |
+|------|------------|-------------|
+| `data/app.db` | Таблицы `chunk_meta`, `index_manifest`, чаты | Да |
+| `data/faiss-{lang}.index` | Бинарный FAISS `IndexFlatIP` | Да |
+| `data/manifest-{lang}.json` | `source_path`, `doc_hash`, `embedding_model`, `chunk_count`, `built_at` | Да |
+| `data/ingest_checkpoint_{lang}.json` | Частичный прогресс embed (`vectors_by_hash`) для resume после сбоя | **Нет** — удаляется при успешном ingest |
+| `data/ingest_checkpoint_{lang}.tmp` | Temp атомарной записи checkpoint | **Нет** |
+| `data/faiss-{lang}.index.tmp` | Temp при записи FAISS | **Нет** (заменяется при save) |
 
-FAISS пишется атомарно через `FaissManager`: сначала `faiss.index.tmp`, затем `replace`.
+FAISS пишется атомарно через `FaissManager`: сначала `faiss-{lang}.index.tmp`, затем `replace`.
+
+### Checkpoint ingest (resume)
+
+Пока считаются эмбеддинги, `ETLService` сохраняет `ingest_checkpoint_{lang}.json` после каждого батча. При прерывании — повторите ту же команду `make etl-ingest-*`; уже посчитанные чанки подхватятся из checkpoint.
+
+При **успешном** завершении checkpoint удаляется в `ETLService.ingest()` и повторно в `scripts/run_etl.py` (`cleanup_ingest_temp_files`). Оставшийся checkpoint после успешного прогона можно удалить вручную.
+
+Подробнее: [docs/operations_ru.md](../../docs/operations_ru.md#checkpoint-ingest-временные-файлы).
 
 ---
 
@@ -444,8 +451,8 @@ API-тесты: `tests/api/test_etl.py` (`/api/etl/stats`, `/api/etl/manifest`);
 
 1. **Только full rebuild** — инкрементальное обновление отдельных чанков не реализовано.
 2. **Оценка токенов грубая** — `len(text) // 4`, без tiktoken; split SOP ориентируется на этот порог.
-3. **FAQ вне раздела 14** — встроенные Q/A в SOP-разделах остаются внутри SOP-чанков, не выделяются как `faq`.
-4. **Парсер завязан на структуру `rag-document.md`** — заголовки `# NN.`, пары `**Вопрос:**/**Ответ:**`, глоссарий `**Термин:**`.
+3. **FAQ в SOP-главах** — хвостовые блоки `**FAQ**` выделяются в отдельные `faq`-чанки (маркеры из locale-профиля).
+4. **Локальные паттерны** — в `kb-profile-{code}.json`; см. [docs/etl_profile_ru.md](../../docs/etl_profile_ru.md).
 5. **Узлы level=3 в SOP** создаются парсером, но чанкер их пропускает — нарезка идёт через split H2 по `###`.
 6. **CLI** — `python scripts/run_etl.py ingest|stats|manifest` или `make etl-ingest|etl-stats|etl-manifest`.
 
