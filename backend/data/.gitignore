@@ -1,6 +1,3 @@
-*.db[-shm]
-*.db-shm
-*.db-wal
-faiss.index
-ingest_checkpoint.json
-manifest.json
+*
+!.gitignore
+!rag-document*.md
