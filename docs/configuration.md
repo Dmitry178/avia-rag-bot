@@ -59,7 +59,7 @@ SQLite URLs are automatically converted to async (`sqlite+aiosqlite`) at runtime
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `DATA__DIR` | string | `./data` | Runtime artifacts: SQLite, manifest JSON, ingest checkpoint |
+| `DATA__DIR` | string | `./data` | Runtime artifacts: SQLite, manifest JSON, transient ingest checkpoints (removed on successful ingest) |
 
 Created on startup if missing.
 
@@ -78,10 +78,12 @@ Created on startup if missing.
 
 Markdown sources for each language are defined in **`backend/app/core/config.py`** → `KB_LANGUAGES`:
 
-| Code | Document |
-|------|----------|
-| `ru` | `data/rag-document-ru.md` |
-| `en` | `data/rag-document-en.md` |
+| Code | Document | ETL locale profile |
+|------|----------|-------------------|
+| `ru` | `data/rag-document-ru.md` | `data/kb-profile-ru.json` |
+| `en` | `data/rag-document-en.md` | `data/kb-profile-en.json` |
+
+Shared structure mapping: `data/kb-profile-base.json` (merged with locale file at load time). Details: [etl_profile.md](etl_profile.md).
 
 To change paths, edit `KB_LANGUAGES` and re-run ingest. Per-request override: API `source_path` or CLI `--source` on `POST /api/etl/ingest`.
 

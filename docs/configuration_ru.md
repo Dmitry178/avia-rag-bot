@@ -59,7 +59,7 @@ SQLite автоматически преобразуется в async (`sqlite+a
 
 | Переменная | Тип | По умолчанию | Описание |
 |------------|-----|--------------|----------|
-| `DATA__DIR` | string | `./data` | Артефакты: SQLite, manifest JSON, checkpoint ingest |
+| `DATA__DIR` | string | `./data` | Артефакты: SQLite, manifest JSON, временные checkpoint ingest (удаляются при успешном ingest) |
 
 Создаётся при старте, если отсутствует.
 
@@ -78,10 +78,12 @@ SQLite автоматически преобразуется в async (`sqlite+a
 
 Пути к markdown задаются в **`backend/app/core/config.py`** → `KB_LANGUAGES`:
 
-| Код | Документ |
-|-----|----------|
-| `ru` | `data/rag-document-ru.md` |
-| `en` | `data/rag-document-en.md` |
+| Код | Документ | ETL-профиль (locale) |
+|-----|----------|----------------------|
+| `ru` | `data/rag-document-ru.md` | `data/kb-profile-ru.json` |
+| `en` | `data/rag-document-en.md` | `data/kb-profile-en.json` |
+
+Общий маппинг структуры: `data/kb-profile-base.json` (мержится с locale при загрузке). Подробнее: [etl_profile_ru.md](etl_profile_ru.md).
 
 Чтобы изменить пути — правка `KB_LANGUAGES` и повторный ingest. Переопределение на запрос: API `source_path` или CLI `--source` у `POST /api/etl/ingest`.
 
