@@ -24,6 +24,13 @@ class KbLanguageEntry(BaseModel):
         description="Path to the markdown KB file (relative to backend root or absolute).",
     )
     display_name: str = Field(description="Human-readable language label for logs and docs.")
+    etl_profile_path: str | None = Field(
+        default=None,
+        description=(
+            "Optional path to the locale ETL profile JSON (relative to backend root). "
+            "Defaults to data/kb-profile-{code}.json; merged with data/kb-profile-base.json."
+        ),
+    )
 
 
 KB_LANGUAGES: dict[str, KbLanguageEntry] = {
@@ -76,6 +83,19 @@ def resolve_kb_document_path(language_code: str, backend_root: Path) -> Path:
         return path
 
     return backend_root / path
+
+
+def resolve_kb_profile_locale_path(language_code: str, backend_root: Path) -> Path:
+    """
+    Return absolute path to the locale-specific ETL profile JSON for a KB language.
+    """
+
+    language = get_kb_language(language_code)
+    if language.etl_profile_path is not None:
+        path = Path(language.etl_profile_path)
+        return path if path.is_absolute() else backend_root / path
+
+    return backend_root / "data" / f"kb-profile-{language_code}.json"
 
 
 class AppSettings(BaseModel):
