@@ -141,12 +141,17 @@ It is used as an async context manager (`async with DBManager(SessionLocal) as d
 | Path | Purpose |
 |------|---------|
 | `backend/data/app.db` | SQLite database |
-| `backend/data/faiss.index` | FAISS `IndexFlatIP` (L2-normalized inner product) |
-| `backend/data/manifest.json` | Copy of latest manifest for tooling / Docker bootstrap |
-| `backend/data/rag-document.md` | Source markdown for ETL |
-| `backend/data/ingest_checkpoint.json` | Embedding checkpoint for resume after interrupt |
+| `backend/data/faiss-{lang}.index` | Per-language FAISS `IndexFlatIP` |
+| `backend/data/manifest-{lang}.json` | Latest index build metadata per language |
+| `backend/data/rag-document-{lang}.md` | Source markdown per KB language |
+| `backend/data/kb-profile-base.json` | Shared ETL structure mapping |
+| `backend/data/kb-profile-{lang}.json` | Per-language ETL labels and patterns |
+| `backend/data/ingest_checkpoint_{lang}.json` | Transient embedding resume state (deleted on successful ingest) |
+| `backend/data/ingest_checkpoint_{lang}.tmp` | Transient atomic-write sibling for checkpoint JSON |
 
 Chunk `id` in SQLite and FAISS row position must stay aligned — both are rebuilt together on full ingest.
+
+**Checkpoint lifecycle:** created/updated during the embed phase so ingest can resume after interrupt; removed automatically when ingest completes successfully (`ETLService` + CLI). See [operations.md](operations.md#ingest-checkpoint-transient).
 
 ## ETL pipeline
 
@@ -154,7 +159,8 @@ ETL splits into a **pure parsing package** and an **orchestrating service**.
 
 ```mermaid
 flowchart TB
-    MD["rag-document.md"]
+    MD["rag-document-{lang}.md"]
+    PROF["kb-profile-base + locale JSON"]
     P["etl/parser.py"]
     C["etl/chunker.py"]
     S["ETLService.ingest()"]
@@ -162,6 +168,8 @@ flowchart TB
     DB[("SQLite")]
     F["FAISS"]
 
+    PROF --> P
+    PROF --> C
     MD --> P --> C --> S
     S --> E
     S --> DB
@@ -171,16 +179,17 @@ flowchart TB
 ### `etl/` package (bounded context)
 
 - No FastAPI, SQLite, or FAISS imports.
-- `parser.py` — markdown → section tree.
+- `profile.py` — load and compile per-language document profiles from JSON (`kb-profile-base.json` + `kb-profile-{code}.json`). See [etl_profile.md](etl_profile.md).
+- `parser.py` — markdown → section tree (uses profile for chapter classification).
 - `chunker.py` — content-type-aware splitting (`sop`, `faq`, `decision_tree`, `scenario`, …); FAQ pairs are extracted from SOP chapters (01–12) and chapter 14; chapters 00, 13, and 15 are skipped for indexing.
-- `static_sections.py` — extract chapters 00 and 13 for runtime system prompt injection.
+- `static_sections.py` — extract profile-configured chapters (00, 13) for runtime system prompt injection.
 - Unit-tested in isolation.
 
 ### `ETLService` phases
 
 1. **Parse & chunk** — read document, produce `ChunkDraft` list.
 2. **Plan** — incremental diff vs existing chunks (`etl_plan.py`): reuse unchanged vectors, embed only new/changed.
-3. **Embed** — batched calls to the embedding API; checkpoint saved per batch (resume on `Ctrl+C` via `IngestInterruptedError` in `scripts/run_etl.py`).
+3. **Embed** — batched calls to the embedding API; checkpoint saved per batch (resume on interrupt; **deleted on success**). See [operations.md](operations.md#ingest-checkpoint-transient).
 4. **Persist SQLite** — replace `chunk_meta`, insert new `index_manifest` row, commit.
 5. **Persist FAISS** — build `IndexFlatIP`, atomic write to `faiss.index`.
 6. **Write `manifest.json`** — after DB commit.

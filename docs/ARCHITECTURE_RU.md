@@ -141,12 +141,17 @@ api/routers  →  services/  →  repositories/  →  models/
 | Путь | Назначение |
 |------|------------|
 | `backend/data/app.db` | База SQLite |
-| `backend/data/faiss.index` | FAISS `IndexFlatIP` (L2-нормализованное скалярное произведение) |
-| `backend/data/manifest.json` | Копия последнего manifest для tooling / Docker bootstrap |
-| `backend/data/rag-document.md` | Исходный markdown для ETL |
-| `backend/data/ingest_checkpoint.json` | Checkpoint embeddings для возобновления после прерывания |
+| `backend/data/faiss-{lang}.index` | FAISS по языку KB |
+| `backend/data/manifest-{lang}.json` | Метаданные последней сборки индекса |
+| `backend/data/rag-document-{lang}.md` | Исходный markdown по языкам KB |
+| `backend/data/kb-profile-base.json` | Общий ETL-маппинг структуры |
+| `backend/data/kb-profile-{lang}.json` | Языковые метки и паттерны ETL |
+| `backend/data/ingest_checkpoint_{lang}.json` | Временное состояние для resume embedding (удаляется при успешном ingest) |
+| `backend/data/ingest_checkpoint_{lang}.tmp` | Temp при атомарной записи checkpoint |
 
 `id` чанка в SQLite и позиция строки в FAISS должны оставаться согласованными — оба пересобираются вместе при полном ingest.
+
+**Жизненный цикл checkpoint:** создаётся/обновляется на фазе embed для возобновления после сбоя; удаляется автоматически при успешном завершении (`ETLService` + CLI). См. [operations_ru.md](operations_ru.md#checkpoint-ingest-временные-файлы).
 
 ## ETL-пайплайн
 
@@ -154,7 +159,8 @@ ETL разделён на **чистый пакет парсинга** и **ор
 
 ```mermaid
 flowchart TB
-    MD["rag-document.md"]
+    MD["rag-document-{lang}.md"]
+    PROF["kb-profile-base + locale JSON"]
     P["etl/parser.py"]
     C["etl/chunker.py"]
     S["ETLService.ingest()"]
@@ -162,6 +168,8 @@ flowchart TB
     DB[("SQLite")]
     F["FAISS"]
 
+    PROF --> P
+    PROF --> C
     MD --> P --> C --> S
     S --> E
     S --> DB
@@ -171,16 +179,17 @@ flowchart TB
 ### Пакет `etl/` (ограниченный контекст)
 
 - Без импортов FastAPI, SQLite и FAISS.
-- `parser.py` — markdown → дерево разделов.
-- `chunker.py` — разбиение с учётом типа контента (`sop`, `faq`, `decision_tree`, `scenario`, …); пары FAQ извлекаются из SOP-глав (01–12) и главы 14; главы 00, 13 и 15 не индексируются.
-- `static_sections.py` — извлечение глав 00 и 13 для инъекции в системный промпт в runtime.
+- `profile.py` — загрузка и компиляция языковых профилей из JSON. См. [etl_profile_ru.md](etl_profile_ru.md).
+- `parser.py` — markdown → дерево разделов (классификация глав по профилю).
+- `chunker.py` — разбиение с учётом типа контента; FAQ из SOP-глав (01–12) и главы 14; главы 00, 13 и 15 не индексируются.
+- `static_sections.py` — главы из профиля (00, 13) для system prompt в runtime.
 - Unit-тесты изолированно.
 
 ### Фазы `ETLService`
 
 1. **Parse & chunk** — чтение документа, список `ChunkDraft`.
 2. **Plan** — инкрементальный diff с существующими чанками (`etl_plan.py`): переиспользование неизменённых векторов, embed только новых/изменённых.
-3. **Embed** — пакетные вызовы embedding API; checkpoint сохраняется после каждого батча (возобновление по `Ctrl+C` через `IngestInterruptedError` в `scripts/run_etl.py`).
+3. **Embed** — пакетные вызовы embedding API; checkpoint сохраняется после каждого батча (resume при прерывании; **удаляется при успехе**). См. [operations_ru.md](operations_ru.md#checkpoint-ingest-временные-файлы).
 4. **Persist SQLite** — замена `chunk_meta`, вставка строки `index_manifest`, commit.
 5. **Persist FAISS** — сборка `IndexFlatIP`, атомарная запись в `faiss.index`.
 6. **Запись `manifest.json`** — после commit в БД.
