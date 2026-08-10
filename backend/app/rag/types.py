@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.models.chunk_meta import ChunkMeta
+from app.rag.lane_post_processing import LaneVerificationCandidate
 from app.schemas.rag import RagConfig
 
 
@@ -54,4 +55,5 @@ class RagPipelineResult:
     chunks: list[RetrievedChunk]
     trace: list[RagTraceStep]
     search_queries: list[str] = field(default_factory=list)
+    verification_candidates: list[LaneVerificationCandidate] = field(default_factory=list)
     applicable_decision_trees: list[RetrievedChunk] = field(default_factory=list)
