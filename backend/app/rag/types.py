@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.models.chunk_meta import ChunkMeta
-from app.rag.lane_post_processing import LaneVerificationCandidate
+from app.rag.retrieval_lanes import RetrievalLane
 from app.schemas.rag import RagConfig
 
 
@@ -32,6 +32,27 @@ class RetrievedChunk:
     source_query: str | None = None
     vector_similarity: float | None = None
     retrieval_lane: str | None = None
+
+
+def chunk_similarity(item: RetrievedChunk) -> float:
+    """
+    Return the best available similarity score for a retrieved chunk.
+    """
+
+    if item.vector_similarity is not None:
+        return item.vector_similarity
+
+    return item.score
+
+
+@dataclass(frozen=True)
+class LaneVerificationCandidate:
+    """
+    One lane hit selected for optional dedicated LLM verification.
+    """
+
+    lane: RetrievalLane
+    hit: RetrievedChunk
 
 
 @dataclass
