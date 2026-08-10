@@ -1,57 +1,92 @@
-"""Multi-lane retrieval configuration for heterogeneous knowledge-base chapters."""
+"""Schema-driven multi-lane retrieval configuration."""
 
 from dataclasses import dataclass
+from functools import lru_cache
+
+from app.core.config import settings
+from etl.chunking_schema import RetrievalLanePresentation, load_runtime_schema_for_language
+
+
+@dataclass(frozen=True)
+class LanePresentation:
+    """
+    Runtime presentation and verification settings for one retrieval lane.
+    """
+
+    ui_priority: int = 0
+    ui_variant: str | None = None
+    exclude_from_generation_context: bool = False
+    verification_strategy: str = "none"
+    verification_no_match_token: str | None = None
+    max_verification_candidates: int = 1
 
 
 @dataclass(frozen=True)
 class RetrievalLane:
     """
-    One retrieval corpus with its own top-k quota.
+    One retrieval corpus with its own top-k quota and similarity threshold.
     """
 
     id: str
     content_types: frozenset[str]
     top_k: int
     source_label: str
+    oversample: int = 10
+    min_fetch: int = 80
+    min_similarity: float = 0.4
+    presentation: LanePresentation = LanePresentation()
 
 
-SOP_LANE = RetrievalLane(
-    id="sop",
-    content_types=frozenset({"sop"}),
-    top_k=8,
-    source_label="Chapters 01–12 (operational SOP)",
-)
+@dataclass(frozen=True)
+class RetrievalRuntime:
+    """
+    Per-language retrieval runtime loaded from chunking schema.
+    """
 
-FAQ_LANE = RetrievalLane(
-    id="faq",
-    content_types=frozenset({"faq"}),
-    top_k=5,
-    source_label="Chapter 14 FAQ + per-chapter FAQ (01–12)",
-)
+    lanes: tuple[RetrievalLane, ...]
+    lane_by_id: dict[str, RetrievalLane]
 
-DECISION_TREE_LANE = RetrievalLane(
-    id="decision_tree",
-    content_types=frozenset({"decision_tree"}),
-    top_k=3,
-    source_label="Chapter 16 (decision trees)",
-)
 
-SCENARIO_LANE = RetrievalLane(
-    id="scenario",
-    content_types=frozenset({"scenario"}),
-    top_k=3,
-    source_label="Chapter 17 (practical scenarios)",
-)
+def _lane_presentation(schema_presentation: RetrievalLanePresentation | None) -> LanePresentation:
+    if schema_presentation is None:
+        return LanePresentation()
 
-RETRIEVAL_LANES: tuple[RetrievalLane, ...] = (
-    SOP_LANE,
-    FAQ_LANE,
-    DECISION_TREE_LANE,
-    SCENARIO_LANE,
-)
+    return LanePresentation(
+        ui_priority=schema_presentation.ui_priority,
+        ui_variant=schema_presentation.ui_variant,
+        exclude_from_generation_context=schema_presentation.exclude_from_generation_context,
+        verification_strategy=schema_presentation.verification_strategy,
+        verification_no_match_token=schema_presentation.verification_no_match_token,
+        max_verification_candidates=schema_presentation.max_verification_candidates,
+    )
 
-LANE_BY_ID: dict[str, RetrievalLane] = {lane.id: lane for lane in RETRIEVAL_LANES}
 
-# FAISS returns global top rows; fetch extra rows so filtered lanes still fill their quota.
-LANE_SEARCH_OVERSAMPLE = 10
-LANE_SEARCH_MIN_FETCH = 80
+@lru_cache(maxsize=8)
+def get_retrieval_runtime(language_code: str) -> RetrievalRuntime:
+    """
+    Build retrieval lanes for one language from schema.
+    """
+
+    context = load_runtime_schema_for_language(language_code, str(settings.backend_root))
+    lanes: list[RetrievalLane] = []
+
+    for lane in context.schema.retrieval_lanes:
+        lanes.append(
+            RetrievalLane(
+                id=lane.id,
+                content_types=frozenset(lane.allowed_category_ids),
+                top_k=lane.top_k,
+                source_label=lane.description,
+                oversample=lane.oversample,
+                min_fetch=lane.min_fetch,
+                min_similarity=lane.min_similarity,
+                presentation=_lane_presentation(lane.presentation),
+            )
+        )
+
+    lane_tuple = tuple(lanes)
+
+    return RetrievalRuntime(
+        lanes=lane_tuple,
+        lane_by_id={lane.id: lane for lane in lane_tuple},
+    )
