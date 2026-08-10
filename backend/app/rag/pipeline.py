@@ -39,6 +39,7 @@ class RagPipeline:
         context = load_runtime_schema_for_language(language_code, str(self._settings.backend_root))
         output_root = resolve_schema_output_root(
             context.schema,
+            schema_dir=context.schema_dir,
             backend_root=self._settings.backend_root,
             repo_root=self._settings.repo_root,
             output_root_override=None,
