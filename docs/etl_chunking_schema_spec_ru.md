@@ -32,21 +32,19 @@
 
 ## 3. Версионирование
 
-- `schema_version`: версия JSON-контракта (структура/поля схемы).
-- `chunker_version`: версия исполняемой семантики чанкования.
+- `format` — идентификатор схемы и версия контракта; для discovery должен быть `rag.chunking-schema.v3`.
 
 Правила:
-- изменение, влияющее на границы/порядок/контент чанков, должно повышать `chunker_version`;
-- несовместимое изменение структуры схемы повышает `schema_version`;
-- несовпадение `chunker_version` требует full reindex.
+- breaking-изменения JSON-контракта или семантики чанкования требуют нового значения `format` (например `rag.chunking-schema.v4`);
+- несовместимый `format` требует full reindex;
+- при сканировании директории игнорируются `*.json` без поддерживаемого `format`.
 
 ---
 
 ## 4. Структура schema v3 (верхний уровень)
 
 Обязательные ключи:
-- `schema_version`
-- `chunker_version`
+- `format`
 - `document`
 - `io`
 - `categories`
@@ -62,7 +60,7 @@
 - `document_id` (стабильный id документа)
 - `language_code` (`ru`, `en`, ...)
 - `display_name`
-- `source_path` (путь к входному markdown)
+- `source_path` (путь к входному markdown, относительно каталога JSON-схемы, если не абсолютный)
 
 ### 4.2 `io`
 
@@ -224,18 +222,31 @@ Runtime-инварианты:
 
 ## 8. Контракт универсального CLI
 
-Минимальные аргументы:
-- `--schema <path>`
+Основная production-команда:
+
+```bash
+uv run --project backend python backend/scripts/run_etl.py ingest-dir --dir data
+```
+
+`ingest-dir`:
+- сканирует каталог на `*.json`;
+- оставляет только файлы с `format: "rag.chunking-schema.v3"`;
+- проверяет поддерживаемое значение `format`;
+- для каждой схемы пишет SQLite (`io.chunk_meta.db_path` под `output_root`) и FAISS.
+
+Дополнительные аргументы:
+- `--schema <path>` (`schema-ingest`, без записи в app DB)
 - `--source <path>` (опциональный override)
 - `--output-root <path>`
 - `--run-id <string>` (опционально)
 - `--no-embed`
 - `--allow-overwrite`
+- legacy `--lang <code>` (`ingest`, одна схема из KB config)
 
 Обязательное поведение:
-- не перезаписывать активные production FAISS-артефакты по умолчанию;
-- писать результаты в изолированный output namespace/path;
-- работать с markdown документами из внешних проектов.
+- не перезаписывать production FAISS по умолчанию при `overwrite_policy: forbid`;
+- разрешать пути относительно каталога JSON-схемы;
+- работать с markdown из внешних проектов через `--dir`.
 - при наличии `run_id` писать артефакты в `output_root/<run_id>/...`;
 - если в схеме задано `io.protected_production_targets.require_explicit_override=true`, блокировать запись в эти пути без флага `--allow-overwrite`.
 
@@ -248,16 +259,10 @@ uv run --project backend python backend/scripts/run_etl.py
 ```
 
 Сценарий опроса:
-1. Выбор команды (`ingest`, `ingest-all`, `stats`, `manifest`, `schema-ingest`).
-2. Ввод обязательных и опциональных параметров выбранной команды.
-3. Подтверждение флагов (`no_embed`, `allow_overwrite`) через y/n.
-4. Выполнение команды с введёнными значениями.
+1. Запрос каталога со схемами (по умолчанию: `data`).
+2. Автопоиск `*.json` с `format: rag.chunking-schema.v3` и инкрементальный ingest для каждой схемы.
 
-Рекомендованный сценарий для внешних проектов:
-1. Выбрать `schema-ingest`.
-2. Передать путь к схеме внешнего документа.
-3. Указать отдельный `--output-root` вне production-путей.
-4. Указать `run_id` для изоляции и повторяемости прогонов.
+Для `--rebuild` и других команд используйте явные аргументы CLI.
 
 ---
 

@@ -32,21 +32,19 @@ Schema controls:
 
 ## 3. Versioning Model
 
-- `schema_version`: version of JSON contract (breaking field/layout changes).
-- `chunker_version`: version of execution semantics (chunk ordering, splitting behavior, hash-affecting logic).
+- `format` — schema identifier and contract version; must be `rag.chunking-schema.v3` for ETL discovery.
 
 Rules:
-- any change that can alter chunk boundaries/order/content must bump `chunker_version`;
-- any change in JSON contract structure must bump `schema_version`;
-- incompatible `chunker_version` requires full reindex.
+- breaking JSON contract or chunking semantics requires a new `format` value (for example `rag.chunking-schema.v4`);
+- incompatible format requires full reindex;
+- ETL directory discovery ignores `*.json` files without the supported `format` value.
 
 ---
 
 ## 4. Top-Level Structure
 
 Required top-level keys:
-- `schema_version`
-- `chunker_version`
+- `format`
 - `document`
 - `io`
 - `categories`
@@ -62,11 +60,15 @@ Required fields:
 - `document_id` (string, stable unique id)
 - `language_code` (string, e.g. `ru`, `en`)
 - `display_name` (string)
-- `source_path` (string path to source markdown file)
+- `source_path` (string path to source markdown file, relative to the schema JSON directory unless absolute)
 
 Optional fields:
 - `description`
 - `owner`
+
+Path resolution:
+- `document.source_path` and `io.output_root` are resolved relative to the directory that contains the schema JSON file;
+- artifact filenames inside `io` (`faiss_index_path`, `manifest_path`, `chunk_meta.db_path`) are resolved relative to `output_root`.
 
 ### 4.2 `io`
 
@@ -81,8 +83,8 @@ Optional fields:
 - `reports_path`
 
 Constraints:
-- all relative paths resolve under `output_root`;
-- default behavior must prevent silent overwrite of existing production artifacts.
+- artifact filenames inside `io` resolve under `output_root`;
+- default behavior must prevent silent overwrite of existing production artifacts when `overwrite_policy` is `forbid`.
 
 ### 4.3 `categories`
 
@@ -257,18 +259,31 @@ Parity acceptance checks:
 
 ## 8. Universal CLI Contract
 
-CLI must support:
-- `--schema <path>`
+Primary production command:
+
+```bash
+uv run --project backend python backend/scripts/run_etl.py ingest-dir --dir data
+```
+
+`ingest-dir` behavior:
+- scan the given directory for `*.json` files;
+- keep only files with `format: "rag.chunking-schema.v3"`;
+- validate the supported `format` value;
+- ingest each schema sequentially into SQLite (`io.chunk_meta.db_path` under `output_root`) and FAISS (`io.faiss_index_path`).
+
+CLI must also support:
+- `--schema <path>` (`schema-ingest`, isolated export without app DB writes)
 - `--source <path>` (optional override)
 - `--output-root <path>`
 - `--run-id <string>` (optional namespace isolation)
 - `--no-embed`
 - `--allow-overwrite`
+- legacy `--lang <code>` (`ingest`, single schema resolved from KB config)
 
 Required behavior:
-- by default, do not overwrite active production FAISS artifacts;
-- write artifacts to isolated output namespace/path;
-- support execution against markdown files from other projects.
+- by default, do not overwrite active production FAISS artifacts when `overwrite_policy` is `forbid`;
+- write artifacts relative to each schema file directory unless paths are absolute;
+- support execution against markdown files from other projects by pointing `--dir` at any schema directory.
 - when `run_id` is provided, write artifacts into `output_root/<run_id>/...`;
 - if schema contains `io.protected_production_targets.require_explicit_override=true`, reject writes to those paths unless `--allow-overwrite` is passed.
 
@@ -281,16 +296,10 @@ uv run --project backend python backend/scripts/run_etl.py
 ```
 
 Prompt flow:
-1. Select command (`ingest`, `ingest-all`, `stats`, `manifest`, `schema-ingest`).
-2. Enter required and optional fields for the selected command.
-3. Confirm flags (`no_embed`, `allow_overwrite`) via y/n prompts.
-4. Execute the selected command with collected values.
+1. Ask for schemas directory (default: `data`).
+2. Discover supported schema JSON files and run incremental ingest for each.
 
-Recommended external-project flow:
-1. Choose `schema-ingest`.
-2. Provide schema path for external document mapping.
-3. Set dedicated `--output-root` outside production artifacts.
-4. Set `run_id` for namespaced, repeatable runs.
+For rebuild or other commands, pass CLI arguments explicitly (`ingest-dir --dir ... --rebuild`, `stats`, `manifest`, etc.).
 
 ---
 
@@ -298,18 +307,18 @@ Recommended external-project flow:
 
 ```json
 {
-  "schema_version": 3,
-  "chunker_version": 3,
+  "format": "rag.chunking-schema.v3",
   "document": {
     "document_id": "avia-kb-ru",
     "language_code": "ru",
     "display_name": "Russian KB",
-    "source_path": "backend/data/rag-document-ru.md"
+    "source_path": "rag-document-ru.md"
   },
   "io": {
-    "output_root": "backend/data/etl-runs/ru",
+    "output_root": ".",
     "chunk_meta": {
-      "kind": "jsonl"
+      "kind": "sqlite",
+      "db_path": "app.db"
     },
     "faiss_index_path": "faiss-ru.index",
     "manifest_path": "manifest-ru.json"
@@ -330,18 +339,18 @@ Recommended external-project flow:
 
 ```json
 {
-  "schema_version": 3,
-  "chunker_version": 3,
+  "format": "rag.chunking-schema.v3",
   "document": {
     "document_id": "avia-kb-en",
     "language_code": "en",
     "display_name": "English KB",
-    "source_path": "backend/data/rag-document-en.md"
+    "source_path": "rag-document-en.md"
   },
   "io": {
-    "output_root": "backend/data/etl-runs/en",
+    "output_root": ".",
     "chunk_meta": {
-      "kind": "jsonl"
+      "kind": "sqlite",
+      "db_path": "app.db"
     },
     "faiss_index_path": "faiss-en.index",
     "manifest_path": "manifest-en.json"
