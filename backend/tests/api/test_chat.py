@@ -7,8 +7,9 @@ from httpx import AsyncClient
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.chunk_meta import ChunkMeta
+from app.rag.lane_post_processing import LaneVerificationCandidate
+from app.rag.retrieval_lanes import LanePresentation, RetrievalLane
 from app.rag.types import RagPipelineResult, RagTraceStep, RetrievedChunk
-from etl.types import ContentType
 
 LLM_MOCK_RETURN = (
     "Test reply",
@@ -45,7 +46,7 @@ def mock_rag_pipeline_with_decision_tree(*, llm_side_effect):
         language_code="ru",
         id=708,
         content="Сработала пожарная сигнализация...",
-        content_type=ContentType.DECISION_TREE.value,
+        content_type="decision_tree",
         section="16. Decision Trees",
         title="Обнаружение пожара",
         node_id="node-708",
@@ -56,6 +57,21 @@ def mock_rag_pipeline_with_decision_tree(*, llm_side_effect):
         vector_similarity=0.45,
         retrieval_lane="decision_tree",
     )
+    decision_tree_lane = RetrievalLane(
+        id="decision_tree",
+        content_types=frozenset({"decision_tree"}),
+        top_k=3,
+        source_label="Decision trees",
+        min_similarity=0.30,
+        presentation=LanePresentation(
+            ui_priority=100,
+            ui_variant="decision_tree",
+            exclude_from_generation_context=True,
+            verification_strategy="dedicated_llm",
+            verification_no_match_token="NO_DECISION_TREE_MATCH",
+            max_verification_candidates=1,
+        ),
+    )
     pipeline = MagicMock()
     pipeline.run = AsyncMock(
         return_value=RagPipelineResult(
@@ -63,6 +79,7 @@ def mock_rag_pipeline_with_decision_tree(*, llm_side_effect):
             chunks=[tree_hit],
             trace=[RagTraceStep(step="retrieval", duration_ms=1, data={"candidate_count": 1})],
             search_queries=["пожар"],
+            verification_candidates=[LaneVerificationCandidate(lane=decision_tree_lane, hit=tree_hit)],
             applicable_decision_trees=[tree_hit],
         ),
     )
