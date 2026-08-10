@@ -7,10 +7,9 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.core.config import Settings, settings
+from app.core.config import Settings, get_kb_language, list_kb_language_codes, settings
 from app.core.db_manager import DBManager
 from app.core.faiss_manager import faiss_manager
-from app.core.config import KbLanguageEntry, get_kb_language, list_kb_language_codes, resolve_kb_document_path
 from app.core.logs import logger
 from app.exceptions import handle_basic_db_errors
 from app.exceptions.ingest import IngestInterruptedError
@@ -22,9 +21,9 @@ from app.schemas.etl import ChunkStatsResponse, IngestAllResponse, IngestRespons
 from app.services.etl_checkpoint import IngestCheckpoint, IngestCheckpointStore
 from app.services.etl_plan import plan_ingest
 from app.services.etl_progress import IngestProgress, IngestProgressCallback
-from etl.chunker import chunk_document
-from etl.hashing import CHUNKER_VERSION
-from etl.profile import get_document_profile
+from etl.chunking_schema import load_runtime_schema_for_language, resolve_schema_output_root, resolve_schema_source_path
+from etl.document_warnings import emit_duplicate_section_number_warnings
+from etl.universal_chunker import UniversalChunker
 from etl.types import ChunkDraft
 
 
@@ -41,28 +40,15 @@ class ETLService:
         self.db = db
         self.settings = app_settings or settings
 
-    def _resolve_source_path(self, language: KbLanguageEntry, source_path: str | None) -> Path:
-        """
-        API/CLI override or document_path from the hardcoded language map.
-        """
+    @staticmethod
+    def _content_type_value(value: object) -> str:
+        resolved = getattr(value, "value", value)
+        return str(resolved)
 
-        if source_path:
-            path = Path(source_path)
-            if not path.is_absolute():
-                path = self.settings.backend_root / path
-            return path
-
-        return resolve_kb_document_path(language.code, self.settings.backend_root)
-
-    def _faiss_index_path(self, language_code: str) -> Path:
-        return self.settings.faiss.index_path(self.settings.backend_root, language_code)
-
-    def _manifest_json_path(self, language_code: str) -> Path:
-        return self.settings.resolve_data_dir() / f"manifest-{language_code}.json"
-
-    def _checkpoint_store(self, language_code: str) -> IngestCheckpointStore:
+    @staticmethod
+    def _checkpoint_store(output_root: Path, language_code: str) -> IngestCheckpointStore:
         return IngestCheckpointStore(
-            self.settings.resolve_data_dir() / f"ingest_checkpoint_{language_code}.json",
+            output_root / f"ingest_checkpoint_{language_code}.json",
         )
 
     @staticmethod
@@ -123,13 +109,14 @@ class ETLService:
         *,
         source: str,
         rebuild: bool,
+        chunker_version: str,
     ) -> bool:
         if rebuild or latest_manifest is None:
             return False
 
         return (
             latest_manifest.embedding_model == self.settings.llm.embedding_model
-            and latest_manifest.chunker_version == CHUNKER_VERSION
+            and latest_manifest.chunker_version == chunker_version
             and latest_manifest.source_path == source
         )
 
@@ -240,13 +227,28 @@ class ETLService:
         Writes a checkpoint during embedding so a failed run can resume.
         """
 
-        language = get_kb_language(language_code)
-        checkpoint_store = self._checkpoint_store(language.code)
+        get_kb_language(language_code)
+        runtime_schema = load_runtime_schema_for_language(language_code, str(self.settings.backend_root))
+        schema = runtime_schema.schema
+        chunker = UniversalChunker(schema)
+        output_root = resolve_schema_output_root(
+            schema,
+            backend_root=self.settings.backend_root,
+            repo_root=self.settings.repo_root,
+            output_root_override=None,
+        )
+        output_root.mkdir(parents=True, exist_ok=True)
+        checkpoint_store = self._checkpoint_store(output_root, language_code)
 
         if rebuild:
             checkpoint_store.clear()
 
-        path = self._resolve_source_path(language, source_path)
+        path = resolve_schema_source_path(
+            schema,
+            backend_root=self.settings.backend_root,
+            repo_root=self.settings.repo_root,
+            source_override=source_path,
+        )
 
         if not path.is_file():
             raise ServiceError(
@@ -258,8 +260,13 @@ class ETLService:
         raw_text = path.read_text(encoding="utf-8")
         doc_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
         source = str(path)
-        profile = get_document_profile(language.code, str(self.settings.backend_root))
-        drafts = chunk_document(raw_text, profile=profile, source_path=source)
+        emit_duplicate_section_number_warnings(
+            chunker,
+            raw_text,
+            source_path=source,
+            logger=logger,
+        )
+        drafts = chunker.chunk_document(raw_text, source_path=source)
 
         if not drafts:
             raise ServiceError(
@@ -278,11 +285,17 @@ class ETLService:
         )
 
         embedding_model = self.settings.llm.embedding_model
-        latest_manifest = await self.db.etl.index_manifest.get_latest(language.code)
-        can_reuse_existing = self._can_reuse_existing_vectors(latest_manifest, source=source, rebuild=rebuild)
-        existing_chunks = await self.db.etl.chunks.list_all_ordered(language.code)
+        chunker_version = str(schema.chunker_version)
+        latest_manifest = await self.db.etl.index_manifest.get_latest(language_code)
+        can_reuse_existing = self._can_reuse_existing_vectors(
+            latest_manifest,
+            source=source,
+            rebuild=rebuild,
+            chunker_version=chunker_version,
+        )
+        existing_chunks = await self.db.etl.chunks.list_all_ordered(language_code)
         existing_vectors: list[list[float]] = []
-        faiss_path = self._faiss_index_path(language.code)
+        faiss_path = (output_root / schema.io.faiss_index_path).resolve()
 
         if can_reuse_existing and faiss_path.is_file():
             existing_vectors = await faiss_manager.reconstruct_vectors_async(faiss_path)
@@ -292,10 +305,11 @@ class ETLService:
 
         if loaded_checkpoint is not None and checkpoint_store.is_compatible(
             loaded_checkpoint,
-            language_code=language.code,
+            language_code=language_code,
             source_path=source,
             doc_hash=doc_hash,
             embedding_model=embedding_model,
+            chunker_version=chunker_version,
             rebuild=rebuild,
         ):
             checkpoint_vectors = dict(loaded_checkpoint.vectors_by_hash)
@@ -312,10 +326,11 @@ class ETLService:
         )
 
         checkpoint = IngestCheckpoint(
-            language_code=language.code,
+            language_code=language_code,
             source_path=source,
             doc_hash=doc_hash,
             embedding_model=embedding_model,
+            chunker_version=chunker_version,
             rebuild=rebuild,
             total_chunks=total_chunks,
             vectors_by_hash=dict(checkpoint_vectors),
@@ -352,10 +367,10 @@ class ETLService:
             parent_id = draft.parent_chunk_index if draft.parent_chunk_index is not None else None
             chunk_models.append(
                 ChunkMeta(
-                    language_code=language.code,
+                    language_code=language_code,
                     id=index,
                     content=draft.content,
-                    content_type=draft.content_type.value,
+                    content_type=self._content_type_value(draft.content_type),
                     section=draft.section,
                     title=draft.title,
                     node_id=draft.node_id,
@@ -367,15 +382,15 @@ class ETLService:
                 )
             )
 
-        await self.db.etl.chunks.replace_for_language(language.code, chunk_models)
-        await self.db.etl.index_manifest.delete_for_language(language.code)
+        await self.db.etl.chunks.replace_for_language(language_code, chunk_models)
+        await self.db.etl.index_manifest.delete_for_language(language_code)
 
         manifest = IndexManifest(
-            language_code=language.code,
+            language_code=language_code,
             source_path=source,
             doc_hash=doc_hash,
             embedding_model=embedding_model,
-            chunker_version=CHUNKER_VERSION,
+            chunker_version=chunker_version,
             chunk_count=len(chunk_models),
             built_at=built_at,
         )
@@ -392,21 +407,20 @@ class ETLService:
             item_title="vector index",
         )
 
-        data_dir = self.settings.resolve_data_dir()
-        data_dir.mkdir(parents=True, exist_ok=True)
-        self.settings.faiss.ensure_exists(self.settings.backend_root)
+        output_root.mkdir(parents=True, exist_ok=True)
         await faiss_manager.save_async(vectors, faiss_path)
 
         manifest_payload = {
-            "language_code": language.code,
+            "language_code": language_code,
             "source_path": source,
             "doc_hash": doc_hash,
             "embedding_model": embedding_model,
-            "chunker_version": CHUNKER_VERSION,
+            "chunker_version": chunker_version,
             "chunk_count": len(chunk_models),
             "built_at": built_at.isoformat(),
         }
-        self._manifest_json_path(language.code).write_text(
+        manifest_path = (output_root / schema.io.manifest_path).resolve()
+        manifest_path.write_text(
             json.dumps(manifest_payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
@@ -425,7 +439,7 @@ class ETLService:
 
         logger.info(
             "etl_ingest_completed",
-            language_code=language.code,
+            language_code=language_code,
             chunk_count=len(chunk_models),
             source_path=source,
             doc_hash=doc_hash,
@@ -437,7 +451,7 @@ class ETLService:
         )
 
         return IngestResponse(
-            language_code=language.code,
+            language_code=language_code,
             chunk_count=len(chunk_models),
             doc_hash=doc_hash,
             embedding_model=embedding_model,
