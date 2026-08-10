@@ -7,7 +7,7 @@ Test suite for `avia-bot-backend`. Split into three areas:
 | Layer | Directory | What it covers |
 |-------|-----------|----------------|
 | **API** (integration) | `tests/api/` | FastAPI HTTP endpoints via `httpx.AsyncClient` |
-| **Unit** | `tests/unit/` | Business logic without HTTP: parsers, chunkers, RAG helpers, services, etc. |
+| **Unit** | `tests/unit/` | Business logic without HTTP: schema-driven ETL, RAG helpers, services, etc. |
 | **Exceptions** | `tests/exceptions/` | DB/API error normalization helpers |
 
 Stack: **pytest**, **pytest-asyncio** (`auto` mode), **httpx** (ASGI transport).
@@ -33,7 +33,9 @@ tests/
 │   └── test_db_errors.py   # exception → ServiceError mapping
 └── unit/
     ├── etl/
-    │   └── test_chunker.py       # parser + chunker
+    │   ├── test_chunker.py       # universal chunker integration checks
+    │   ├── test_schema.py        # schema loader + FAQ helper checks
+    │   └── test_schema_parity.py # baseline parity for RU/EN schemas
     ├── llm/
     │   ├── test_chat_title.py    # chat title prompt/model helpers
     │   ├── test_prompts.py       # system prompt builder
@@ -117,12 +119,11 @@ Call functions and classes directly, without the HTTP layer. Fast; no FastAPI st
 
 ### `unit/etl/test_chunker.py`
 
-Exercises the RAG document parsing pipeline (`etl/parser.py`, `etl/chunker.py`) against the real file `backend/data/rag-document.md`:
+Exercises schema-driven ETL (`etl/chunking_schema.py`, `etl/universal_chunker.py`) against real KB documents:
 
 | Test | Assertion |
 |------|-----------|
-| `test_parse_markdown_finds_all_main_sections` | parser finds intro, FAQ, and glossary sections |
-| `test_chunk_document_produces_expected_types` | chunker emits SOP, FAQ, GLOSSARY, DECISION_TREE, SCENARIO; ≥ 200 chunks |
+| `test_chunk_document_produces_expected_categories_ru` | universal chunker emits expected RU categories; ≥ 200 chunks |
 | `test_chunks_have_retrieval_prefix` | every chunk has `[Раздел:` and `[Тип:` prefixes |
 
 ### `unit/services/test_etl_plan.py`
@@ -234,7 +235,7 @@ Use when adding unit tests that need files from disk.
 1. **File naming** — `test_<module>.py`; functions — `test_<behavior>`.
 2. **Docstrings** — in English, briefly describe expected behavior (see existing tests).
 3. **API tests** — only in `tests/api/`; HTTP fixtures in `tests/api/conftest.py`; DB isolation in the root `tests/conftest.py`.
-4. **Unit tests** — mirror code layout: `app/services/chat.py` → `tests/unit/services/test_chat.py`, `etl/parser.py` → `tests/unit/etl/test_parser.py`.
+4. **Unit tests** — mirror code layout: `app/services/chat.py` → `tests/unit/services/test_chat.py`, `etl/universal_chunker.py` → `tests/unit/etl/test_chunker.py`.
 5. **New API routers** — add `tests/api/test_<router>.py` with **2–3 tests per endpoint**; see `.cursor/rules/backend-api-tests.mdc`; do not mix with unit tests.
 6. **Async** — mark API tests with `@pytest.mark.asyncio` (or rely on `asyncio_mode = "auto"`).
 7. **External I/O in API tests** — patch LLM, RAG, and FAISS at the service boundary (`unittest.mock.patch`) so tests stay fast and offline.
@@ -243,7 +244,7 @@ Use when adding unit tests that need files from disk.
 
 As the project grows:
 
-- `tests/unit/etl/test_parser.py` — parser edge cases on synthetic markdown;
+- `tests/unit/etl/test_universal_chunker_edges.py` — optional edge cases for schema strategies on synthetic markdown;
 - `tests/unit/services/test_chat.py` — chat service with mocked repositories;
 - `tests/api/test_rag.py` — dedicated RAG endpoint tests when exposed separately.
 

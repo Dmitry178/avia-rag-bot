@@ -7,7 +7,7 @@
 | Слой | Каталог | Что проверяет |
 |------|---------|---------------|
 | **API** (интеграционные) | `tests/api/` | HTTP-эндпоинты FastAPI через `httpx.AsyncClient` |
-| **Unit** (модульные) | `tests/unit/` | Бизнес-логика без HTTP: парсеры, чанкеры, RAG-хелперы, сервисы и т.д. |
+| **Unit** (модульные) | `tests/unit/` | Бизнес-логика без HTTP: schema-driven ETL, RAG-хелперы, сервисы и т.д. |
 | **Exceptions** | `tests/exceptions/` | Хелперы нормализации ошибок БД/API |
 
 Стек: **pytest**, **pytest-asyncio** (режим `auto`), **httpx** (ASGI-транспорт).
@@ -33,7 +33,9 @@ tests/
 │   └── test_db_errors.py   # маппинг exception → ServiceError
 └── unit/
     ├── etl/
-    │   └── test_chunker.py       # parser + chunker
+    │   ├── test_chunker.py       # интеграционные проверки universal chunker
+    │   ├── test_schema.py        # проверки schema loader + FAQ helper
+    │   └── test_schema_parity.py # baseline parity для RU/EN схем
     ├── llm/
     │   ├── test_chat_title.py    # хелперы промпта/модели для заголовка чата
     │   ├── test_prompts.py       # сборка system prompt
@@ -117,12 +119,11 @@ Engine создаётся лениво при первом обращении, �
 
 ### `unit/etl/test_chunker.py`
 
-Проверяет пайплайн разбора RAG-документа (`etl/parser.py`, `etl/chunker.py`) на реальном файле `backend/data/rag-document.md`:
+Проверяет schema-driven ETL (`etl/chunking_schema.py`, `etl/universal_chunker.py`) на реальных KB-документах:
 
 | Тест | Проверка |
 |------|----------|
-| `test_parse_markdown_finds_all_main_sections` | парсер находит вводный раздел, FAQ и глоссарий |
-| `test_chunk_document_produces_expected_types` | чанкер выдаёт SOP, FAQ, GLOSSARY, DECISION_TREE, SCENARIO; ≥ 200 чанков |
+| `test_chunk_document_produces_expected_categories_ru` | universal chunker выдаёт ожидаемые RU-категории; ≥ 200 чанков |
 | `test_chunks_have_retrieval_prefix` | у каждого чанка есть префиксы `[Раздел:` и `[Тип:` |
 
 ### `unit/services/test_etl_plan.py`
@@ -234,7 +235,7 @@ Engine создаётся лениво при первом обращении, �
 1. **Именование файлов** — `test_<модуль>.py`; функции — `test_<поведение>`.
 2. **Docstrings** — на английском, кратко описывают ожидаемое поведение (см. существующие тесты).
 3. **API-тесты** — только в `tests/api/`; HTTP-фикстуры — в `tests/api/conftest.py`; изоляция БД — в корневом `tests/conftest.py`.
-4. **Unit-тесты** — зеркалят структуру кода: `app/services/chat.py` → `tests/unit/services/test_chat.py`, `etl/parser.py` → `tests/unit/etl/test_parser.py`.
+4. **Unit-тесты** — зеркалят структуру кода: `app/services/chat.py` → `tests/unit/services/test_chat.py`, `etl/universal_chunker.py` → `tests/unit/etl/test_chunker.py`.
 5. **Новые API-роутеры** — `tests/api/test_<router>.py`, **2–3 теста на эндпоинт**; см. `.cursor/rules/backend-api-tests.mdc`; не смешивайте с unit.
 6. **Асинхронность** — API-тесты помечайте `@pytest.mark.asyncio` (или полагайтесь на `asyncio_mode = "auto"`).
 7. **Внешний I/O в API-тестах** — патчите LLM, RAG и FAISS на границе сервиса (`unittest.mock.patch`), чтобы тесты оставались быстрыми и офлайн.
@@ -243,7 +244,7 @@ Engine создаётся лениво при первом обращении, �
 
 По мере развития проекта:
 
-- `tests/unit/etl/test_parser.py` — отдельные кейсы парсера на синтетическом markdown;
+- `tests/unit/etl/test_universal_chunker_edges.py` — возможные edge-кейсы schema-стратегий на синтетическом markdown;
 - `tests/unit/services/test_chat.py` — chat service с моками репозиториев;
 - `tests/api/test_rag.py` — отдельные RAG-эндпоинты, когда появятся.
 
