@@ -8,13 +8,13 @@ from unittest.mock import MagicMock, patch
 from app.exceptions.ingest import IngestInterruptedError
 from app.services.etl import ETLService
 from app.services.etl_checkpoint import IngestCheckpoint, IngestCheckpointStore
-from etl.types import ChunkDraft, ContentType
+from etl.types import ChunkDraft
 
 
 def _draft(node_id: str, content: str, content_hash: str) -> ChunkDraft:
     return ChunkDraft(
         content=content,
-        content_type=ContentType.SOP,
+        content_type="sop",
         section="01. Test",
         title="Section",
         node_id=node_id,
