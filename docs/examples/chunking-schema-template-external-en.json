@@ -1,0 +1,314 @@
+{
+  "schema_version": 3,
+  "chunker_version": 3,
+  "document": {
+    "document_id": "external-kb-en",
+    "language_code": "en",
+    "display_name": "External KB EN",
+    "source_path": "/abs/path/to/external-kb.md",
+    "heading_patterns": {
+      "h1_regex": "^# (?P<title>.+)$",
+      "h2_regex": "^## (?P<title>.+)$",
+      "h3_regex": "^### (?P<title>.+)$",
+      "section_number_regex": "^(\\d{2})\\.\\s*"
+    }
+  },
+  "io": {
+    "output_root": "/abs/path/to/external-etl-output",
+    "overwrite_policy": "forbid",
+    "chunk_meta": {
+      "kind": "sqlite",
+      "db_path": "app.db",
+      "table": "chunk_meta",
+      "language_code": "en"
+    },
+    "faiss_index_path": "faiss-en.index",
+    "manifest_path": "manifest-en.json",
+    "chunks_export_path": "chunks.jsonl",
+    "protected_production_targets": {
+      "chunk_meta_db_path": "/abs/path/to/prod/app.db",
+      "faiss_index_path": "/abs/path/to/prod/faiss-en.index",
+      "manifest_path": "/abs/path/to/prod/manifest-en.json",
+      "require_explicit_override": true
+    }
+  },
+  "categories": [
+    {
+      "id": "policy",
+      "description": "Policy and static sections for system prompt.",
+      "indexable": false,
+      "allowed_in_static_prompt": true,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "general",
+      "description": "Main knowledge-base chapters.",
+      "indexable": true,
+      "allowed_in_static_prompt": false,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "faq",
+      "description": "FAQ sections and extracted FAQ pairs.",
+      "indexable": true,
+      "allowed_in_static_prompt": false,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "decision_tree",
+      "description": "Decision-tree sections.",
+      "indexable": true,
+      "allowed_in_static_prompt": false,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "scenario",
+      "description": "Scenario sections.",
+      "indexable": true,
+      "allowed_in_static_prompt": false,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    }
+  ],
+  "default_category_id": "general",
+  "classification_rules": [
+    {
+      "id": "policy-by-number",
+      "priority": 10,
+      "target_category_id": "policy",
+      "match": {
+        "section_number_in": [
+          "00",
+          "13"
+        ]
+      }
+    },
+    {
+      "id": "faq-by-number",
+      "priority": 20,
+      "target_category_id": "faq",
+      "match": {
+        "section_number_in": [
+          "14"
+        ]
+      }
+    },
+    {
+      "id": "decision-tree-by-number",
+      "priority": 30,
+      "target_category_id": "decision_tree",
+      "match": {
+        "section_number_in": [
+          "16"
+        ]
+      }
+    },
+    {
+      "id": "scenario-by-number",
+      "priority": 40,
+      "target_category_id": "scenario",
+      "match": {
+        "section_number_in": [
+          "17"
+        ]
+      }
+    },
+    {
+      "id": "faq-by-title-keyword",
+      "priority": 50,
+      "target_category_id": "faq",
+      "match": {
+        "title_keywords_any": [
+          "faq",
+          "frequently asked questions"
+        ]
+      }
+    }
+  ],
+  "chunking_policies": [
+    {
+      "id": "skip-whole-section",
+      "strategy": "whole_section",
+      "params": {
+        "emit_chunks": false
+      }
+    },
+    {
+      "id": "general-by-h2-with-h3-overflow",
+      "strategy": "by_subheading",
+      "params": {
+        "heading_level": 2,
+        "max_tokens": 800,
+        "chars_per_token": 4,
+        "overflow_split_level": 3,
+        "include_parent_context": true,
+        "overflow_strategy": "by_subheading",
+        "overflow_overlap": 0
+      }
+    },
+    {
+      "id": "faq-qa-pairs",
+      "strategy": "qa_pairs",
+      "params": {
+        "question_marker": "**Question:**",
+        "answer_marker": "**Answer:**"
+      }
+    },
+    {
+      "id": "decision-tree-regex-split",
+      "strategy": "regex_split",
+      "params": {
+        "split_regex": "^## (\\d+\\.\\d+\\..+)$",
+        "title_capture_group": 1
+      }
+    },
+    {
+      "id": "scenario-regex-split",
+      "strategy": "regex_split",
+      "params": {
+        "split_regex": "^## (Scenario \\d+:.+)$",
+        "title_capture_group": 1
+      }
+    }
+  ],
+  "category_policy_bindings": [
+    {
+      "category_id": "policy",
+      "policy_id": "skip-whole-section"
+    },
+    {
+      "category_id": "general",
+      "policy_id": "general-by-h2-with-h3-overflow",
+      "extras": {
+        "embedded_faq_block_regex": "\\n---\\s*\\n\\s*\\*\\*FAQ\\*\\*\\s*\\n",
+        "embedded_faq_policy_id": "faq-qa-pairs",
+        "embedded_faq_category_id": "faq"
+      }
+    },
+    {
+      "category_id": "faq",
+      "policy_id": "faq-qa-pairs"
+    },
+    {
+      "category_id": "decision_tree",
+      "policy_id": "decision-tree-regex-split"
+    },
+    {
+      "category_id": "scenario",
+      "policy_id": "scenario-regex-split"
+    }
+  ],
+  "static_prompt": {
+    "enabled": true,
+    "blocks": [
+      {
+        "id": "policy-chapter-00",
+        "title": "Chapter 00 - Project policy",
+        "guidance_text": "Insert project policy guidance for this external knowledge base.",
+        "source": {
+          "section_numbers": [
+            "00"
+          ]
+        }
+      },
+      {
+        "id": "policy-chapter-13",
+        "title": "Chapter 13 - Out-of-scope policy",
+        "guidance_text": "Insert out-of-scope rules for this external knowledge base.",
+        "source": {
+          "section_numbers": [
+            "13"
+          ]
+        }
+      }
+    ]
+  },
+  "retrieval_lanes": [
+    {
+      "id": "general",
+      "description": "General knowledge lane",
+      "allowed_category_ids": [
+        "general"
+      ],
+      "top_k": 8,
+      "oversample": 10,
+      "min_fetch": 80,
+      "min_similarity": 0.0
+    },
+    {
+      "id": "faq",
+      "description": "FAQ lane",
+      "allowed_category_ids": [
+        "faq"
+      ],
+      "top_k": 5,
+      "oversample": 10,
+      "min_fetch": 80,
+      "min_similarity": 0.3
+    },
+    {
+      "id": "decision_tree",
+      "description": "Decision-tree lane",
+      "allowed_category_ids": [
+        "decision_tree"
+      ],
+      "top_k": 3,
+      "oversample": 10,
+      "min_fetch": 80,
+      "min_similarity": 0.3,
+      "presentation": {
+        "ui_priority": 100,
+        "ui_variant": "decision_tree",
+        "exclude_from_generation_context": true,
+        "verification_strategy": "dedicated_llm",
+        "verification_no_match_token": "NO_DECISION_TREE_MATCH",
+        "max_verification_candidates": 1
+      }
+    },
+    {
+      "id": "scenario",
+      "description": "Scenario lane",
+      "allowed_category_ids": [
+        "scenario"
+      ],
+      "top_k": 3,
+      "oversample": 10,
+      "min_fetch": 80,
+      "min_similarity": 0.3
+    }
+  ]
+}
