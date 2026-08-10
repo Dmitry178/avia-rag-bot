@@ -78,12 +78,12 @@ Created on startup if missing.
 
 Markdown sources for each language are defined in **`backend/app/core/config.py`** → `KB_LANGUAGES`:
 
-| Code | Document | ETL locale profile |
-|------|----------|-------------------|
-| `ru` | `data/rag-document-ru.md` | `data/kb-profile-ru.json` |
-| `en` | `data/rag-document-en.md` | `data/kb-profile-en.json` |
+| Code | Document | ETL chunking schema |
+|------|----------|---------------------|
+| `ru` | `data/rag-document-ru.md` | `data/chunking-schema-ru.json` |
+| `en` | `data/rag-document-en.md` | `data/chunking-schema-en.json` |
 
-Shared structure mapping: `data/kb-profile-base.json` (merged with locale file at load time). Details: [etl_profile.md](etl_profile.md).
+Schema contract details: [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md).
 
 To change paths, edit `KB_LANGUAGES` and re-run ingest. Per-request override: API `source_path` or CLI `--source` on `POST /api/etl/ingest`.
 

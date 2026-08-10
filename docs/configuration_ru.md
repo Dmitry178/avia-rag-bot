@@ -78,12 +78,12 @@ SQLite автоматически преобразуется в async (`sqlite+a
 
 Пути к markdown задаются в **`backend/app/core/config.py`** → `KB_LANGUAGES`:
 
-| Код | Документ | ETL-профиль (locale) |
-|-----|----------|----------------------|
-| `ru` | `data/rag-document-ru.md` | `data/kb-profile-ru.json` |
-| `en` | `data/rag-document-en.md` | `data/kb-profile-en.json` |
+| Код | Документ | ETL chunking schema |
+|-----|----------|---------------------|
+| `ru` | `data/rag-document-ru.md` | `data/chunking-schema-ru.json` |
+| `en` | `data/rag-document-en.md` | `data/chunking-schema-en.json` |
 
-Общий маппинг структуры: `data/kb-profile-base.json` (мержится с locale при загрузке). Подробнее: [etl_profile_ru.md](etl_profile_ru.md).
+Контракт схемы: [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md).
 
 Чтобы изменить пути — правка `KB_LANGUAGES` и повторный ingest. Переопределение на запрос: API `source_path` или CLI `--source` у `POST /api/etl/ingest`.
 
