@@ -1,20 +1,14 @@
-"""Decision-tree detection and dedicated operational guidance generation."""
+"""Dedicated lane verification prompts (domain-specific handlers)."""
 
 import re
 
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.rag_constants import (
-    DECISION_TREE_MAX_APPLICABLE,
-    DECISION_TREE_MIN_SIMILARITY,
-    DECISION_TREE_NO_MATCH_TOKEN,
-)
+from app.core.rag_constants import DECISION_TREE_NO_MATCH_TOKEN
 from app.llm.chat import ChatCompletionClient
+from app.rag.retrieval_lanes import LanePresentation, RetrievalLane
 from app.rag.types import RetrievedChunk
-from etl.types import ContentType
-
-_DECISION_TREE_LANE = "decision_tree"
 
 _REPLY_LANGUAGE_HINTS: dict[str, str] = {
     "ru": "The user's latest message is in Russian. Reply entirely in Russian; do not use English.",
@@ -61,34 +55,7 @@ def chunk_similarity(item: RetrievedChunk) -> float:
     return item.score
 
 
-def select_applicable_decision_trees(
-    lane_results: dict[str, list[RetrievedChunk]],
-    *,
-    min_similarity: float = DECISION_TREE_MIN_SIMILARITY,
-    max_trees: int = DECISION_TREE_MAX_APPLICABLE,
-) -> list[RetrievedChunk]:
-    """
-    Pick decision-tree lane hits that are similar enough to verify with the LLM.
-
-    Vector similarity is only a pre-filter; the dedicated prompt must confirm
-    that the tree substantively answers the user's situation.
-    """
-
-    hits = lane_results.get(_DECISION_TREE_LANE, [])
-    applicable = [hit for hit in hits if chunk_similarity(hit) >= min_similarity]
-
-    return applicable[:max_trees]
-
-
-def exclude_decision_tree_chunks(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
-    """
-    Remove decision-tree chunks from the general RAG context list.
-    """
-
-    return [item for item in chunks if item.chunk.content_type != ContentType.DECISION_TREE.value]
-
-
-def _normalize_decision_tree_no_match_line(line: str) -> str:
+def _normalize_no_match_line(line: str) -> str:
     """
     Strip wrappers and punctuation from one response line.
     """
@@ -99,23 +66,32 @@ def _normalize_decision_tree_no_match_line(line: str) -> str:
     return without_wrappers.upper()
 
 
-def is_decision_tree_no_match(response: str) -> bool:
+def is_verification_no_match(response: str, *, no_match_token: str) -> bool:
     """
-    Return True when the model signals that the tree does not answer the question.
+    Return True when the model signals that the candidate does not answer the question.
     """
 
     if not response.strip():
         return True
 
-    token = DECISION_TREE_NO_MATCH_TOKEN.upper()
+    token = no_match_token.upper()
 
-    return any(_normalize_decision_tree_no_match_line(line) == token for line in response.splitlines())
+    return any(_normalize_no_match_line(line) == token for line in response.splitlines())
+
+
+def is_decision_tree_no_match(response: str) -> bool:
+    """
+    Return True when the model signals that the tree does not answer the question.
+    """
+
+    return is_verification_no_match(response, no_match_token=DECISION_TREE_NO_MATCH_TOKEN)
 
 
 def build_decision_tree_system_prompt(
     *,
     tree: RetrievedChunk,
     reply_language: str | None,
+    no_match_token: str = DECISION_TREE_NO_MATCH_TOKEN,
 ) -> str:
     """
     Build the dedicated system prompt for decision-tree walkthrough.
@@ -142,7 +118,7 @@ def build_decision_tree_system_prompt(
         "For branching trees, pick the branch that best fits the situation; "
         "if ambiguous, state your assumption in one short phrase.\n"
         f"3. If NO — the tree topic or branches do not fit the question. "
-        f"Reply with exactly this token and nothing else: {DECISION_TREE_NO_MATCH_TOKEN}\n\n"
+        f"Reply with exactly this token and nothing else: {no_match_token}\n\n"
         "Examples of NO match: cargo spill on the runway vs a tree about suspicious items; "
         "fire alarm vs a tree about passenger complaints.\n"
         "Do not output refusal messages, definitions, or background when the tree does not fit."
@@ -158,6 +134,7 @@ async def generate_decision_tree_guidance(
     query: str,
     tree: RetrievedChunk,
     reply_language: str | None,
+    no_match_token: str = DECISION_TREE_NO_MATCH_TOKEN,
 ) -> DecisionTreeGuidance | None:
     """
     Run a dedicated LLM call to walk through the matched decision tree.
@@ -172,6 +149,7 @@ async def generate_decision_tree_guidance(
     system_prompt = build_decision_tree_system_prompt(
         tree=tree,
         reply_language=reply_language,
+        no_match_token=no_match_token,
     )
 
     guidance_text, _metadata = await llm.complete(
@@ -180,7 +158,7 @@ async def generate_decision_tree_guidance(
         harden_user_messages=False,
     )
 
-    if is_decision_tree_no_match(guidance_text):
+    if is_verification_no_match(guidance_text, no_match_token=no_match_token):
         return None
 
     guidance = guidance_text.strip()
@@ -195,3 +173,43 @@ async def generate_decision_tree_guidance(
         similarity=chunk_similarity(tree),
         guidance=guidance,
     )
+
+
+async def generate_lane_verification_guidance(
+    llm: ChatCompletionClient,
+    *,
+    query: str,
+    hit: RetrievedChunk,
+    lane: RetrievalLane,
+    reply_language: str | None,
+) -> DecisionTreeGuidance | None:
+    """
+    Dispatch dedicated LLM verification for a schema-configured lane presentation.
+    """
+
+    presentation = lane.presentation
+    if presentation.verification_strategy != "dedicated_llm":
+        return None
+
+    if presentation.ui_variant == "decision_tree":
+        token = presentation.verification_no_match_token or DECISION_TREE_NO_MATCH_TOKEN
+        return await generate_decision_tree_guidance(
+            llm,
+            query=query,
+            tree=hit,
+            reply_language=reply_language,
+            no_match_token=token,
+        )
+
+    return None
+
+
+def verification_metadata_key(presentation: LanePresentation) -> str | None:
+    """
+    Return assistant metadata key for a verified lane presentation.
+    """
+
+    if presentation.ui_variant == "decision_tree":
+        return "decision_tree_guidance"
+
+    return None
