@@ -20,6 +20,7 @@ def load_kb_static_context(document_path: str, language_code: str = "ru") -> str
     chunker = UniversalChunker(schema)
     source_path = resolve_schema_source_path(
         schema,
+        schema_dir=context.schema_dir,
         backend_root=settings.backend_root,
         repo_root=settings.repo_root,
         source_override=str(path) if path.is_file() else None,
