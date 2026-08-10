@@ -1,12 +1,12 @@
 """Vector retrieval unit tests."""
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
+
+from unittest.mock import AsyncMock, MagicMock
 
 from app.models.chunk_meta import ChunkMeta
 from app.rag.retrieval import VectorRetriever, dedupe_retrieved_chunks
-from app.rag.retrieval_lanes import FAQ_LANE, SOP_LANE
+from app.rag.retrieval_lanes import get_retrieval_runtime
 from app.rag.types import RetrievedChunk
 
 
@@ -55,7 +55,9 @@ async def test_search_lane_filters_by_content_type(monkeypatch: pytest.MonkeyPat
         chunks_by_id=chunks_by_id,
     )
 
-    hits = await retriever.search_lane(["baggage rules"], lane=SOP_LANE)
+    runtime = get_retrieval_runtime("ru")
+    sop_lane = runtime.lane_by_id["sop"]
+    hits = await retriever.search_lane(["baggage rules"], lane=sop_lane)
 
     assert len(hits) == 2
     assert all(hit.chunk.content_type == "sop" for hit in hits)
@@ -90,7 +92,9 @@ async def test_search_lane_faq_includes_per_chapter_faq(monkeypatch: pytest.Monk
         chunks_by_id=chunks_by_id,
     )
 
-    hits = await retriever.search_lane(["personal devices"], lane=FAQ_LANE)
+    runtime = get_retrieval_runtime("ru")
+    faq_lane = runtime.lane_by_id["faq"]
+    hits = await retriever.search_lane(["personal devices"], lane=faq_lane)
 
     assert [hit.chunk.id for hit in hits] == [11, 10]
     assert hits[0].chunk.section.startswith("14.")
