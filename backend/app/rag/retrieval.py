@@ -9,12 +9,7 @@ from app.core.faiss_manager import faiss_manager
 from app.core.rag_constants import RERANK_TOP_N, RETRIEVAL_TOP_K, RRF_K
 from app.llm.embeddings import EmbeddingClient
 from app.models.chunk_meta import ChunkMeta
-from app.rag.retrieval_lanes import (
-    LANE_SEARCH_MIN_FETCH,
-    LANE_SEARCH_OVERSAMPLE,
-    RETRIEVAL_LANES,
-    RetrievalLane,
-)
+from app.rag.retrieval_lanes import RetrievalLane
 from app.rag.types import RetrievedChunk
 
 
@@ -71,10 +66,10 @@ class VectorRetriever:
         self._embedder = embedder
         self._chunks_by_id = chunks_by_id
 
-    def _fetch_k_for_lane(self, top_k: int) -> int:
+    def _fetch_k_for_lane(self, lane: RetrievalLane) -> int:
         return min(
             len(self._chunks_by_id),
-            max(top_k * LANE_SEARCH_OVERSAMPLE, LANE_SEARCH_MIN_FETCH),
+            max(lane.top_k * lane.oversample, lane.min_fetch),
         )
 
     async def _search_query_filtered(
@@ -90,7 +85,10 @@ class VectorRetriever:
         if not vectors:
             return []
 
-        resolved_fetch_k = fetch_k if fetch_k is not None else self._fetch_k_for_lane(top_k)
+        resolved_fetch_k = fetch_k if fetch_k is not None else min(
+            len(self._chunks_by_id),
+            max(top_k * 10, 80),
+        )
         row_ids, scores = await faiss_manager.search_async(
             self._index_path,
             vectors[0],
@@ -152,6 +150,7 @@ class VectorRetriever:
                 content_types=lane.content_types,
                 top_k=lane.top_k,
                 lane=lane.id,
+                fetch_k=self._fetch_k_for_lane(lane),
             )
 
         ranked_lists: list[list[tuple[int, float]]] = []
@@ -164,6 +163,7 @@ class VectorRetriever:
                 content_types=lane.content_types,
                 top_k=lane.top_k,
                 lane=lane.id,
+                fetch_k=self._fetch_k_for_lane(lane),
             )
             ranked_lists.append(
                 [(item.chunk.id or 0, item.score) for item in items if item.chunk.id is not None],
@@ -200,7 +200,12 @@ class VectorRetriever:
 
         return merged
 
-    async def search_lanes(self, queries: list[str]) -> dict[str, list[RetrievedChunk]]:
+    async def search_lanes(
+        self,
+        queries: list[str],
+        *,
+        lanes: tuple[RetrievalLane, ...],
+    ) -> dict[str, list[RetrievedChunk]]:
         """
         Run all configured retrieval lanes in parallel.
         """
@@ -209,7 +214,7 @@ class VectorRetriever:
             hits = await self.search_lane(queries, lane=lane)
             return lane.id, hits
 
-        results = await asyncio.gather(*(run_lane(lane) for lane in RETRIEVAL_LANES))
+        results = await asyncio.gather(*(run_lane(lane) for lane in lanes))
 
         return dict(results)
 
