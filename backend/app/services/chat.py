@@ -36,8 +36,12 @@ from app.schemas.chat import (
 )
 from app.schemas.llm import LlmConfig
 from app.schemas.rag import RagConfig
-from app.rag.decision_tree import exclude_decision_tree_chunks, generate_decision_tree_guidance
+from app.rag.decision_tree import (
+    generate_lane_verification_guidance,
+    verification_metadata_key,
+)
 from app.rag.generation import build_context_block
+from app.rag.lane_post_processing import exclude_lane_categories
 from app.rag.pipeline import RagPipeline
 from app.rag.types import RagQueryContext, RagTraceStep
 from app.services.chat_title import schedule_chat_title_generation
@@ -891,41 +895,50 @@ class ChatService:
                     await self._publish_rag_trace(body.client_id, rag_result.trace)
                     settings_metadata.update(self._rag_retrieval_metadata(rag_result))
 
-                    dt_guidance = None
+                    context_for_general = rag_result.context
 
-                    if rag_result.applicable_decision_trees:
+                    for candidate in rag_result.verification_candidates:
                         dt_started = time.perf_counter()
-                        dt_guidance = await generate_decision_tree_guidance(
+                        lane_guidance = await generate_lane_verification_guidance(
                             client,
                             query=body.content,
-                            tree=rag_result.applicable_decision_trees[0],
+                            hit=candidate.hit,
+                            lane=candidate.lane,
                             reply_language=reply_language,
                         )
                         dt_duration_ms = int((time.perf_counter() - dt_started) * 1000)
-                        candidate = rag_result.applicable_decision_trees[0]
                         rag_result.trace.append(
                             RagTraceStep(
-                                step="decision_tree_generation",
+                                step="lane_verification_generation",
                                 duration_ms=dt_duration_ms,
                                 data={
-                                    "chunk_id": candidate.chunk.id,
-                                    "title": candidate.chunk.title,
-                                    "applied": dt_guidance is not None,
+                                    "lane": candidate.lane.id,
+                                    "ui_variant": candidate.lane.presentation.ui_variant,
+                                    "chunk_id": candidate.hit.chunk.id,
+                                    "title": candidate.hit.chunk.title,
+                                    "applied": lane_guidance is not None,
                                 },
                             ),
                         )
                         settings_metadata["rag_trace"] = self._serialize_rag_trace(rag_result.trace)
                         await self._publish_rag_trace(body.client_id, rag_result.trace[-1:])
 
-                        if dt_guidance is not None:
-                            settings_metadata["decision_tree_guidance"] = dt_guidance.to_metadata()
+                        if lane_guidance is None:
+                            continue
 
-                    context_for_general = rag_result.context
+                        metadata_key = verification_metadata_key(candidate.lane.presentation)
+                        if metadata_key is not None:
+                            settings_metadata[metadata_key] = lane_guidance.to_metadata()
 
-                    if dt_guidance is not None:
-                        context_for_general = build_context_block(
-                            exclude_decision_tree_chunks(rag_result.chunks),
-                        )
+                        if candidate.lane.presentation.exclude_from_generation_context:
+                            context_for_general = build_context_block(
+                                exclude_lane_categories(
+                                    rag_result.chunks,
+                                    category_ids=candidate.lane.content_types,
+                                ),
+                            )
+
+                        break
 
                     assistant_text, llm_metadata = await client.complete(
                         llm_messages,
