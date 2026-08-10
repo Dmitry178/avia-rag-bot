@@ -7,7 +7,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.core.config import Settings, get_kb_language, list_kb_language_codes, settings
+from app.core.config import Settings, get_kb_language, resolve_kb_chunking_schema_path, settings
 from app.core.db_manager import DBManager
 from app.core.faiss_manager import faiss_manager
 from app.core.logs import logger
@@ -21,7 +21,12 @@ from app.schemas.etl import ChunkStatsResponse, IngestAllResponse, IngestRespons
 from app.services.etl_checkpoint import IngestCheckpoint, IngestCheckpointStore
 from app.services.etl_plan import plan_ingest
 from app.services.etl_progress import IngestProgress, IngestProgressCallback
-from etl.chunking_schema import load_runtime_schema_for_language, resolve_schema_output_root, resolve_schema_source_path
+from etl.chunking_schema import (
+    discover_chunking_schemas,
+    load_runtime_schema,
+    resolve_schema_output_root,
+    resolve_schema_source_path,
+)
 from etl.document_warnings import emit_duplicate_section_number_warnings
 from etl.universal_chunker import UniversalChunker
 from etl.types import ChunkDraft
@@ -212,27 +217,31 @@ class ETLService:
         return [vectors_by_index[i] for i in range(total_chunks)]  # type: ignore[misc]
 
     @handle_basic_db_errors
-    async def ingest(
+    async def ingest_schema(
         self,
         *,
-        language_code: str,
+        schema_path: Path,
         rebuild: bool = False,
         source_path: str | None = None,
         on_progress: IngestProgressCallback | None = None,
     ) -> IngestResponse:
         """
-        Parse document, embed chunks, and persist index artifacts for one language.
+        Parse document, embed chunks, and persist index artifacts for one schema file.
 
-        Incremental by default: reuses unchanged chunk vectors, embeds new/changed only.
-        Writes a checkpoint during embedding so a failed run can resume.
+        Paths in the schema are resolved relative to the schema file directory.
         """
 
-        get_kb_language(language_code)
-        runtime_schema = load_runtime_schema_for_language(language_code, str(self.settings.backend_root))
+        runtime_schema = load_runtime_schema(
+            schema_path,
+            self.settings.backend_root,
+            self.settings.repo_root,
+        )
         schema = runtime_schema.schema
+        language_code = schema.document.language_code
         chunker = UniversalChunker(schema)
         output_root = resolve_schema_output_root(
             schema,
+            schema_dir=runtime_schema.schema_dir,
             backend_root=self.settings.backend_root,
             repo_root=self.settings.repo_root,
             output_root_override=None,
@@ -245,6 +254,7 @@ class ETLService:
 
         path = resolve_schema_source_path(
             schema,
+            schema_dir=runtime_schema.schema_dir,
             backend_root=self.settings.backend_root,
             repo_root=self.settings.repo_root,
             source_override=source_path,
@@ -285,7 +295,7 @@ class ETLService:
         )
 
         embedding_model = self.settings.llm.embedding_model
-        chunker_version = str(schema.chunker_version)
+        chunker_version = schema.format
         latest_manifest = await self.db.etl.index_manifest.get_latest(language_code)
         can_reuse_existing = self._can_reuse_existing_vectors(
             latest_manifest,
@@ -440,6 +450,7 @@ class ETLService:
         logger.info(
             "etl_ingest_completed",
             language_code=language_code,
+            schema_path=str(runtime_schema.schema_path),
             chunk_count=len(chunk_models),
             source_path=source,
             doc_hash=doc_hash,
@@ -465,6 +476,58 @@ class ETLService:
         )
 
     @handle_basic_db_errors
+    async def ingest(
+        self,
+        *,
+        language_code: str,
+        rebuild: bool = False,
+        source_path: str | None = None,
+        on_progress: IngestProgressCallback | None = None,
+    ) -> IngestResponse:
+        """
+        Parse document, embed chunks, and persist index artifacts for one language.
+
+        Incremental by default: reuses unchanged chunk vectors, embeds new/changed only.
+        Writes a checkpoint during embedding so a failed run can resume.
+        """
+
+        get_kb_language(language_code)
+        schema_path = resolve_kb_chunking_schema_path(language_code, self.settings.backend_root)
+
+        return await self.ingest_schema(
+            schema_path=schema_path,
+            rebuild=rebuild,
+            source_path=source_path,
+            on_progress=on_progress,
+        )
+
+    @handle_basic_db_errors
+    async def ingest_directory(
+        self,
+        *,
+        schemas_dir: Path,
+        rebuild: bool = False,
+        on_progress: IngestProgressCallback | None = None,
+    ) -> IngestAllResponse:
+        """
+        Discover and ingest every supported chunking schema JSON in a directory.
+        """
+
+        schema_paths = discover_chunking_schemas(schemas_dir)
+        results: list[IngestResponse] = []
+
+        for schema_path in schema_paths:
+            results.append(
+                await self.ingest_schema(
+                    schema_path=schema_path,
+                    rebuild=rebuild,
+                    on_progress=on_progress,
+                ),
+            )
+
+        return IngestAllResponse(results=results)
+
+    @handle_basic_db_errors
     async def ingest_all(
         self,
         *,
@@ -472,21 +535,14 @@ class ETLService:
         on_progress: IngestProgressCallback | None = None,
     ) -> IngestAllResponse:
         """
-        Ingest all active knowledge-base languages sequentially.
+        Ingest every supported schema JSON in the default backend data directory.
         """
 
-        results: list[IngestResponse] = []
-
-        for code in list_kb_language_codes():
-            results.append(
-                await self.ingest(
-                    language_code=code,
-                    rebuild=rebuild,
-                    on_progress=on_progress,
-                ),
-            )
-
-        return IngestAllResponse(results=results)
+        return await self.ingest_directory(
+            schemas_dir=self.settings.backend_root / "data",
+            rebuild=rebuild,
+            on_progress=on_progress,
+        )
 
     @handle_basic_db_errors
     async def stats(self, language_code: str | None = None) -> ChunkStatsResponse:
