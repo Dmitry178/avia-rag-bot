@@ -1,11 +1,10 @@
 {
-  "schema_version": 3,
-  "chunker_version": 3,
+  "format": "rag.chunking-schema.v3",
   "document": {
     "document_id": "avia-kb-en",
     "language_code": "en",
     "display_name": "English KB",
-    "source_path": "backend/data/rag-document-en.md",
+    "source_path": "rag-document-en.md",
     "heading_patterns": {
       "h1_regex": "^# (?P<title>.+)$",
       "h2_regex": "^## (?P<title>.+)$",
@@ -14,8 +13,8 @@
     }
   },
   "io": {
-    "output_root": "backend/data/etl-runs/en",
-    "overwrite_policy": "forbid",
+    "output_root": ".",
+    "overwrite_policy": "allow",
     "chunk_meta": {
       "kind": "sqlite",
       "db_path": "app.db",
@@ -23,13 +22,7 @@
       "language_code": "en"
     },
     "faiss_index_path": "faiss-en.index",
-    "manifest_path": "manifest-en.json",
-    "protected_production_targets": {
-      "chunk_meta_db_path": "backend/data/app.db",
-      "faiss_index_path": "backend/data/faiss-en.index",
-      "manifest_path": "backend/data/manifest-en.json",
-      "require_explicit_override": true
-    }
+    "manifest_path": "manifest-en.json"
   },
   "categories": [
     {

@@ -1,11 +1,10 @@
 {
-  "schema_version": 3,
-  "chunker_version": 3,
+  "format": "rag.chunking-schema.v3",
   "document": {
     "document_id": "avia-kb-ru",
     "language_code": "ru",
     "display_name": "Russian KB",
-    "source_path": "backend/data/rag-document-ru.md",
+    "source_path": "rag-document-ru.md",
     "heading_patterns": {
       "h1_regex": "^# (?P<title>.+)$",
       "h2_regex": "^## (?P<title>.+)$",
@@ -14,8 +13,8 @@
     }
   },
   "io": {
-    "output_root": "backend/data/etl-runs/ru",
-    "overwrite_policy": "forbid",
+    "output_root": ".",
+    "overwrite_policy": "allow",
     "chunk_meta": {
       "kind": "sqlite",
       "db_path": "app.db",
@@ -23,13 +22,7 @@
       "language_code": "ru"
     },
     "faiss_index_path": "faiss-ru.index",
-    "manifest_path": "manifest-ru.json",
-    "protected_production_targets": {
-      "chunk_meta_db_path": "backend/data/app.db",
-      "faiss_index_path": "backend/data/faiss-ru.index",
-      "manifest_path": "backend/data/manifest-ru.json",
-      "require_explicit_override": true
-    }
+    "manifest_path": "manifest-ru.json"
   },
   "categories": [
     {
