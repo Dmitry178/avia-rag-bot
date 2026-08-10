@@ -12,7 +12,7 @@
 | **Разработчики** | [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md) · [api_ru.md](api_ru.md) · [frontend_ru.md](frontend_ru.md) |
 | **DevOps / SRE** | [deployment_ru.md](deployment_ru.md) · [operations_ru.md](operations_ru.md) · [configuration_ru.md](configuration_ru.md) |
 | **ИБ / compliance** | [security_ru.md](security_ru.md) · [privacy_ru.md](privacy_ru.md) |
-| **Владельцы базы знаний** | [knowledge_base_ru.md](knowledge_base_ru.md) · [etl_profile_ru.md](etl_profile_ru.md) · [rag_evaluation_ru.md](rag_evaluation_ru.md) |
+| **Владельцы базы знаний** | [knowledge_base_ru.md](knowledge_base_ru.md) · [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md) · [rag_evaluation_ru.md](rag_evaluation_ru.md) |
 | **QA / настройка RAG** | [rag_evaluation_ru.md](rag_evaluation_ru.md) · [api_ru.md](api_ru.md) (SSE trace) |
 
 ## Полный каталог
@@ -27,7 +27,7 @@
 | [deployment_ru.md](deployment_ru.md) | Локальная разработка и Docker Compose |
 | [operations_ru.md](operations_ru.md) | ETL, бэкапы, мониторинг, troubleshooting |
 | [knowledge_base_ru.md](knowledge_base_ru.md) | Подготовка и обновление KB markdown (ru/en) |
-| [etl_profile_ru.md](etl_profile_ru.md) | JSON-профили ETL по языкам |
+| [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md) | Контракт schema v3 для ETL-чанкования, категорий, lanes и output-маршрутов |
 | [rag_evaluation_ru.md](rag_evaluation_ru.md) | Методика оценки качества RAG |
 | [security_ru.md](security_ru.md) | Модель угроз, guards, hardening |
 | [privacy_ru.md](privacy_ru.md) | Обработка данных и compliance |

@@ -12,7 +12,7 @@ Central index for **avia-bot** documentation. For quick start and screenshots se
 | **Developers** | [ARCHITECTURE.md](ARCHITECTURE.md) · [api.md](api.md) · [frontend.md](frontend.md) |
 | **DevOps / SRE** | [deployment.md](deployment.md) · [operations.md](operations.md) · [configuration.md](configuration.md) |
 | **Security / compliance** | [security.md](security.md) · [privacy.md](privacy.md) |
-| **Knowledge base owners** | [knowledge_base.md](knowledge_base.md) · [etl_profile.md](etl_profile.md) · [rag_evaluation.md](rag_evaluation.md) |
+| **Knowledge base owners** | [knowledge_base.md](knowledge_base.md) · [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md) · [rag_evaluation.md](rag_evaluation.md) |
 | **QA / RAG tuning** | [rag_evaluation.md](rag_evaluation.md) · [api.md](api.md) (SSE trace) |
 
 ## Full catalog
@@ -27,7 +27,7 @@ Central index for **avia-bot** documentation. For quick start and screenshots se
 | [deployment.md](deployment.md) | Local dev and Docker Compose runbook |
 | [operations.md](operations.md) | ETL, backups, monitoring, troubleshooting |
 | [knowledge_base.md](knowledge_base.md) | Authoring and updating KB markdown (ru/en) |
-| [etl_profile.md](etl_profile.md) | Per-language ETL JSON profiles (parser/chunker mapping) |
+| [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md) | Schema v3 contract for ETL chunking, categories, lanes, and IO routes |
 | [rag_evaluation.md](rag_evaluation.md) | Quality evaluation methodology |
 | [security.md](security.md) | Threat model, guards, deployment hardening |
 | [privacy.md](privacy.md) | Data handling and compliance notes |
