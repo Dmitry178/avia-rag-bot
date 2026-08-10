@@ -102,6 +102,7 @@ class IngestCheckpointStore:
         source_path: str,
         doc_hash: str,
         embedding_model: str,
+        chunker_version: str,
         rebuild: bool,
     ) -> bool:
         """
@@ -113,7 +114,7 @@ class IngestCheckpointStore:
             and checkpoint.source_path == source_path
             and checkpoint.doc_hash == doc_hash
             and checkpoint.embedding_model == embedding_model
-            and checkpoint.chunker_version == CHUNKER_VERSION
+            and checkpoint.chunker_version == chunker_version
             and checkpoint.rebuild == rebuild
         )
 
