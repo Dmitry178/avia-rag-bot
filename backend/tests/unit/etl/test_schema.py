@@ -14,6 +14,9 @@ def test_runtime_schema_loads_ru_and_en() -> None:
     ru = load_runtime_schema_for_language("ru", str(BACKEND_ROOT)).schema
     en = load_runtime_schema_for_language("en", str(BACKEND_ROOT)).schema
 
+    assert ru.format == "rag.chunking-schema.v3"
+    assert en.format == "rag.chunking-schema.v3"
+
     assert ru.document.language_code == "ru"
     assert en.document.language_code == "en"
     assert any(category.labels.section == "Раздел" for category in ru.categories)
