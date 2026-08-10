@@ -1,13 +1,13 @@
 """Unit tests for ETL progress helpers."""
 
 from app.services.etl import ETLService
-from etl.types import ChunkDraft, ContentType
+from etl.types import ChunkDraft
 
 
 def _draft(section: str, title: str) -> ChunkDraft:
     return ChunkDraft(
         content=f"{section}:{title}",
-        content_type=ContentType.FAQ,
+        content_type="faq",
         section=section,
         title=title,
         node_id="n",
