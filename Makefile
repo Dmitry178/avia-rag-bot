@@ -1,8 +1,9 @@
 BACKEND_DIR := backend
 FRONTEND_DIR := frontend
+ETL_SCHEMAS_DIR ?= data
 
 .PHONY: help \
-	etl-ingest-ru etl-ingest-en etl-ingest-all etl-stats etl-manifest \
+	etl-ingest etl-ingest-all etl-ingest-ru etl-ingest-en etl-stats etl-manifest \
 	backend-install backend-dev backend-test backend-test-api backend-test-unit backend-lint backend-typecheck \
 	frontend-install frontend-dev frontend-build frontend-typecheck \
 	docker-up docker-down docker-build \
@@ -10,12 +11,14 @@ FRONTEND_DIR := frontend
 
 help:
 	@echo "Targets:"
-	@echo "ETL — index knowledge base (creates faiss-<lang>.index per language):"
-	@echo "  make etl-ingest-ru       Index Russian KB only  (ru → faiss-ru.index)"
-	@echo "  make etl-ingest-en       Index English KB only (en → faiss-en.index)"
-	@echo "  make etl-ingest-all      Index both ru and en"
-	@echo "  Optional: REBUILD=1      Force full re-embed"
-	@echo "  Optional: SOURCE=path    Override markdown file (with -ru or -en targets)"
+	@echo "ETL — discover schema JSON files in a directory and build SQLite + FAISS:"
+	@echo "  make etl-ingest           Ingest all schemas in backend/$(ETL_SCHEMAS_DIR)"
+	@echo "  make etl-ingest-all       Alias for etl-ingest"
+	@echo "  make etl-ingest-ru        Ingest Russian schema only (legacy language shortcut)"
+	@echo "  make etl-ingest-en        Ingest English schema only (legacy language shortcut)"
+	@echo "  Optional: REBUILD=1       Force full re-embed"
+	@echo "  Optional: ETL_SCHEMAS_DIR=path   Schema directory relative to backend/ (default: data)"
+	@echo "  Optional: SOURCE=path     Override markdown file (with -ru or -en targets)"
 	@echo "  make etl-stats           Chunk counts (optional LANG=ru|en)"
 	@echo "  make etl-manifest        Latest manifest (optional LANG=ru|en, default ru)"
 	@echo ""
@@ -43,7 +46,11 @@ help:
 	@echo "  make docker-etl-ingest-en   Index en only inside backend container"
 	@echo "  make docker-logs            Follow compose logs"
 
-# Index one language or both (same as POST /api/etl/ingest and /api/etl/ingest-all).
+# Discover schema JSON files in a directory and ingest each into SQLite + FAISS.
+etl-ingest etl-ingest-all:
+	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest-dir --dir $(ETL_SCHEMAS_DIR) \
+		$(if $(REBUILD),--rebuild,)
+
 etl-ingest-ru:
 	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest --lang ru \
 		$(if $(SOURCE),--source $(SOURCE),) \
@@ -52,10 +59,6 @@ etl-ingest-ru:
 etl-ingest-en:
 	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest --lang en \
 		$(if $(SOURCE),--source $(SOURCE),) \
-		$(if $(REBUILD),--rebuild,)
-
-etl-ingest-all:
-	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest-all \
 		$(if $(REBUILD),--rebuild,)
 
 etl-stats:
@@ -109,7 +112,7 @@ docker-build:
 	docker compose build
 
 docker-etl-ingest:
-	docker compose exec backend uv run python scripts/run_etl.py ingest-all \
+	docker compose exec backend uv run python scripts/run_etl.py ingest-dir --dir data \
 		$(if $(REBUILD),--rebuild,)
 
 docker-etl-ingest-ru:
