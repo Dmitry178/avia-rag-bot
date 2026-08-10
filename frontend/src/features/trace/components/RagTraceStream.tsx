@@ -282,7 +282,6 @@ function RagConfigUsedSection({
           </dd>
         </div>
       </dl>
-      <p className="rag-trace__hint">{t("trace.staticChaptersHint")}</p>
     </section>
   );
 }
