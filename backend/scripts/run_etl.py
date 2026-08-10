@@ -5,9 +5,10 @@ import asyncio
 import sys
 
 from collections.abc import Callable, Coroutine
+from pathlib import Path
 from typing import Any
 
-from app.core.config import settings
+from app.core.config import DBSettings, settings
 from app.core.db_manager import DBManager
 from app.core.logs import logger
 from app.db.init_db import init_db
@@ -17,6 +18,11 @@ from app.exceptions.ingest import IngestInterruptedError
 from app.services.etl import ETLService
 from app.services.etl_progress import IngestProgress
 from app.services.schema_etl import SchemaETLService
+from etl.chunking_schema import (
+    discover_chunking_schemas,
+    load_runtime_schema,
+    resolve_schema_chunk_meta_db_path,
+)
 
 
 def _truncate(text: str, max_len: int = 55) -> str:
@@ -68,6 +74,24 @@ async def _with_db[T](handler: Callable[[DBManager], Coroutine[Any, Any, T]]) ->
         await dispose_engine()
 
 
+async def _with_db_file[T](db_file: Path, handler: Callable[[DBManager], Coroutine[Any, Any, T]]) -> T:
+    """
+    Point the app database at a schema-declared SQLite file and run handler.
+    """
+
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+    await dispose_engine()
+    settings.db = DBSettings(url=f"sqlite:///{db_file.resolve().as_posix()}")
+    settings.data.ensure_exists(settings.backend_root)
+    await init_db()
+
+    try:
+        async with DBManager(SessionLocal) as db:
+            return await handler(db)
+    finally:
+        await dispose_engine()
+
+
 async def cmd_ingest(
     language_code: str,
     source_path: str | None,
@@ -105,23 +129,50 @@ async def cmd_ingest(
     return 0
 
 
-async def cmd_ingest_all(*, rebuild: bool) -> int:
+async def cmd_ingest_dir(
+    schemas_dir: str,
+    *,
+    rebuild: bool,
+) -> int:
     """
-    Run document ingest for all active knowledge-base languages.
+    Discover schema JSON files in a directory and ingest each one into SQLite + FAISS.
     """
+
+    dir_path = Path(schemas_dir)
+    if not dir_path.is_absolute():
+        dir_path = (settings.backend_root / dir_path).resolve()
+
+    schema_paths = discover_chunking_schemas(dir_path)
+    first_context = load_runtime_schema(schema_paths[0], settings.backend_root, settings.repo_root)
+    db_path = resolve_schema_chunk_meta_db_path(first_context.schema, schema_dir=first_context.schema_dir)
 
     async def _run(db: DBManager):
-        return await ETLService(db).ingest_all(rebuild=rebuild, on_progress=_print_progress)
+        return await ETLService(db).ingest_directory(
+            schemas_dir=dir_path,
+            rebuild=rebuild,
+            on_progress=_print_progress,
+        )
 
-    result = await _with_db(_run)
+    if db_path is not None:
+        result = await _with_db_file(db_path, _run)
+    else:
+        result = await _with_db(_run)
 
     print(file=sys.stderr)
-    print("Ingest-all completed.")
+    print("Ingest-dir completed.")
 
     for item in result.results:
         print(f"  [{item.language_code}] chunks={item.chunk_count} embedded={item.embedded}")
 
     return 0
+
+
+async def cmd_ingest_all(*, rebuild: bool) -> int:
+    """
+    Run document ingest for every supported schema in backend/data.
+    """
+
+    return await cmd_ingest_dir("data", rebuild=rebuild)
 
 
 async def cmd_stats(language_code: str | None) -> int:
@@ -216,77 +267,15 @@ def _prompt_text(prompt: str, *, default: str | None = None, required: bool = Fa
         print("Value is required.")
 
 
-def _prompt_bool(prompt: str, *, default: bool = False) -> bool:
-    """
-    Read yes/no flag from stdin.
-    """
-
-    label = "Y/n" if default else "y/N"
-
-    while True:
-        value = input(f"{prompt} ({label}): ").strip().lower()
-
-        if not value:
-            return default
-
-        if value in {"y", "yes"}:
-            return True
-
-        if value in {"n", "no"}:
-            return False
-
-        print("Please answer y or n.")
-
-
 def _interactive_command() -> Callable[[], Coroutine[Any, Any, int]]:
     """
-    Build command coroutine from interactive stdin prompts.
+    Ask for a schemas directory and run ingest-dir on it.
     """
 
     print("Interactive ETL mode")
-    print("1) ingest")
-    print("2) ingest-all")
-    print("3) stats")
-    print("4) manifest")
-    print("5) schema-ingest")
+    schemas_dir = _prompt_text("Schemas directory", default="data", required=True) or "data"
 
-    choice = _prompt_text("Select command number", default="1", required=True)
-    if choice == "1":
-        language_code = _prompt_text("Language code", default="ru") or "ru"
-        source_path = _prompt_text("Source markdown path override", default=None)
-        rebuild = _prompt_bool("Force rebuild", default=False)
-        return lambda: cmd_ingest(language_code, source_path, rebuild=rebuild)
-
-    if choice == "2":
-        rebuild = _prompt_bool("Force rebuild for all languages", default=False)
-        return lambda: cmd_ingest_all(rebuild=rebuild)
-
-    if choice == "3":
-        language_code = _prompt_text("Language code filter (empty = all)", default=None)
-        return lambda: cmd_stats(language_code)
-
-    if choice == "4":
-        language_code = _prompt_text("Language code", default="ru") or "ru"
-        return lambda: cmd_manifest(language_code)
-
-    if choice == "5":
-        schema_path = _prompt_text("Schema path", required=True)
-        source_path = _prompt_text("Source markdown path override", default=None)
-        output_root = _prompt_text("Output root override", default=None)
-        run_id = _prompt_text("Run id (namespace under output root)", default=None)
-        no_embed = _prompt_bool("Skip embeddings and FAISS build", default=False)
-        allow_overwrite = _prompt_bool("Allow overwrite and production-path override", default=False)
-
-        return lambda: cmd_schema_ingest(
-            schema_path or "",
-            source_path=source_path,
-            output_root=output_root,
-            run_id=run_id,
-            no_embed=no_embed,
-            allow_overwrite=allow_overwrite,
-        )
-
-    raise ValueError(f"Unknown command selection: {choice}")
+    return lambda: cmd_ingest_dir(schemas_dir, rebuild=False)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -316,10 +305,24 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Force full re-embed (ignore reusable vectors and checkpoint)",
     )
-
+    ingest_dir = subparsers.add_parser(
+        "ingest-dir",
+        help="Discover schema JSON files in a directory and ingest each into SQLite + FAISS",
+    )
+    ingest_dir.add_argument(
+        "--dir",
+        metavar="PATH",
+        required=True,
+        help="Directory with chunking-schema-*.json files (relative to backend root or absolute)",
+    )
+    ingest_dir.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Force full re-embed (ignore reusable vectors and checkpoint)",
+    )
     ingest_all = subparsers.add_parser(
         "ingest-all",
-        help="Ingest all active knowledge-base languages",
+        help="Ingest every supported schema in backend/data",
     )
     ingest_all.add_argument(
         "--rebuild",
@@ -395,6 +398,7 @@ def main() -> None:
     else:
         args = _build_parser().parse_args()
         commands: dict[str, Callable[[], Coroutine[Any, Any, int]]] = {
+            "ingest-dir": lambda: cmd_ingest_dir(args.dir, rebuild=args.rebuild),
             "ingest": lambda: cmd_ingest(args.lang, args.source, rebuild=args.rebuild),
             "ingest-all": lambda: cmd_ingest_all(rebuild=args.rebuild),
             "stats": lambda: cmd_stats(args.lang),
