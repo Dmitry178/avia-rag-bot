@@ -8,7 +8,7 @@ from typing import Any
 from app.core.rag_constants import DECISION_TREE_NO_MATCH_TOKEN
 from app.llm.chat import ChatCompletionClient
 from app.rag.retrieval_lanes import LanePresentation, RetrievalLane
-from app.rag.types import RetrievedChunk
+from app.rag.types import RetrievedChunk, chunk_similarity
 
 _REPLY_LANGUAGE_HINTS: dict[str, str] = {
     "ru": "The user's latest message is in Russian. Reply entirely in Russian; do not use English.",
@@ -42,17 +42,6 @@ class DecisionTreeGuidance:
             "similarity": round(self.similarity, 4),
             "guidance": self.guidance,
         }
-
-
-def chunk_similarity(item: RetrievedChunk) -> float:
-    """
-    Return the best available similarity score for a retrieved chunk.
-    """
-
-    if item.vector_similarity is not None:
-        return item.vector_similarity
-
-    return item.score
 
 
 def _normalize_no_match_line(line: str) -> str:
