@@ -1,20 +1,11 @@
 """Schema-driven post-retrieval lane filtering and verification candidate selection."""
 
-from dataclasses import dataclass
-
-from app.rag.decision_tree import chunk_similarity
-from app.rag.retrieval_lanes import RetrievalLane, RetrievalRuntime
-from app.rag.types import RetrievedChunk
-
-
-@dataclass(frozen=True)
-class LaneVerificationCandidate:
-    """
-    One lane hit selected for optional dedicated LLM verification.
-    """
-
-    lane: RetrievalLane
-    hit: RetrievedChunk
+from app.rag.retrieval_lanes import RetrievalRuntime
+from app.rag.types import (
+    LaneVerificationCandidate,
+    RetrievedChunk,
+    chunk_similarity,
+)
 
 
 def apply_lane_similarity_filters(
