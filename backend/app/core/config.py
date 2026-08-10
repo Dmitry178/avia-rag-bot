@@ -24,11 +24,11 @@ class KbLanguageEntry(BaseModel):
         description="Path to the markdown KB file (relative to backend root or absolute).",
     )
     display_name: str = Field(description="Human-readable language label for logs and docs.")
-    etl_profile_path: str | None = Field(
+    etl_schema_path: str | None = Field(
         default=None,
         description=(
-            "Optional path to the locale ETL profile JSON (relative to backend root). "
-            "Defaults to data/kb-profile-{code}.json; merged with data/kb-profile-base.json."
+            "Optional path to ETL chunking schema JSON (relative to backend root). "
+            "Defaults to data/chunking-schema-{code}.json."
         ),
     )
 
@@ -38,11 +38,13 @@ KB_LANGUAGES: dict[str, KbLanguageEntry] = {
         code="ru",
         document_path="data/rag-document-ru.md",
         display_name="Русский",
+        etl_schema_path="data/chunking-schema-ru.json",
     ),
     "en": KbLanguageEntry(
         code="en",
         document_path="data/rag-document-en.md",
         display_name="English",
+        etl_schema_path="data/chunking-schema-en.json",
     ),
 }
 
@@ -85,17 +87,17 @@ def resolve_kb_document_path(language_code: str, backend_root: Path) -> Path:
     return backend_root / path
 
 
-def resolve_kb_profile_locale_path(language_code: str, backend_root: Path) -> Path:
+def resolve_kb_chunking_schema_path(language_code: str, backend_root: Path) -> Path:
     """
-    Return absolute path to the locale-specific ETL profile JSON for a KB language.
+    Return absolute path to the schema-driven ETL chunking JSON for a KB language.
     """
 
     language = get_kb_language(language_code)
-    if language.etl_profile_path is not None:
-        path = Path(language.etl_profile_path)
+    if language.etl_schema_path is not None:
+        path = Path(language.etl_schema_path)
         return path if path.is_absolute() else backend_root / path
 
-    return backend_root / "data" / f"kb-profile-{language_code}.json"
+    return backend_root / "data" / f"chunking-schema-{language_code}.json"
 
 
 class AppSettings(BaseModel):
