@@ -263,7 +263,7 @@ API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 
 На этапе MVP в промпт попадает **полный текст** глав без суммаризации, чтобы scope и правила отказа всегда были доступны. Сжатие текста можно добавить позже.
 
-Реализация: `etl/static_sections.py` (извлечение), `app/llm/kb_static_context.py` (форматирование), `RagPipeline.build_generation_prompt()`.
+Реализация: schema-driven выбор статических блоков в `etl/universal_chunker.py` + `app/llm/kb_static_context.py`, затем инъекция в `RagPipeline.build_generation_prompt()`.
 
 ### Глоссарий отключён (MVP)
 

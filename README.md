@@ -263,7 +263,7 @@ Chapters **00** and **13** are meta-policy, not operational knowledge. They are 
 
 For MVP the **full chapter text** is included without summarization, so scope and refusal rules are always available. Summarization may be added later to save context window.
 
-Implementation: `etl/static_sections.py` (extract), `app/llm/kb_static_context.py` (format), `RagPipeline.build_generation_prompt()`.
+Implementation: schema-driven static block selection in `etl/universal_chunker.py` + `app/llm/kb_static_context.py`, then injection in `RagPipeline.build_generation_prompt()`.
 
 ### Glossary disabled (MVP)
 
