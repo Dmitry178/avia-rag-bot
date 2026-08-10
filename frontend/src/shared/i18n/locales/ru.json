@@ -110,7 +110,6 @@
     "appliedMethods": "Преобразование запроса / rerank",
     "appliedMethodsDirect": "Прямой vector search (без transform)",
     "appliedHistoryUnknown": "не зафиксировано",
-    "staticChaptersHint": "Главы 00 и 13 всегда в системном промпте (scope и политика), не через retrieval.",
     "chunkNodeId": "node_id",
     "chunkTokens": "токены",
     "chunkSourceQuery": "запрос",

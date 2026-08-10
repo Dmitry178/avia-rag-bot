@@ -110,7 +110,6 @@
     "appliedMethods": "Query transform / rerank",
     "appliedMethodsDirect": "Direct vector search (no transform)",
     "appliedHistoryUnknown": "not recorded",
-    "staticChaptersHint": "Chapters 00 and 13 are always included in the system prompt (scope and usage policy), not via retrieval.",
     "chunkNodeId": "node_id",
     "chunkTokens": "tokens",
     "chunkSourceQuery": "query",
