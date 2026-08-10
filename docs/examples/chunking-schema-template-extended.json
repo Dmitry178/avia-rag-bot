@@ -1,6 +1,5 @@
 {
-  "schema_version": 3,
-  "chunker_version": 3,
+  "format": "rag.chunking-schema.v3",
   "document": {
     "document_id": "my-kb-en-extended",
     "language_code": "en",
