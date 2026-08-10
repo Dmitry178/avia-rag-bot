@@ -144,8 +144,8 @@ It is used as an async context manager (`async with DBManager(SessionLocal) as d
 | `backend/data/faiss-{lang}.index` | Per-language FAISS `IndexFlatIP` |
 | `backend/data/manifest-{lang}.json` | Latest index build metadata per language |
 | `backend/data/rag-document-{lang}.md` | Source markdown per KB language |
-| `backend/data/kb-profile-base.json` | Shared ETL structure mapping |
-| `backend/data/kb-profile-{lang}.json` | Per-language ETL labels and patterns |
+| `backend/data/chunking-schema-ru.json` | RU schema-driven ETL contract |
+| `backend/data/chunking-schema-en.json` | EN schema-driven ETL contract |
 | `backend/data/ingest_checkpoint_{lang}.json` | Transient embedding resume state (deleted on successful ingest) |
 | `backend/data/ingest_checkpoint_{lang}.tmp` | Transient atomic-write sibling for checkpoint JSON |
 
@@ -160,17 +160,15 @@ ETL splits into a **pure parsing package** and an **orchestrating service**.
 ```mermaid
 flowchart TB
     MD["rag-document-{lang}.md"]
-    PROF["kb-profile-base + locale JSON"]
-    P["etl/parser.py"]
-    C["etl/chunker.py"]
+    SCH["chunking-schema-{lang}.json"]
+    C["etl/universal_chunker.py"]
     S["ETLService.ingest()"]
     E["EmbeddingClient"]
     DB[("SQLite")]
     F["FAISS"]
 
-    PROF --> P
-    PROF --> C
-    MD --> P --> C --> S
+    SCH --> C
+    MD --> C --> S
     S --> E
     S --> DB
     S --> F
@@ -179,11 +177,10 @@ flowchart TB
 ### `etl/` package (bounded context)
 
 - No FastAPI, SQLite, or FAISS imports.
-- `profile.py` — load and compile per-language document profiles from JSON (`kb-profile-base.json` + `kb-profile-{code}.json`). See [etl_profile.md](etl_profile.md).
-- `parser.py` — markdown → section tree (uses profile for chapter classification).
-- `chunker.py` — content-type-aware splitting (`sop`, `faq`, `decision_tree`, `scenario`, …); FAQ pairs are extracted from SOP chapters (01–12) and chapter 14; chapters 00, 13, and 15 are skipped for indexing.
-- `static_sections.py` — extract profile-configured chapters (00, 13) for runtime system prompt injection.
-- Unit-tested in isolation.
+- `chunking_schema.py` — schema v3 contract and runtime schema loading from `chunking-schema-{code}.json`.
+- `universal_chunker.py` — policy-driven markdown chunking (`whole_section`, `by_subheading`, `qa_pairs`, `qa_by_heading_prefix`, `regex_split`, `token_window`).
+- `faq_regex.py` — FAQ marker-based extraction helper used by schema policies.
+- Unit-tested in isolation with schema-driven fixtures.
 
 ### `ETLService` phases
 
@@ -448,7 +445,7 @@ Data persists on the host via volume `./backend/data:/app/data`.
 |-------|----------|-------|
 | API integration | `backend/tests/api/` | HTTP contracts, chat, ETL endpoints |
 | Unit | `backend/tests/unit/` | ETL chunker, RAG methods, prompt guard, services |
-| ETL package | `backend/tests/unit/etl/` | Parser/chunker without DB |
+| ETL package | `backend/tests/unit/etl/` | Schema loader + universal chunker without DB |
 
 Run: `make backend-test` (from repo root). See [backend/tests/README.md](../backend/tests/README.md).
 
@@ -481,6 +478,6 @@ Full request/response shapes are in `app/schemas/`.
 | [api.md](api.md) | HTTP API reference |
 | [deployment.md](deployment.md) | Deployment runbook |
 | [operations.md](operations.md) | ETL, backups, troubleshooting |
-| [backend/etl/README.md](../backend/etl/README.md) | Parser/chunker internals |
+| [backend/etl/README.md](../backend/etl/README.md) | Schema-driven ETL internals |
 | [backend/tests/README.md](../backend/tests/README.md) | Test layout and commands |
 | [adr/](adr/) | Architecture Decision Records |

@@ -144,8 +144,8 @@ api/routers  →  services/  →  repositories/  →  models/
 | `backend/data/faiss-{lang}.index` | FAISS по языку KB |
 | `backend/data/manifest-{lang}.json` | Метаданные последней сборки индекса |
 | `backend/data/rag-document-{lang}.md` | Исходный markdown по языкам KB |
-| `backend/data/kb-profile-base.json` | Общий ETL-маппинг структуры |
-| `backend/data/kb-profile-{lang}.json` | Языковые метки и паттерны ETL |
+| `backend/data/chunking-schema-ru.json` | RU schema-driven ETL контракт |
+| `backend/data/chunking-schema-en.json` | EN schema-driven ETL контракт |
 | `backend/data/ingest_checkpoint_{lang}.json` | Временное состояние для resume embedding (удаляется при успешном ingest) |
 | `backend/data/ingest_checkpoint_{lang}.tmp` | Temp при атомарной записи checkpoint |
 
@@ -160,17 +160,15 @@ ETL разделён на **чистый пакет парсинга** и **ор
 ```mermaid
 flowchart TB
     MD["rag-document-{lang}.md"]
-    PROF["kb-profile-base + locale JSON"]
-    P["etl/parser.py"]
-    C["etl/chunker.py"]
+    SCH["chunking-schema-{lang}.json"]
+    C["etl/universal_chunker.py"]
     S["ETLService.ingest()"]
     E["EmbeddingClient"]
     DB[("SQLite")]
     F["FAISS"]
 
-    PROF --> P
-    PROF --> C
-    MD --> P --> C --> S
+    SCH --> C
+    MD --> C --> S
     S --> E
     S --> DB
     S --> F
@@ -179,11 +177,10 @@ flowchart TB
 ### Пакет `etl/` (ограниченный контекст)
 
 - Без импортов FastAPI, SQLite и FAISS.
-- `profile.py` — загрузка и компиляция языковых профилей из JSON. См. [etl_profile_ru.md](etl_profile_ru.md).
-- `parser.py` — markdown → дерево разделов (классификация глав по профилю).
-- `chunker.py` — разбиение с учётом типа контента; FAQ из SOP-глав (01–12) и главы 14; главы 00, 13 и 15 не индексируются.
-- `static_sections.py` — главы из профиля (00, 13) для system prompt в runtime.
-- Unit-тесты изолированно.
+- `chunking_schema.py` — контракт schema v3 и загрузка runtime-конфигурации из `chunking-schema-{code}.json`.
+- `universal_chunker.py` — policy-driven чанкование markdown (`whole_section`, `by_subheading`, `qa_pairs`, `qa_by_heading_prefix`, `regex_split`, `token_window`).
+- `faq_regex.py` — helper для извлечения FAQ по маркерам из схемы.
+- Unit-тесты изолированно на schema-driven фикстурах.
 
 ### Фазы `ETLService`
 
@@ -448,7 +445,7 @@ React 19 SPA с feature-based структурой папок.
 |-------|--------------|-------|
 | API integration | `backend/tests/api/` | HTTP-контракты, чат, ETL endpoints |
 | Unit | `backend/tests/unit/` | ETL chunker, RAG methods, prompt guard, services |
-| Пакет ETL | `backend/tests/unit/etl/` | Parser/chunker без БД |
+| Пакет ETL | `backend/tests/unit/etl/` | Schema loader + universal chunker без БД |
 
 Запуск: `make backend-test` (из корня репозитория). См. [backend/tests/README_RU.md](../backend/tests/README_RU.md).
 
@@ -481,6 +478,6 @@ React 19 SPA с feature-based структурой папок.
 | [api_ru.md](api_ru.md) | Справочник HTTP API |
 | [deployment_ru.md](deployment_ru.md) | Runbook развёртывания |
 | [operations_ru.md](operations_ru.md) | ETL, бэкапы, troubleshooting |
-| [backend/etl/README_RU.md](../backend/etl/README_RU.md) | Внутренности parser/chunker |
+| [backend/etl/README_RU.md](../backend/etl/README_RU.md) | Внутренности schema-driven ETL |
 | [backend/tests/README_RU.md](../backend/tests/README_RU.md) | Структура тестов и команды |
 | [adr/](adr/) | Architecture Decision Records |
