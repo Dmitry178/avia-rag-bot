@@ -4,20 +4,24 @@ import time
 
 from pathlib import Path
 
-from app.core.config import Settings, resolve_kb_document_path
+from app.core.config import Settings
 from app.core.db_manager import DBManager
 from app.exceptions.service import ServiceError
 from app.llm.chat import ChatCompletionClient
 from app.llm.embeddings import EmbeddingClient
 from app.llm.kb_static_context import load_kb_static_context
 from app.models.chunk_meta import ChunkMeta
-from app.rag.decision_tree import select_applicable_decision_trees
 from app.rag.generation import build_context_block, build_rag_system_prompt
+from app.rag.lane_post_processing import (
+    apply_lane_similarity_filters,
+    select_verification_candidates,
+)
 from app.rag.methods.registry import resolve_query_transform_method, resolve_rerank_method
 from app.rag.retrieval import VectorRetriever, dedupe_retrieved_chunks
-from app.rag.retrieval_lanes import LANE_BY_ID, RETRIEVAL_LANES
+from app.rag.retrieval_lanes import get_retrieval_runtime
 from app.rag.types import RagPipelineResult, RagQueryContext, RagTraceStep, RetrievedChunk
 from app.schemas.rag import RagConfig
+from etl.chunking_schema import load_runtime_schema_for_language, resolve_schema_output_root
 
 
 class RagPipeline:
@@ -32,7 +36,14 @@ class RagPipeline:
         self._embedder = EmbeddingClient(app_settings.llm)
 
     def _index_path(self, language_code: str) -> Path:
-        return self._settings.faiss.index_path(self._settings.backend_root, language_code)
+        context = load_runtime_schema_for_language(language_code, str(self._settings.backend_root))
+        output_root = resolve_schema_output_root(
+            context.schema,
+            backend_root=self._settings.backend_root,
+            repo_root=self._settings.repo_root,
+            output_root_override=None,
+        )
+        return (output_root / context.schema.io.faiss_index_path).resolve()
 
     async def _load_chunks(self, language_code: str) -> dict[int, ChunkMeta]:
         chunks = await self._db.etl.chunks.list_all_ordered(language_code)
@@ -46,13 +57,13 @@ class RagPipeline:
         return item.score
 
     @staticmethod
-    def _serialize_trace_hit(item: RetrievedChunk) -> dict:
+    def _serialize_trace_hit(item: RetrievedChunk, lane_by_id: dict[str, object]) -> dict:
         chunk_id = item.chunk.id
         if chunk_id is None:
             return {}
 
         lane = item.retrieval_lane or item.chunk.content_type
-        lane_meta = LANE_BY_ID.get(lane)
+        lane_meta = lane_by_id.get(lane)
 
         return {
             "id": chunk_id,
@@ -60,32 +71,37 @@ class RagPipeline:
             "section": item.chunk.section or "",
             "content_type": item.chunk.content_type,
             "lane": lane,
-            "lane_source": lane_meta.source_label if lane_meta is not None else "",
+            "lane_source": getattr(lane_meta, "source_label", "") if lane_meta is not None else "",
             "similarity": round(RagPipeline._chunk_similarity(item), 4),
             "content_preview": item.chunk.content[:600],
         }
 
     @classmethod
-    def _serialize_trace_hits(cls, items: list[RetrievedChunk]) -> list[dict]:
-        return [hit for item in items if (hit := cls._serialize_trace_hit(item))]
+    def _serialize_trace_hits(cls, items: list[RetrievedChunk], lane_by_id: dict[str, object]) -> list[dict]:
+        return [hit for item in items if (hit := cls._serialize_trace_hit(item, lane_by_id))]
 
     @staticmethod
-    def _serialize_lane_results(lane_results: dict[str, list[RetrievedChunk]]) -> list[dict]:
-        lanes: list[dict] = []
+    def _serialize_lane_results(
+        lane_results: dict[str, list[RetrievedChunk]],
+        *,
+        lanes: tuple[object, ...],
+        lane_by_id: dict[str, object],
+    ) -> list[dict]:
+        serialized: list[dict] = []
 
-        for lane in RETRIEVAL_LANES:
-            hits = lane_results.get(lane.id, [])
-            lanes.append(
+        for lane in lanes:
+            hits = lane_results.get(getattr(lane, "id"), [])
+            serialized.append(
                 {
-                    "lane": lane.id,
-                    "source_label": lane.source_label,
-                    "top_k": lane.top_k,
+                    "lane": getattr(lane, "id"),
+                    "source_label": getattr(lane, "source_label"),
+                    "top_k": getattr(lane, "top_k"),
                     "hit_count": len(hits),
-                    "hits": RagPipeline._serialize_trace_hits(hits),
+                    "hits": RagPipeline._serialize_trace_hits(hits, lane_by_id),
                 },
             )
 
-        return lanes
+        return serialized
 
     @staticmethod
     def _serialize_rag_config(rag_config: RagConfig) -> dict:
@@ -120,6 +136,7 @@ class RagPipeline:
         top_chunks = rag_config.top_chunks
         language_code = ctx.language_code
         index_path = self._index_path(language_code)
+        retrieval_runtime = get_retrieval_runtime(language_code)
 
         trace.append(
             RagTraceStep(
@@ -170,7 +187,14 @@ class RagPipeline:
             )
 
         retrieval_started = time.perf_counter()
-        lane_results = await retriever.search_lanes(search_queries)
+        raw_lane_results = await retriever.search_lanes(search_queries, lanes=retrieval_runtime.lanes)
+        lane_results = apply_lane_similarity_filters(raw_lane_results, runtime=retrieval_runtime)
+        verification_candidates = select_verification_candidates(lane_results, runtime=retrieval_runtime)
+        applicable_decision_trees = [
+            candidate.hit
+            for candidate in verification_candidates
+            if candidate.lane.presentation.ui_variant == "decision_tree"
+        ]
         lane_hits = [hit for hits in lane_results.values() for hit in hits]
         candidates = dedupe_retrieved_chunks(lane_hits)
 
@@ -181,8 +205,12 @@ class RagPipeline:
                 data={
                     "query_count": len(search_queries),
                     "candidate_count": len(candidates),
-                    "lanes": RagPipeline._serialize_lane_results(lane_results),
-                    "hits": RagPipeline._serialize_trace_hits(candidates),
+                    "lanes": RagPipeline._serialize_lane_results(
+                        lane_results,
+                        lanes=retrieval_runtime.lanes,
+                        lane_by_id=retrieval_runtime.lane_by_id,
+                    ),
+                    "hits": RagPipeline._serialize_trace_hits(candidates, retrieval_runtime.lane_by_id),
                 },
             ),
         )
@@ -197,15 +225,36 @@ class RagPipeline:
                     step="rerank",
                     duration_ms=int((time.perf_counter() - rerank_started) * 1000),
                     data={
-                        "hits": RagPipeline._serialize_trace_hits(final_chunks),
+                        "hits": RagPipeline._serialize_trace_hits(final_chunks, retrieval_runtime.lane_by_id),
                     },
                 ),
             )
         else:
             final_chunks = VectorRetriever.trim_candidates(candidates, top_n=top_chunks)
 
-        applicable_decision_trees = select_applicable_decision_trees(lane_results)
         context = build_context_block(final_chunks)
+
+        if verification_candidates:
+            trace.append(
+                RagTraceStep(
+                    step="lane_verification",
+                    duration_ms=0,
+                    data={
+                        "candidate_count": len(verification_candidates),
+                        "lanes": [
+                            {
+                                "lane": candidate.lane.id,
+                                "ui_variant": candidate.lane.presentation.ui_variant,
+                                "hits": RagPipeline._serialize_trace_hits(
+                                    [candidate.hit],
+                                    retrieval_runtime.lane_by_id,
+                                ),
+                            }
+                            for candidate in verification_candidates
+                        ],
+                    },
+                ),
+            )
 
         if applicable_decision_trees:
             trace.append(
@@ -214,7 +263,10 @@ class RagPipeline:
                     duration_ms=0,
                     data={
                         "applicable_count": len(applicable_decision_trees),
-                        "hits": RagPipeline._serialize_trace_hits(applicable_decision_trees),
+                        "hits": RagPipeline._serialize_trace_hits(
+                            applicable_decision_trees,
+                            retrieval_runtime.lane_by_id,
+                        ),
                     },
                 ),
             )
@@ -224,11 +276,12 @@ class RagPipeline:
             chunks=final_chunks,
             trace=trace,
             search_queries=search_queries,
+            verification_candidates=verification_candidates,
             applicable_decision_trees=applicable_decision_trees,
         )
 
+    @staticmethod
     def build_generation_prompt(
-        self,
         *,
         context: str,
         reply_language: str | None,
@@ -238,18 +291,7 @@ class RagPipeline:
         Build the grounded system prompt for the final LLM call.
         """
 
-        document_path = resolve_kb_document_path(language_code, self._settings.backend_root)
-        manifest_path = self._settings.resolve_data_dir() / f"manifest-{language_code}.json"
-
-        if manifest_path.is_file():
-            import json
-
-            manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-            source_path = manifest_payload.get("source_path")
-            if isinstance(source_path, str) and source_path:
-                document_path = Path(source_path)
-
-        kb_static_context = load_kb_static_context(str(document_path), language_code=language_code)
+        kb_static_context = load_kb_static_context("", language_code=language_code)
 
         return build_rag_system_prompt(
             context=context,
