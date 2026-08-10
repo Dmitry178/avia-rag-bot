@@ -29,7 +29,7 @@ class SchemaIngestResult:
     output_root: str
     chunk_count: int
     doc_hash: str
-    chunker_version: int
+    chunker_version: str
     manifest_path: str
     chunks_export_path: str
     faiss_index_path: str | None
@@ -62,12 +62,14 @@ class SchemaETLService:
         chunker = UniversalChunker(schema)
         resolved_source = resolve_schema_source_path(
             schema,
+            schema_dir=context.schema_dir,
             backend_root=backend_root,
             repo_root=repo_root,
             source_override=source_path,
         )
         resolved_output_root = resolve_schema_output_root(
             schema,
+            schema_dir=context.schema_dir,
             backend_root=backend_root,
             repo_root=repo_root,
             output_root_override=output_root,
@@ -212,7 +214,7 @@ class SchemaETLService:
             "output_root": str(resolved_output_root),
             "doc_hash": doc_hash,
             "chunk_count": len(drafts),
-            "chunker_version": schema.chunker_version,
+            "chunker_version": schema.format,
             "embedding_model": settings.llm.embedding_model if not no_embed else "",
             "embedded": embedded,
             "built_at": built_at.isoformat(),
@@ -238,7 +240,7 @@ class SchemaETLService:
             output_root=str(resolved_output_root),
             chunk_count=len(drafts),
             doc_hash=doc_hash,
-            chunker_version=schema.chunker_version,
+            chunker_version=schema.format,
             manifest_path=str(manifest_path),
             chunks_export_path=str(chunks_path),
             faiss_index_path=str(resolved_faiss) if resolved_faiss is not None else None,
