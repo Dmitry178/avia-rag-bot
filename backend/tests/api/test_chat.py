@@ -7,7 +7,7 @@ from httpx import AsyncClient
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.chunk_meta import ChunkMeta
-from app.rag.lane_post_processing import LaneVerificationCandidate
+from app.rag.types import LaneVerificationCandidate
 from app.rag.retrieval_lanes import LanePresentation, RetrievalLane
 from app.rag.types import RagPipelineResult, RagTraceStep, RetrievedChunk
 
