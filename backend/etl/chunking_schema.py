@@ -13,6 +13,9 @@ from app.core.config import resolve_kb_chunking_schema_path
 from app.exceptions.service import ServiceError
 
 
+CHUNKING_SCHEMA_FORMAT = "rag.chunking-schema.v3"
+
+
 class HeadingPatterns(BaseModel):
     """
     Regex definitions for markdown headings in source documents.
@@ -205,11 +208,10 @@ class RetrievalLaneSchema(BaseModel):
 
 class ChunkingSchemaV3(BaseModel):
     """
-    Top-level schema v3.
+    Top-level chunking schema (format rag.chunking-schema.v3).
     """
 
-    schema_version: int = 3
-    chunker_version: int
+    format: str
     document: SchemaDocument
     io: SchemaIo
     categories: list[SchemaCategory]
@@ -225,10 +227,24 @@ class ChunkingSchemaV3(BaseModel):
 @dataclass(frozen=True, slots=True)
 class RuntimeSchemaContext:
     """
-    Runtime schema object.
+    Runtime schema object with resolved filesystem anchors.
     """
 
     schema: ChunkingSchemaV3
+    schema_path: Path
+    schema_dir: Path
+
+
+def resolve_path_relative_to_schema(path_value: str, schema_dir: Path) -> Path:
+    """
+    Resolve a path relative to the directory that contains the schema JSON file.
+    """
+
+    path = Path(path_value)
+    if path.is_absolute():
+        return path.resolve()
+
+    return (schema_dir / path).resolve()
 
 
 def _to_path(path_value: str, backend_root: Path, repo_root: Path) -> Path:
@@ -252,6 +268,59 @@ def _to_path(path_value: str, backend_root: Path, repo_root: Path) -> Path:
         return repo_candidate
 
     return backend_candidate
+
+
+def _validate_schema_identity(payload: dict[str, object], *, schema_path: Path) -> None:
+    """
+    Ensure the JSON file is a supported RAG chunking schema.
+    """
+
+    schema_format = payload.get("format")
+    if schema_format != CHUNKING_SCHEMA_FORMAT:
+        raise ServiceError(
+            detail=(
+                f"Unsupported schema format in {schema_path.name}: "
+                f"expected {CHUNKING_SCHEMA_FORMAT!r}, got {schema_format!r}"
+            ),
+            error_code="etl_schema_unsupported_format",
+            status_code=400,
+        )
+
+
+def discover_chunking_schemas(directory: Path) -> list[Path]:
+    """
+    Find supported chunking schema JSON files in a directory (non-recursive).
+    """
+
+    if not directory.is_dir():
+        raise ServiceError(
+            detail=f"Schema directory not found: {directory}",
+            error_code="etl_schema_directory_not_found",
+            status_code=404,
+        )
+
+    discovered: list[Path] = []
+
+    for path in sorted(directory.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        if payload.get("format") == CHUNKING_SCHEMA_FORMAT:
+            discovered.append(path.resolve())
+
+    if not discovered:
+        raise ServiceError(
+            detail=(
+                f"No {CHUNKING_SCHEMA_FORMAT} schema files found in {directory}. "
+                "Expected one or more *.json files with a matching format field."
+            ),
+            error_code="etl_schema_directory_empty",
+            status_code=404,
+        )
+
+    return discovered
 
 
 def _validate_schema_links(schema: ChunkingSchemaV3) -> None:
@@ -327,23 +396,32 @@ def load_runtime_schema(schema_path: Path, backend_root: Path, repo_root: Path) 
     Read schema JSON and produce runtime context.
     """
 
-    if not schema_path.is_file():
+    resolved_schema_path = schema_path.resolve()
+    schema_dir = resolved_schema_path.parent
+
+    if not resolved_schema_path.is_file():
         raise ServiceError(
-            detail=f"Schema file not found: {schema_path}",
+            detail=f"Schema file not found: {resolved_schema_path}",
             error_code="etl_schema_not_found",
             status_code=404,
         )
 
-    payload = json.loads(schema_path.read_text(encoding="utf-8"))
+    payload = json.loads(resolved_schema_path.read_text(encoding="utf-8"))
+    _validate_schema_identity(payload, schema_path=resolved_schema_path)
     schema = ChunkingSchemaV3.model_validate(payload)
     _validate_schema_links(schema)
 
-    return RuntimeSchemaContext(schema=schema)
+    return RuntimeSchemaContext(
+        schema=schema,
+        schema_path=resolved_schema_path,
+        schema_dir=schema_dir,
+    )
 
 
 def resolve_schema_source_path(
     schema: ChunkingSchemaV3,
     *,
+    schema_dir: Path,
     backend_root: Path,
     repo_root: Path,
     source_override: str | None,
@@ -355,12 +433,13 @@ def resolve_schema_source_path(
     if source_override:
         return _to_path(source_override, backend_root, repo_root)
 
-    return _to_path(schema.document.source_path, backend_root, repo_root)
+    return resolve_path_relative_to_schema(schema.document.source_path, schema_dir)
 
 
 def resolve_schema_output_root(
     schema: ChunkingSchemaV3,
     *,
+    schema_dir: Path,
     backend_root: Path,
     repo_root: Path,
     output_root_override: str | None,
@@ -372,7 +451,27 @@ def resolve_schema_output_root(
     if output_root_override:
         return _to_path(output_root_override, backend_root, repo_root)
 
-    return _to_path(schema.io.output_root, backend_root, repo_root)
+    return resolve_path_relative_to_schema(schema.io.output_root, schema_dir)
+
+
+def resolve_schema_chunk_meta_db_path(schema: ChunkingSchemaV3, *, schema_dir: Path) -> Path | None:
+    """
+    Resolve SQLite chunk metadata database path declared in schema io.chunk_meta.
+    """
+
+    chunk_meta = schema.io.chunk_meta
+    if chunk_meta is None or chunk_meta.kind != "sqlite" or not chunk_meta.db_path:
+        return None
+
+    output_root = resolve_schema_output_root(
+        schema,
+        schema_dir=schema_dir,
+        backend_root=schema_dir,
+        repo_root=schema_dir.parent,
+        output_root_override=None,
+    )
+
+    return (output_root / chunk_meta.db_path).resolve()
 
 
 @lru_cache(maxsize=8)
