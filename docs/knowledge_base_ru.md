@@ -12,7 +12,7 @@
 |----------|----------|
 | Пути по умолчанию | `backend/data/rag-document-ru.md`, `backend/data/rag-document-en.md` (см. `KB_LANGUAGES` в `config.py`) |
 | ETL-схема | `backend/data/chunking-schema-{ru,en}.json` — см. [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md) |
-| После правок | `make etl-ingest-all` |
+| После правок | `make etl-ingest` |
 
 ---
 

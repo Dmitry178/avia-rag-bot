@@ -12,7 +12,7 @@ How to structure, write, and update the markdown knowledge base for **avia-bot**
 |------|-------|
 | Default paths | `backend/data/rag-document-ru.md`, `backend/data/rag-document-en.md` (see `KB_LANGUAGES` in `config.py`) |
 | ETL schema | `backend/data/chunking-schema-{ru,en}.json` — see [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md) |
-| After edits | Run `make etl-ingest-all` |
+| After edits | Run `make etl-ingest` |
 
 ---
 
