@@ -7,6 +7,7 @@ export interface RetrievedChunkInfo {
   title: string;
   content_type: string;
   retrieval_lane: string;
+  retrieval_lane_label: string;
   score: number | null;
   similarity: number | null;
   source_query: string | null;
@@ -21,6 +22,8 @@ export interface TraceHit {
   section: string;
   content_type: string;
   lane: string;
+  lane_label: string;
+  lane_description: string;
   lane_source: string;
   similarity: number;
   content_preview: string;
@@ -28,6 +31,8 @@ export interface TraceHit {
 
 export interface RetrievalLaneTrace {
   lane: string;
+  label: string;
+  description: string;
   source_label: string;
   top_k: number;
   hit_count: number;
@@ -75,6 +80,33 @@ function parseScore(value: unknown): number | null {
   return Number.isFinite(score) ? score : null;
 }
 
+export function resolveLaneLabel(
+  laneId: string,
+  explicitLabel?: string,
+  fallbackSourceLabel?: string,
+): string {
+  const label = explicitLabel?.trim();
+  if (label) {
+    return label;
+  }
+
+  const fallback = fallbackSourceLabel?.trim();
+  if (fallback) {
+    return fallback;
+  }
+
+  return laneId;
+}
+
+export function buildLaneLabelMap(lanes: RetrievalLaneTrace[]): Map<string, string> {
+  return new Map(
+    lanes.map((lane) => [
+      lane.lane,
+      resolveLaneLabel(lane.lane, lane.label, lane.source_label),
+    ]),
+  );
+}
+
 export function parseTraceHits(value: unknown): TraceHit[] {
   if (!Array.isArray(value)) {
     return [];
@@ -88,7 +120,9 @@ export function parseTraceHits(value: unknown): TraceHit[] {
       section: String(hit.section ?? ""),
       content_type: String(hit.content_type ?? ""),
       lane: String(hit.lane ?? hit.retrieval_lane ?? hit.content_type ?? ""),
-      lane_source: String(hit.lane_source ?? ""),
+      lane_label: String(hit.lane_label ?? hit.lane_source ?? ""),
+      lane_description: String(hit.lane_description ?? hit.lane_source ?? ""),
+      lane_source: String(hit.lane_description ?? hit.lane_source ?? ""),
       similarity: parseScore(hit.similarity) ?? 0,
       content_preview: String(hit.content_preview ?? ""),
     }))
@@ -104,7 +138,9 @@ export function parseRetrievalLanes(value: unknown): RetrievalLaneTrace[] {
     .filter(isRecord)
     .map((lane) => ({
       lane: String(lane.lane ?? ""),
-      source_label: String(lane.source_label ?? ""),
+      label: String(lane.label ?? lane.source_label ?? ""),
+      description: String(lane.description ?? ""),
+      source_label: String(lane.label ?? lane.source_label ?? ""),
       top_k: Number(lane.top_k ?? 0),
       hit_count: Number(lane.hit_count ?? 0),
       hits: parseTraceHits(lane.hits),
@@ -148,6 +184,7 @@ function parseRetrievedChunks(value: unknown): RetrievedChunkInfo[] {
       title: String(chunk.title ?? ""),
       content_type: String(chunk.content_type ?? ""),
       retrieval_lane: String(chunk.retrieval_lane ?? chunk.content_type ?? ""),
+      retrieval_lane_label: String(chunk.retrieval_lane_label ?? ""),
       score: parseScore(chunk.score),
       similarity: parseScore(chunk.similarity) ?? parseScore(chunk.score),
       source_query: chunk.source_query == null ? null : String(chunk.source_query),
@@ -205,6 +242,7 @@ function buildFallbackChunks(metadata: Record<string, unknown>, traceSteps: Trac
     title: "",
     content_type: "",
     retrieval_lane: "",
+    retrieval_lane_label: "",
     score: similarityById.get(id) ?? null,
     similarity: similarityById.get(id) ?? null,
     source_query: null,
