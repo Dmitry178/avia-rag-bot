@@ -23,19 +23,19 @@ Docker healthcheck backend использует `healthz`.
 
 | Команда | Описание |
 |---------|----------|
-| `make etl-ingest-ru` | Инкрементальный ingest — только русская KB (`faiss-ru.index`) |
-| `make etl-ingest-en` | Инкрементальный ingest — только английская KB (`faiss-en.index`) |
-| `make etl-ingest-all` | Инкрементальный ingest — **оба** языка `ru` и `en` |
+| `make etl-ingest` | Инкрементальный ingest — все схемы в `backend/data` (по умолчанию `ru` + `en`) |
 | `make etl-stats` | Количество чанков по `content_type` (опционально `LANG=ru\|en`) |
 | `make etl-manifest` | Последний manifest (опционально `LANG=ru\|en`) |
 
-Docker: `make docker-etl-ingest` индексирует **оба** языка; `docker-etl-ingest-ru` / `docker-etl-ingest-en` — один язык.
+Свой каталог схем: `ETL_SCHEMAS_DIR=path make etl-ingest` (через `ingest-dir`).
+
+Docker: `make docker-etl-ingest` индексирует все схемы в `backend/data`.
 
 ### API-эквиваленты
 
 | Метод | Путь |
 |-------|------|
-| `POST` | `/api/etl/ingest` — body: `{ "rebuild": false, "language_code": "ru", "source_path": null }` |
+| `POST` | `/api/etl/ingest` — body: `{ "schema_path": "data/chunking-schema-ru.json", "rebuild": false }` |
 | `POST` | `/api/etl/ingest-all` — body: `{ "rebuild": false }` |
 | `GET` | `/api/etl/stats` — опционально `?language_code=ru` |
 | `GET` | `/api/etl/manifest` — `?language_code=ru` |
@@ -69,7 +69,7 @@ Docker: `make docker-etl-ingest` индексирует **оба** языка; `
 
 | Событие | Действие |
 |---------|----------|
-| Изменился контент KB | `make etl-ingest-ru`, `etl-ingest-en` или `etl-ingest-all` (инкрементально) |
+| Изменился контент KB | `make etl-ingest` (инкрементально) |
 | Сменилась embedding model | те же цели с `REBUILD=1` |
 | Подозрение на рассинхрон FAISS/БД | Остановить backend → бэкап `backend/data/` → полный rebuild |
 | Прерванный ingest | Повторить ту же команду — checkpoint продолжит |
@@ -86,14 +86,14 @@ Docker: `make docker-etl-ingest` индексирует **оба** языка; `
 
 По языкам: `ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Обновляются после каждого батча эмбеддингов.
 
-**При успешном завершении** (`ETLService.ingest`, CLI `ingest` / `ingest-all`):
+**При успешном завершении** (`ETLService.ingest_schema`, CLI `ingest-schema` / `ingest-dir`):
 
 1. Сохраняются SQLite + FAISS + manifest.
 2. Checkpoint для завершённых языков **удаляется автоматически** (сервис + дополнительная очистка в CLI).
 
 **Если ingest прерван** (код выхода `130`, ошибка API, убит процесс):
 
-- Checkpoint **остаётся на диске** — повторите **ту же** команду (`make etl-ingest-en` и т.д.); совместимый checkpoint подхватится.
+- Checkpoint **остаётся на диске** — повторите **ту же** команду (`make etl-ingest` и т.д.); совместимый checkpoint подхватится.
 - Не удаляйте checkpoint вручную, если хотите продолжить с места остановки.
 
 Файлы в `backend/data/.gitignore` — в git не коммитятся.
@@ -164,7 +164,7 @@ backend/data/rag-document-en.md
 
 **Причина:** нет FAISS-индекса или manifest.
 
-**Решение:** `make etl-ingest-all` (или цель для конкретного языка). Проверить `backend/data/faiss-ru.index` и `faiss-en.index`.
+**Решение:** `make etl-ingest` (или цель для конкретного языка). Проверить `backend/data/faiss-ru.index` и `faiss-en.index`.
 
 ### `503 rag_chunks_missing`
 
