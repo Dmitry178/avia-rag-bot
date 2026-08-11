@@ -177,7 +177,8 @@ Each block:
 
 Each lane:
 - `id`
-- `description`
+- `label` — short localized title for trace UI and chunk citations (per schema language file)
+- `description` — optional subtitle or tooltip (shown when different from `label`)
 - `allowed_category_ids`
 - `top_k`
 - `oversample`
@@ -272,13 +273,14 @@ uv run --project backend python backend/scripts/run_etl.py ingest-dir --dir data
 - ingest each schema sequentially into SQLite (`io.chunk_meta.db_path` under `output_root`) and FAISS (`io.faiss_index_path`).
 
 CLI must also support:
-- `--schema <path>` (`schema-ingest`, isolated export without app DB writes)
+- `ingest-schema --schema <path>` — one schema into app SQLite + FAISS
+- `ingest-dir --dir <path>` / `ingest-all` — every supported schema in a directory
+- `schema-ingest --schema <path>` — isolated export without app DB writes
 - `--source <path>` (optional override)
-- `--output-root <path>`
-- `--run-id <string>` (optional namespace isolation)
-- `--no-embed`
-- `--allow-overwrite`
-- legacy `--lang <code>` (`ingest`, single schema resolved from KB config)
+- `--output-root <path>` (`schema-ingest` only)
+- `--run-id <string>` (optional namespace isolation, `schema-ingest`)
+- `--no-embed` (`schema-ingest`)
+- `--allow-overwrite` (`schema-ingest`)
 
 Required behavior:
 - by default, do not overwrite active production FAISS artifacts when `overwrite_policy` is `forbid`;

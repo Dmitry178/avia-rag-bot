@@ -145,7 +145,8 @@
 
 Lane содержит:
 - `id`
-- `description`
+- `label` — короткий локализованный заголовок для trace UI и цитат чанков (в файле схемы на нужном языке)
+- `description` — опциональный подзаголовок или tooltip (показывается, если отличается от `label`)
 - `allowed_category_ids`
 - `top_k`
 - `oversample`
@@ -235,13 +236,14 @@ uv run --project backend python backend/scripts/run_etl.py ingest-dir --dir data
 - для каждой схемы пишет SQLite (`io.chunk_meta.db_path` под `output_root`) и FAISS.
 
 Дополнительные аргументы:
-- `--schema <path>` (`schema-ingest`, без записи в app DB)
+- `ingest-schema --schema <path>` — одна схема в app SQLite + FAISS
+- `ingest-dir --dir <path>` / `ingest-all` — все поддерживаемые схемы в каталоге
+- `schema-ingest --schema <path>` — без записи в app DB
 - `--source <path>` (опциональный override)
-- `--output-root <path>`
-- `--run-id <string>` (опционально)
-- `--no-embed`
-- `--allow-overwrite`
-- legacy `--lang <code>` (`ingest`, одна схема из KB config)
+- `--output-root <path>` (`schema-ingest`)
+- `--run-id <string>` (опционально, `schema-ingest`)
+- `--no-embed` (`schema-ingest`)
+- `--allow-overwrite` (`schema-ingest`)
 
 Обязательное поведение:
 - не перезаписывать production FAISS по умолчанию при `overwrite_policy: forbid`;
