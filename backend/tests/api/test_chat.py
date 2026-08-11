@@ -61,7 +61,8 @@ def mock_rag_pipeline_with_decision_tree(*, llm_side_effect):
         id="decision_tree",
         content_types=frozenset({"decision_tree"}),
         top_k=3,
-        source_label="Decision trees",
+        label="Decision trees",
+        description="Chapter 16: step-by-step decision trees",
         min_similarity=0.30,
         presentation=LanePresentation(
             ui_priority=100,
