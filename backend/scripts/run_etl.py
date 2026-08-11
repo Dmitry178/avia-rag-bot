@@ -15,7 +15,7 @@ from app.db.init_db import init_db
 from app.db.session import SessionLocal, dispose_engine
 from app.exceptions.base import BaseCustomException
 from app.exceptions.ingest import IngestInterruptedError
-from app.services.etl import ETLService
+from app.services.etl import ETLService, ingest_chunking_schema_at_path
 from app.services.etl_progress import IngestProgress
 from app.services.schema_etl import SchemaETLService
 from etl.chunking_schema import (
@@ -92,28 +92,39 @@ async def _with_db_file[T](db_file: Path, handler: Callable[[DBManager], Corouti
         await dispose_engine()
 
 
-async def cmd_ingest(
-    language_code: str,
+def _resolve_cli_path(path_value: str) -> Path:
+    """
+    Resolve a CLI path relative to backend root when not absolute.
+    """
+
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = (settings.backend_root / path).resolve()
+
+    return path
+
+
+async def cmd_ingest_schema(
+    schema_path: str,
     source_path: str | None,
     *,
     rebuild: bool,
 ) -> int:
     """
-    Run document ingest (incremental by default, with progress output).
+    Ingest one chunking schema JSON into SQLite + FAISS.
     """
 
-    async def _run(db: DBManager):
-        return await ETLService(db).ingest(
-            language_code=language_code,
-            rebuild=rebuild,
-            source_path=source_path,
-            on_progress=_print_progress,
-        )
-
-    result = await _with_db(_run)
+    path = _resolve_cli_path(schema_path)
+    result = await ingest_chunking_schema_at_path(
+        path,
+        rebuild=rebuild,
+        source_path=source_path,
+        on_progress=_print_progress,
+    )
 
     print(file=sys.stderr)
-    print("Ingest completed.")
+    print("Ingest-schema completed.")
+    print(f"  schema_path:     {path}")
     print(f"  language_code:   {result.language_code}")
     print(f"  source_path:     {result.source_path}")
     print(f"  chunk_count:     {result.chunk_count}")
@@ -138,9 +149,7 @@ async def cmd_ingest_dir(
     Discover schema JSON files in a directory and ingest each one into SQLite + FAISS.
     """
 
-    dir_path = Path(schemas_dir)
-    if not dir_path.is_absolute():
-        dir_path = (settings.backend_root / dir_path).resolve()
+    dir_path = _resolve_cli_path(schemas_dir)
 
     schema_paths = discover_chunking_schemas(dir_path)
     first_context = load_runtime_schema(schema_paths[0], settings.backend_root, settings.repo_root)
@@ -169,7 +178,7 @@ async def cmd_ingest_dir(
 
 async def cmd_ingest_all(*, rebuild: bool) -> int:
     """
-    Run document ingest for every supported schema in backend/data.
+    Ingest every schema in backend/data (shorthand for ``ingest-dir --dir data``).
     """
 
     return await cmd_ingest_dir("data", rebuild=rebuild)
@@ -284,23 +293,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    ingest = subparsers.add_parser(
-        "ingest",
-        help="Parse document, embed chunks, update SQLite + FAISS (incremental by default)",
+    ingest_schema = subparsers.add_parser(
+        "ingest-schema",
+        help="Ingest one chunking schema JSON into SQLite + FAISS",
     )
-    ingest.add_argument(
-        "--lang",
-        metavar="CODE",
-        default="ru",
-        help="Knowledge-base language code (default: ru)",
+    ingest_schema.add_argument(
+        "--schema",
+        metavar="PATH",
+        required=True,
+        help="Path to chunking schema JSON (relative to backend root or absolute)",
     )
-    ingest.add_argument(
+    ingest_schema.add_argument(
         "--source",
         metavar="PATH",
         default=None,
-        help="Markdown source path override (relative to backend root or absolute)",
+        help="Markdown source path override (relative to schema directory or absolute)",
     )
-    ingest.add_argument(
+    ingest_schema.add_argument(
         "--rebuild",
         action="store_true",
         help="Force full re-embed (ignore reusable vectors and checkpoint)",
@@ -322,12 +331,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ingest_all = subparsers.add_parser(
         "ingest-all",
-        help="Ingest every supported schema in backend/data",
+        help="Ingest every schema in backend/data (same as ingest-dir --dir data)",
     )
     ingest_all.add_argument(
         "--rebuild",
         action="store_true",
-        help="Force full re-embed for every language",
+        help="Force full re-embed (ignore reusable vectors and checkpoint)",
     )
 
     stats = subparsers.add_parser("stats", help="Show chunk counts by content_type")
@@ -398,8 +407,12 @@ def main() -> None:
     else:
         args = _build_parser().parse_args()
         commands: dict[str, Callable[[], Coroutine[Any, Any, int]]] = {
+            "ingest-schema": lambda: cmd_ingest_schema(
+                args.schema,
+                args.source,
+                rebuild=args.rebuild,
+            ),
             "ingest-dir": lambda: cmd_ingest_dir(args.dir, rebuild=args.rebuild),
-            "ingest": lambda: cmd_ingest(args.lang, args.source, rebuild=args.rebuild),
             "ingest-all": lambda: cmd_ingest_all(rebuild=args.rebuild),
             "stats": lambda: cmd_stats(args.lang),
             "manifest": lambda: cmd_manifest(args.lang),
