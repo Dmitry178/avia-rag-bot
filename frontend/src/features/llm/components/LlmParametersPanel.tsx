@@ -5,6 +5,7 @@ import { useChatsQuery } from "@/features/chats/hooks/useChats";
 import { useSelectedChatId } from "@/features/chats/store";
 import { useUpdateChatSettingsMutation } from "@/features/chats/hooks/useChats";
 import { PanelHeader } from "@/app/layout/AppHeader";
+import { useTracePanelCloseAction } from "@/app/layout/TracePanelShell";
 import { useTranslation } from "@/shared/i18n";
 import { useHydrateLlmSettings } from "../hooks/useHydrateLlmSettings";
 import { useLlmSettingsStore } from "../llmSettingsStore";
@@ -12,6 +13,7 @@ import { LlmSettingsPanel } from "./LlmSettingsPanel";
 
 export function LlmParametersPanel() {
   const { t } = useTranslation();
+  const closeAction = useTracePanelCloseAction();
   const [selectedChatId] = useSelectedChatId();
   const chatsQuery = useChatsQuery();
   const chatQuery = useChatDetailQuery(selectedChatId);
@@ -35,7 +37,7 @@ export function LlmParametersPanel() {
 
   return (
     <>
-      <PanelHeader title={t("panels.parameters")} />
+      <PanelHeader title={t("panels.parameters")} action={closeAction} />
 
       <div className="app-panel__body app-panel__body--trace">
         <LlmSettingsPanel />
