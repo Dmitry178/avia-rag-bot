@@ -21,7 +21,7 @@ The single runtime path is:
 
 - Main KB ingest: `app/services/etl.py`
 - Universal schema ingest for external docs: `app/services/schema_etl.py`
-- CLI: `backend/scripts/run_etl.py` (`ingest`, `stats`, `manifest`, `schema-ingest`, interactive mode without args)
+- CLI: `backend/scripts/run_etl.py` (`ingest-all`, `ingest-dir`, `ingest-schema`, `stats`, `manifest`, `schema-ingest`, interactive mode without args)
 
 ## Schemas and docs
 

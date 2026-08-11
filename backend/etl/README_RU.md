@@ -21,7 +21,7 @@
 
 - Основной ingest KB: `app/services/etl.py`
 - Универсальный schema-ingest для внешних документов: `app/services/schema_etl.py`
-- CLI: `backend/scripts/run_etl.py` (`ingest`, `stats`, `manifest`, `schema-ingest`, интерактивный режим без аргументов)
+- CLI: `backend/scripts/run_etl.py` (`ingest-all`, `ingest-dir`, `ingest-schema`, `stats`, `manifest`, `schema-ingest`, интерактивный режим без аргументов)
 
 ## Схемы и документация
 
