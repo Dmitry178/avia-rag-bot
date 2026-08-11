@@ -259,6 +259,7 @@
   "retrieval_lanes": [
     {
       "id": "general",
+      "label": "General",
       "description": "General knowledge lane",
       "allowed_category_ids": [
         "general"
@@ -270,6 +271,7 @@
     },
     {
       "id": "faq",
+      "label": "FAQ",
       "description": "FAQ lane",
       "allowed_category_ids": [
         "faq"
@@ -281,6 +283,7 @@
     },
     {
       "id": "decision_tree",
+      "label": "Decision trees",
       "description": "Decision-tree lane",
       "allowed_category_ids": [
         "decision_tree"
@@ -300,6 +303,7 @@
     },
     {
       "id": "scenario",
+      "label": "Scenarios",
       "description": "Scenario lane",
       "allowed_category_ids": [
         "scenario"
