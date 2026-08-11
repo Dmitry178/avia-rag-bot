@@ -2,8 +2,10 @@ import { useTranslation } from "@/shared/i18n";
 import type { TraceEvent } from "@/shared/api/types";
 import type { RagConfigSnapshot, RagMessageTrace, RetrievalLaneTrace, TraceHit } from "../lib/ragTrace";
 import {
+  buildLaneLabelMap,
   parseRetrievalLanes,
   parseTraceHits,
+  resolveLaneLabel,
   retrievalLanesFromTrace,
 } from "../lib/ragTrace";
 
@@ -20,8 +22,6 @@ const TRACE_STEP_KEYS = new Set([
   "rag_config",
 ]);
 
-const LANE_KEYS = new Set(["sop", "faq", "decision_tree", "scenario"]);
-
 function formatSimilarity(score: number): string {
   return score.toFixed(4);
 }
@@ -32,14 +32,6 @@ function stepLabel(t: (key: string) => string, step: string): string {
   }
 
   return step;
-}
-
-function laneLabel(t: (key: string) => string, lane: string): string {
-  if (LANE_KEYS.has(lane)) {
-    return t(`trace.lanes.${lane}`);
-  }
-
-  return lane;
 }
 
 function chunkDisplaySimilarity(chunk: RagMessageTrace["chunks"][number]): number | null {
@@ -84,8 +76,11 @@ function TraceHitRow({
             <span className="trace-hit__title">{hit.title || `#${hit.id}`}</span>
             {hit.section ? <span className="trace-hit__section">{hit.section}</span> : null}
             {hit.lane ? (
-              <span className="trace-hit__lane" title={hit.lane_source || undefined}>
-                {laneLabel(t, hit.lane)}
+              <span
+                className="trace-hit__lane"
+                title={hit.lane_description || undefined}
+              >
+                {resolveLaneLabel(hit.lane, hit.lane_label, hit.lane_source)}
               </span>
             ) : null}
             <span className="trace-hit__id">#{hit.id}</span>
@@ -111,16 +106,19 @@ function RetrievalLaneSection({
   chunkPreviewById: Map<number, string>;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
+  const title = resolveLaneLabel(lane.lane, lane.label, lane.source_label);
+  const showDescription = Boolean(lane.description) && lane.description !== title;
+
   return (
     <details className="trace-lane">
       <summary className="trace-lane__summary">
-        <span className="trace-lane__title">{laneLabel(t, lane.lane)}</span>
+        <span className="trace-lane__title">{title}</span>
         <span className="trace-lane__count">
           {t("trace.laneHitCount", { count: lane.hit_count, topK: lane.top_k })}
         </span>
       </summary>
 
-      <p className="trace-lane__source">{lane.source_label}</p>
+      {showDescription ? <p className="trace-lane__source">{lane.description}</p> : null}
 
       {lane.hits.length === 0 ? (
         <p className="trace-empty trace-empty--compact">{t("trace.laneNoHits")}</p>
@@ -323,6 +321,7 @@ export function RagTraceStream({ trace }: { trace: RagMessageTrace | null }) {
 
   const chunkPreviewById = buildChunkPreviewById(trace);
   const retrievalLanes = retrievalLanesFromTrace(trace.traceSteps);
+  const laneLabelMap = buildLaneLabelMap(retrievalLanes);
   const hitSteps = trace.traceSteps
     .filter(isHitTraceStep)
     .filter((event) => !(event.step === "retrieval" && retrievalLanes.length > 0));
@@ -400,7 +399,13 @@ export function RagTraceStream({ trace }: { trace: RagMessageTrace | null }) {
                     </span>
                     <span className="rag-chunk__id">#{chunk.id}</span>
                     {chunk.retrieval_lane ? (
-                      <span className="rag-chunk__lane">{laneLabel(t, chunk.retrieval_lane)}</span>
+                      <span className="rag-chunk__lane">
+                        {resolveLaneLabel(
+                          chunk.retrieval_lane,
+                          chunk.retrieval_lane_label,
+                          laneLabelMap.get(chunk.retrieval_lane),
+                        )}
+                      </span>
                     ) : null}
                     {chunk.content_type ? (
                       <span className="rag-chunk__type">{chunk.content_type}</span>
