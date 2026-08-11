@@ -4,13 +4,16 @@ import asyncio
 import hashlib
 import json
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.core.config import Settings, get_kb_language, resolve_kb_chunking_schema_path, settings
+from app.core.config import DBSettings, Settings, get_kb_language, settings
 from app.core.db_manager import DBManager
 from app.core.faiss_manager import faiss_manager
 from app.core.logs import logger
+from app.db.init_db import init_db
+from app.db.session import SessionLocal, dispose_engine
 from app.exceptions import handle_basic_db_errors
 from app.exceptions.ingest import IngestInterruptedError
 from app.exceptions.service import ServiceError
@@ -24,12 +27,77 @@ from app.services.etl_progress import IngestProgress, IngestProgressCallback
 from etl.chunking_schema import (
     discover_chunking_schemas,
     load_runtime_schema,
+    resolve_schema_chunk_meta_db_path,
     resolve_schema_output_root,
     resolve_schema_source_path,
 )
 from etl.document_warnings import emit_duplicate_section_number_warnings
 from etl.universal_chunker import UniversalChunker
 from etl.types import ChunkDraft
+
+
+async def _with_schema_db[T](
+    db_file: Path,
+    handler: Callable[[DBManager], Awaitable[T]],
+    app_settings: Settings,
+) -> T:
+    """
+    Point the app database at a schema-declared SQLite file and run handler.
+    """
+
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+    await dispose_engine()
+    app_settings.db = DBSettings(url=f"sqlite:///{db_file.resolve().as_posix()}")
+    app_settings.data.ensure_exists(app_settings.backend_root)
+    await init_db()
+
+    try:
+        async with DBManager(SessionLocal) as db:
+            return await handler(db)
+    finally:
+        await dispose_engine()
+
+
+async def ingest_chunking_schema_at_path(
+    schema_path: Path,
+    *,
+    rebuild: bool = False,
+    source_path: str | None = None,
+    on_progress: IngestProgressCallback | None = None,
+    db: DBManager | None = None,
+    app_settings: Settings | None = None,
+) -> IngestResponse:
+    """
+    Ingest one schema file, using the SQLite path declared in the schema when present.
+    """
+
+    resolved_settings = app_settings or settings
+    context = load_runtime_schema(
+        schema_path,
+        resolved_settings.backend_root,
+        resolved_settings.repo_root,
+    )
+    db_path = resolve_schema_chunk_meta_db_path(context.schema, schema_dir=context.schema_dir)
+
+    async def _run(active_db: DBManager) -> IngestResponse:
+        return await ETLService(active_db, resolved_settings).ingest_schema(
+            schema_path=schema_path,
+            rebuild=rebuild,
+            source_path=source_path,
+            on_progress=on_progress,
+        )
+
+    if db_path is not None:
+        return await _with_schema_db(db_path, _run, resolved_settings)
+
+    if db is None:
+        raise ServiceError(
+            detail="Database session is required when schema does not declare chunk_meta.db_path",
+            error_code="etl_db_required",
+            status_code=500,
+        )
+
+    return await _run(db)
 
 
 class ETLService:
@@ -473,32 +541,6 @@ class ETLService:
             unchanged=plan.stats.unchanged,
             removed=plan.stats.removed,
             embedded=embedded_count,
-        )
-
-    @handle_basic_db_errors
-    async def ingest(
-        self,
-        *,
-        language_code: str,
-        rebuild: bool = False,
-        source_path: str | None = None,
-        on_progress: IngestProgressCallback | None = None,
-    ) -> IngestResponse:
-        """
-        Parse document, embed chunks, and persist index artifacts for one language.
-
-        Incremental by default: reuses unchanged chunk vectors, embeds new/changed only.
-        Writes a checkpoint during embedding so a failed run can resume.
-        """
-
-        get_kb_language(language_code)
-        schema_path = resolve_kb_chunking_schema_path(language_code, self.settings.backend_root)
-
-        return await self.ingest_schema(
-            schema_path=schema_path,
-            rebuild=rebuild,
-            source_path=source_path,
-            on_progress=on_progress,
         )
 
     @handle_basic_db_errors
