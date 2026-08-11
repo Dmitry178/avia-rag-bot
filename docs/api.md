@@ -34,7 +34,7 @@ Each endpoint should have **2–3 HTTP tests** in `backend/tests/api/` (mocked e
 | `POST` | `/api/chats/{chat_id}/messages/{message_id}/rating` | `test_chat.py` | covered |
 | `DELETE` | `/api/chats/{chat_id}/messages/{message_id}` | `test_chat.py` | covered |
 
-Run API tests: `make backend-test-api` or `uv run pytest tests/api` from `backend/`.
+Run API tests: `make backend-test` or `uv run pytest tests/api` from `backend/`.
 
 ---
 
@@ -76,29 +76,29 @@ Each knowledge-base **language** (`ru`, `en`) has its own chunk set in SQLite, F
 
 ### `POST /ingest`
 
-Parse one language's knowledge document, embed chunks, update SQLite + FAISS for that language.
+Ingest one chunking schema JSON into SQLite + FAISS.
 
 **Request body:**
 
 ```json
 {
+  "schema_path": "data/chunking-schema-ru.json",
   "rebuild": false,
-  "language_code": "ru",
   "source_path": null
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `schema_path` | string | Path to chunking schema JSON (relative to `backend/` or absolute) |
 | `rebuild` | boolean | Force full re-embed (default `false` = incremental) |
-| `language_code` | string \| null | KB language code (default `ru`) |
-| `source_path` | string \| null | Override markdown path; default from `config.py` (`KB_LANGUAGES`) |
+| `source_path` | string \| null | Optional markdown override (relative to schema directory or absolute) |
 
 **Response `200`:** `IngestResponse` — `language_code`, `chunk_count`, `doc_hash`, `embedding_model`, `source_path`, `built_at`, `added`, `updated`, `unchanged`, `removed`, `embedded`.
 
 ### `POST /ingest-all`
 
-Ingest every configured language (`ru`, `en`) sequentially.
+Discover every `rag.chunking-schema.v3` JSON in `backend/data` and ingest each schema.
 
 **Request body:** `{ "rebuild": false }`  
 **Response `200`:** `{ "results": [ IngestResponse, ... ] }`

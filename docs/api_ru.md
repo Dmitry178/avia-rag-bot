@@ -34,7 +34,7 @@ HTTP-контракт backend **avia-bot**. Базовый путь: `/api`. И�
 | `POST` | `/api/chats/{chat_id}/messages/{message_id}/rating` | `test_chat.py` | покрыт |
 | `DELETE` | `/api/chats/{chat_id}/messages/{message_id}` | `test_chat.py` | покрыт |
 
-Запуск API-тестов: `make backend-test-api` или `uv run pytest tests/api` из `backend/`.
+Запуск API-тестов: `make backend-test` или `uv run pytest tests/api` из `backend/`.
 
 ---
 
@@ -76,29 +76,29 @@ HTTP-статус по типу исключения (обычно `400`, `404`,
 
 ### `POST /ingest`
 
-Парсинг документа KB для одного языка, эмбеддинг чанков, обновление SQLite + FAISS.
+Ingest одного JSON-файла chunking schema в SQLite + FAISS.
 
 **Тело запроса:**
 
 ```json
 {
+  "schema_path": "data/chunking-schema-ru.json",
   "rebuild": false,
-  "language_code": "ru",
   "source_path": null
 }
 ```
 
 | Поле | Тип | Описание |
 |------|-----|----------|
+| `schema_path` | string | Путь к JSON схемы (относительно `backend/` или абсолютный) |
 | `rebuild` | boolean | Полный re-embed (`false` = инкрементально) |
-| `language_code` | string \| null | Код языка KB (по умолчанию `ru`) |
-| `source_path` | string \| null | Путь к markdown; по умолчанию из `config.py` (`KB_LANGUAGES`) |
+| `source_path` | string \| null | Опциональный override markdown (относительно каталога схемы или абсолютный) |
 
 **Ответ `200`:** `IngestResponse` — `language_code`, `chunk_count`, `doc_hash`, `embedding_model`, `source_path`, `built_at`, `added`, `updated`, `unchanged`, `removed`, `embedded`.
 
 ### `POST /ingest-all`
 
-Ingest всех настроенных языков (`ru`, `en`) последовательно.
+Обнаружить все `rag.chunking-schema.v3` в `backend/data` и выполнить ingest для каждой схемы.
 
 **Тело:** `{ "rebuild": false }`  
 **Ответ `200`:** `{ "results": [ IngestResponse, ... ] }`
