@@ -15,8 +15,8 @@
     "light": "Светлая"
   },
   "locale": {
-    "ru": "Русский",
-    "en": "English"
+    "ru": "RU",
+    "en": "EN"
   },
   "panels": {
     "chats": "Чаты",
