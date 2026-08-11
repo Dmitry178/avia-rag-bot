@@ -1,7 +1,10 @@
 """ETL ingestion routes."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Query
 
+from app.core.config import settings
 from app.core.db_manager import DBManager
 from app.db.deps import get_db
 from app.schemas.etl import (
@@ -12,15 +15,27 @@ from app.schemas.etl import (
     IngestResponse,
     ManifestResponse,
 )
-from app.services.etl import ETLService
+from app.services.etl import ETLService, ingest_chunking_schema_at_path
 
 router = APIRouter(prefix="/etl", tags=["etl"])
 
 
+def _resolve_schema_path(schema_path: str) -> Path:
+    """
+    Resolve a schema path relative to backend root when not absolute.
+    """
+
+    path = Path(schema_path)
+    if not path.is_absolute():
+        path = (settings.backend_root / path).resolve()
+
+    return path
+
+
 @router.post(
     "/ingest",
-    summary="Ingest knowledge document",
-    description="Parse a language-specific RAG document, embed chunks, and update SQLite + FAISS index.",
+    summary="Ingest one chunking schema",
+    description="Parse a schema-driven document, embed chunks, and update SQLite + FAISS.",
     response_model=IngestResponse,
 )
 async def ingest_document(
@@ -28,22 +43,21 @@ async def ingest_document(
     db: DBManager = Depends(get_db),
 ) -> IngestResponse:
     """
-    Run full ETL pipeline for one knowledge-base language.
+    Run full ETL pipeline for one chunking schema JSON file.
     """
 
-    language_code = body.language_code or "ru"
-
-    return await ETLService(db).ingest(
-        language_code=language_code,
+    return await ingest_chunking_schema_at_path(
+        _resolve_schema_path(body.schema_path),
         rebuild=body.rebuild,
         source_path=body.source_path,
+        db=db,
     )
 
 
 @router.post(
     "/ingest-all",
-    summary="Ingest all knowledge-base languages",
-    description="Run ETL for every configured KB language (ru and en).",
+    summary="Ingest all schemas in backend/data",
+    description="Discover every chunking schema in backend/data and run ETL for each.",
     response_model=IngestAllResponse,
 )
 async def ingest_all_documents(
@@ -51,7 +65,7 @@ async def ingest_all_documents(
     db: DBManager = Depends(get_db),
 ) -> IngestAllResponse:
     """
-    Run full ETL pipeline for all configured languages.
+    Run full ETL pipeline for all schemas in the default data directory.
     """
 
     return await ETLService(db).ingest_all(rebuild=body.rebuild)
