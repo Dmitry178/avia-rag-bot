@@ -349,7 +349,8 @@
   "retrieval_lanes": [
     {
       "id": "sop",
-      "description": "Chapters 01-12 (operational SOP)",
+      "label": "SOP (ch. 01–12)",
+      "description": "Chapters 01–12: operational procedures",
       "allowed_category_ids": [
         "sop"
       ],
@@ -360,7 +361,8 @@
     },
     {
       "id": "faq",
-      "description": "Chapter 14 FAQ + per-chapter FAQ (01-12)",
+      "label": "FAQ",
+      "description": "Chapter 14 and embedded FAQ in chapters 01–12",
       "allowed_category_ids": [
         "faq"
       ],
@@ -371,7 +373,8 @@
     },
     {
       "id": "decision_tree",
-      "description": "Chapter 16 (decision trees)",
+      "label": "Decision trees",
+      "description": "Chapter 16: step-by-step decision trees",
       "allowed_category_ids": [
         "decision_tree"
       ],
@@ -390,7 +393,8 @@
     },
     {
       "id": "scenario",
-      "description": "Chapter 17 (practical scenarios)",
+      "label": "Scenarios",
+      "description": "Chapter 17: practical scenarios",
       "allowed_category_ids": [
         "scenario"
       ],
