@@ -283,7 +283,7 @@ flowchart TB
 |-----|------------|
 | `rag_config` | Снимок настроек RAG для этого ответа (HyDE, Multi-Query, Rerank, `top_chunks`) |
 | `hyde` / `multi_query` / `query_rewriting` | Сгенерированные поисковые запросы (если включены) |
-| `retrieval` | Hits по lane (`lanes[]` с `source_label`, `top_k`, `hits`) и объединённые кандидаты |
+| `retrieval` | Hits по lane (`lanes[]` с `label`, `description`, `top_k`, `hits`) и объединённые кандидаты |
 | `rerank` | Финальный ранжированный список (если включён) |
 | `decision_tree` | Применимые hits дерева решений из lane `decision_tree` (similarity ≥ порога) |
 | `decision_tree_generation` | Отдельная проработка совпавшего дерева (если применена) |
@@ -291,7 +291,7 @@ flowchart TB
 Шаги:
 
 1. Публикуются клиенту через **SSE** (`event: trace`).
-2. Сохраняются в `metadata.rag_trace` ответа ассистента (вместе с `retrieved_chunks`, включая `retrieval_lane`).
+2. Сохраняются в `metadata.rag_trace` ответа ассистента (вместе с `retrieved_chunks`, включая `retrieval_lane` и `retrieval_lane_label`).
 
 **Панель трассировки** (`features/trace/`) показывает: применённые настройки RAG для последнего ответа, поисковые запросы, раскрываемые hits по корпусу/lane и чанки, ушедшие в генерацию. **Панель настроек RAG** над ней редактирует значения чата для следующего сообщения.
 

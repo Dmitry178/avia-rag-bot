@@ -283,7 +283,7 @@ Each pipeline step produces a `RagTraceStep` (name, duration, structured data). 
 |------|---------|
 | `rag_config` | Snapshot of RAG settings used for this answer (HyDE, Multi-Query, Rerank, `top_chunks`) |
 | `hyde` / `multi_query` / `query_rewriting` | Generated search queries (if enabled) |
-| `retrieval` | Per-lane hits (`lanes[]` with `source_label`, `top_k`, `hits`) plus merged candidates |
+| `retrieval` | Per-lane hits (`lanes[]` with `label`, `description`, `top_k`, `hits`) plus merged candidates |
 | `rerank` | Final ranked hits (if enabled) |
 | `decision_tree` | Applicable decision-tree hits from the `decision_tree` lane (similarity ≥ threshold) |
 | `decision_tree_generation` | Dedicated walkthrough of the matched tree (if applied) |
@@ -291,7 +291,7 @@ Each pipeline step produces a `RagTraceStep` (name, duration, structured data). 
 Steps are:
 
 1. Published to the client via **SSE** (`event: trace`).
-2. Stored in assistant message `metadata.rag_trace` (with `retrieved_chunks` including `retrieval_lane`).
+2. Stored in assistant message `metadata.rag_trace` (with `retrieved_chunks` including `retrieval_lane` and `retrieval_lane_label`).
 
 The **trace panel** (`features/trace/`) shows: applied RAG settings for the last answer, search queries, expandable hits per corpus/lane, and chunks used in generation. The **RAG settings panel** above it edits chat-level defaults for the next message.
 
