@@ -7,6 +7,12 @@ import { type Locale, useTranslation } from "@/shared/i18n";
 import { useThemeStore } from "@/theme/store";
 import type { ThemePreference } from "@/theme/types";
 
+type ThemeOption = {
+  icon: string;
+  label: string;
+  value: ThemePreference;
+};
+
 export function AppHeader() {
   const { t, locale, setLocale } = useTranslation();
   const theme = useThemeStore((state) => state.theme);
@@ -15,10 +21,10 @@ export function AppHeader() {
   const setChatMode = useChatModeStore((state) => state.setMode);
   const requestComposerFocus = useChatUiStore((state) => state.requestComposerFocus);
 
-  const themeOptions: { label: string; value: ThemePreference }[] = [
-    { label: t("theme.system"), value: "system" },
-    { label: t("theme.light"), value: "light" },
-    { label: t("theme.dark"), value: "dark" },
+  const themeOptions: ThemeOption[] = [
+    { icon: "pi pi-desktop", label: t("theme.system"), value: "system" },
+    { icon: "pi pi-sun", label: t("theme.light"), value: "light" },
+    { icon: "pi pi-moon", label: t("theme.dark"), value: "dark" },
   ];
 
   const localeOptions: { label: string; value: Locale }[] = [
@@ -69,9 +75,10 @@ export function AppHeader() {
         />
 
         <SelectButton
-          className="app-header__select"
+          className="app-header__select app-header__select--icons"
           value={theme}
           options={themeOptions}
+          itemTemplate={(option) => <i className={option.icon} aria-hidden="true" />}
           onChange={(event) => {
             if (event.value) {
               setTheme(event.value as ThemePreference);
