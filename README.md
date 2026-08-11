@@ -169,7 +169,7 @@ Trace (SSE + `metadata.rag_trace`): `rag_config` snapshot, query transform step,
 
 Full documentation: [docs/README.md](docs/README.md). Architecture: [ARCHITECTURE.md](docs/ARCHITECTURE.md). Product requirements: [PRD.md](docs/PRD.md).
 
-**Requirement:** build indexes before using RAG (`make etl-ingest-all` for both languages, or `etl-ingest-ru` / `etl-ingest-en`). Without them, the API returns `503 rag_index_missing`.
+**Requirement:** build indexes before using RAG (`make etl-ingest`). Without them, the API returns `503 rag_index_missing`.
 
 ## Prompt injection protection
 
@@ -205,9 +205,7 @@ RAG method help texts: `rag-methods.ru.json` / `rag-methods.en.json`.
 ```bash
 cp backend/.env.example backend/.env   # fill in LLM__*
 make backend-install
-make etl-ingest-all                    # required for RAG (ru + en)
-make etl-ingest-ru                     # or one language only
-make etl-ingest-en
+make etl-ingest                    # required for RAG (all schemas in backend/data)
 make etl-stats
 make etl-manifest
 ```
@@ -288,7 +286,7 @@ Requirements: Python 3.13 + [uv](https://docs.astral.sh/uv/), Node.js 20+.
 cp backend/.env.example backend/.env
 # LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
 make backend-install
-make etl-ingest-all                    # for RAG mode
+make etl-ingest                    # for RAG mode
 make backend-dev                       # http://127.0.0.1:8000
 
 # 2. Frontend (separate terminal)

@@ -169,7 +169,7 @@ Lane выполняются параллельно (`app/rag/retrieval_lanes.py`
 
 Полная документация: [docs/README_RU.md](docs/README_RU.md). Архитектура: [ARCHITECTURE_RU.md](docs/ARCHITECTURE_RU.md). Продуктовые требования: [PRD_RU.md](docs/PRD_RU.md).
 
-**Требование:** перед использованием RAG нужны построенные индексы (`make etl-ingest-all` для обоих языков или `etl-ingest-ru` / `etl-ingest-en`). Без индекса API вернёт `503 rag_index_missing`.
+**Требование:** перед использованием RAG нужны построенные индексы (`make etl-ingest`). Без индекса API вернёт `503 rag_index_missing`.
 
 ## Защита от промпт-инъекций
 
@@ -205,9 +205,7 @@ Unit-тесты: `backend/tests/unit/llm/test_prompt_guard.py`.
 ```bash
 cp backend/.env.example backend/.env   # заполнить LLM__*
 make backend-install
-make etl-ingest-all                    # обязательно для RAG (ru + en)
-make etl-ingest-ru                     # или один язык
-make etl-ingest-en
+make etl-ingest                    # обязательно для RAG (все схемы в backend/data)
 make etl-stats
 make etl-manifest
 ```
@@ -288,7 +286,7 @@ API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
 cp backend/.env.example backend/.env
 # LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
 make backend-install
-make etl-ingest-all                    # для режима RAG
+make etl-ingest                    # для режима RAG
 make backend-dev                       # http://127.0.0.1:8000
 
 # 2. Frontend (отдельный терминал)
