@@ -19,7 +19,7 @@ def _lane(
         id=lane_id,
         content_types=frozenset({lane_id}),
         top_k=3,
-        source_label=lane_id,
+        label=lane_id,
         min_similarity=min_similarity,
         presentation=presentation or LanePresentation(),
     )
