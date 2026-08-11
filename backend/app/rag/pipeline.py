@@ -65,6 +65,8 @@ class RagPipeline:
 
         lane = item.retrieval_lane or item.chunk.content_type
         lane_meta = lane_by_id.get(lane)
+        lane_label = getattr(lane_meta, "label", "") if lane_meta is not None else ""
+        lane_description = getattr(lane_meta, "description", "") if lane_meta is not None else ""
 
         return {
             "id": chunk_id,
@@ -72,7 +74,9 @@ class RagPipeline:
             "section": item.chunk.section or "",
             "content_type": item.chunk.content_type,
             "lane": lane,
-            "lane_source": getattr(lane_meta, "source_label", "") if lane_meta is not None else "",
+            "lane_label": lane_label,
+            "lane_description": lane_description,
+            "lane_source": lane_description,
             "similarity": round(RagPipeline._chunk_similarity(item), 4),
             "content_preview": item.chunk.content[:600],
         }
@@ -95,7 +99,9 @@ class RagPipeline:
             serialized.append(
                 {
                     "lane": getattr(lane, "id"),
-                    "source_label": getattr(lane, "source_label"),
+                    "label": getattr(lane, "label", ""),
+                    "description": getattr(lane, "description", ""),
+                    "source_label": getattr(lane, "label", ""),
                     "top_k": getattr(lane, "top_k"),
                     "hit_count": len(hits),
                     "hits": RagPipeline._serialize_trace_hits(hits, lane_by_id),
@@ -159,7 +165,7 @@ class RagPipeline:
             raise ServiceError(
                 detail=(
                     f"Knowledge base chunks are missing for language {language_code}. "
-                    "Run `make etl-ingest-all` to rebuild SQLite metadata and FAISS indexes."
+                    "Run `make etl-ingest` to rebuild SQLite metadata and FAISS indexes."
                 ),
                 error_code="rag_chunks_missing",
                 status_code=503,
