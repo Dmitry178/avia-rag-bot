@@ -15,6 +15,8 @@ from tests.api.mocks import (
     MOCK_MANIFEST_RESPONSE_EN,
 )
 
+SCHEMA_PATH = "data/chunking-schema-ru.json"
+
 
 @pytest.mark.asyncio
 async def test_etl_ingest_returns_mocked_response(client: AsyncClient) -> None:
@@ -22,20 +24,24 @@ async def test_etl_ingest_returns_mocked_response(client: AsyncClient) -> None:
     Ingest endpoint should return the service result when ingestion succeeds.
     """
 
-    with patch("app.api.routers.etl.ETLService") as etl_service_cls:
-        etl_service_cls.return_value.ingest = AsyncMock(return_value=MOCK_INGEST_RESPONSE)
-        response = await client.post("/api/etl/ingest", json={"rebuild": False})
+    with patch("app.api.routers.etl.ingest_chunking_schema_at_path", new_callable=AsyncMock) as ingest_mock:
+        ingest_mock.return_value = MOCK_INGEST_RESPONSE
+        response = await client.post(
+            "/api/etl/ingest",
+            json={"schema_path": SCHEMA_PATH, "rebuild": False},
+        )
 
     assert response.status_code == 200
     data = response.json()
     assert data["chunk_count"] == 42
     assert data["doc_hash"] == "deadbeef"
     assert data["embedded"] == 12
-    etl_service_cls.return_value.ingest.assert_awaited_once_with(
-        language_code="ru",
-        rebuild=False,
-        source_path=None,
-    )
+    ingest_mock.assert_awaited_once()
+    schema_path = ingest_mock.await_args.args[0]
+    call_kwargs = ingest_mock.await_args.kwargs
+    assert call_kwargs["rebuild"] is False
+    assert call_kwargs["source_path"] is None
+    assert str(schema_path).endswith(SCHEMA_PATH)
 
 
 @pytest.mark.asyncio
@@ -44,19 +50,22 @@ async def test_etl_ingest_passes_rebuild_and_source_path(client: AsyncClient) ->
     Ingest endpoint should forward rebuild flag and optional source_path to the service.
     """
 
-    with patch("app.api.routers.etl.ETLService") as etl_service_cls:
-        etl_service_cls.return_value.ingest = AsyncMock(return_value=MOCK_INGEST_RESPONSE)
+    with patch("app.api.routers.etl.ingest_chunking_schema_at_path", new_callable=AsyncMock) as ingest_mock:
+        ingest_mock.return_value = MOCK_INGEST_RESPONSE
         response = await client.post(
             "/api/etl/ingest",
-            json={"rebuild": True, "source_path": "/custom/doc.md"},
+            json={
+                "schema_path": SCHEMA_PATH,
+                "rebuild": True,
+                "source_path": "/custom/doc.md",
+            },
         )
 
     assert response.status_code == 200
-    etl_service_cls.return_value.ingest.assert_awaited_once_with(
-        language_code="ru",
-        rebuild=True,
-        source_path="/custom/doc.md",
-    )
+    ingest_mock.assert_awaited_once()
+    call_kwargs = ingest_mock.await_args.kwargs
+    assert call_kwargs["rebuild"] is True
+    assert call_kwargs["source_path"] == "/custom/doc.md"
 
 
 @pytest.mark.asyncio
@@ -65,49 +74,27 @@ async def test_etl_ingest_propagates_service_error(client: AsyncClient) -> None:
     Ingest endpoint should map service failures to HTTP error responses.
     """
 
-    with patch("app.api.routers.etl.ETLService") as etl_service_cls:
-        etl_service_cls.return_value.ingest = AsyncMock(
-            side_effect=ServiceError(
-                detail="Knowledge base file not found",
-                error_code="etl_source_not_found",
-                status_code=404,
-            ),
+    with patch("app.api.routers.etl.ingest_chunking_schema_at_path", new_callable=AsyncMock) as ingest_mock:
+        ingest_mock.side_effect = ServiceError(
+            detail="Knowledge base file not found",
+            error_code="etl_source_not_found",
+            status_code=404,
         )
-        response = await client.post("/api/etl/ingest", json={})
+        response = await client.post("/api/etl/ingest", json={"schema_path": SCHEMA_PATH})
 
     assert response.status_code == 404
     assert response.json()["error_code"] == "etl_source_not_found"
 
 
 @pytest.mark.asyncio
-async def test_etl_ingest_forwards_language_code(client: AsyncClient) -> None:
+async def test_etl_ingest_requires_schema_path(client: AsyncClient) -> None:
     """
-    Ingest endpoint should forward an explicit language_code to the service.
-    """
-
-    with patch("app.api.routers.etl.ETLService") as etl_service_cls:
-        etl_service_cls.return_value.ingest = AsyncMock(return_value=MOCK_INGEST_RESPONSE)
-        response = await client.post("/api/etl/ingest", json={"language_code": "en"})
-
-    assert response.status_code == 200
-    assert response.json()["language_code"] == "ru"
-    etl_service_cls.return_value.ingest.assert_awaited_once_with(
-        language_code="en",
-        rebuild=False,
-        source_path=None,
-    )
-
-
-@pytest.mark.asyncio
-async def test_etl_ingest_propagates_unknown_language(client: AsyncClient) -> None:
-    """
-    Ingest endpoint should return 404 for an unsupported language_code.
+    Ingest endpoint should reject requests without schema_path.
     """
 
-    response = await client.post("/api/etl/ingest", json={"language_code": "de"})
+    response = await client.post("/api/etl/ingest", json={"rebuild": False})
 
-    assert response.status_code == 404
-    assert response.json()["error_code"] == "kb_language_unknown"
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
