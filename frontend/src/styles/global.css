@@ -211,6 +211,29 @@ textarea {
   line-height: 1.25;
 }
 
+.app-header__select--icons .p-button {
+  width: 2.4375rem;
+  min-width: 2.4375rem;
+  padding: 0.3125rem 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-header__select--icons .p-button .p-button-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 0;
+  line-height: 1;
+}
+
+.app-header__select--icons .p-button .p-button-label i {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
 .app-panel__header .p-button,
 .chat-sidebar__toolbar .p-button {
   background: var(--color-brand-primaryMuted);
