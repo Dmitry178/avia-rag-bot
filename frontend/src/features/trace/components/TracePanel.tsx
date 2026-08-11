@@ -1,4 +1,5 @@
 import { PanelHeader } from "@/app/layout/AppHeader";
+import { useTracePanelCloseAction } from "@/app/layout/TracePanelShell";
 import { useChatDetailQuery } from "@/features/chat/hooks/useChat";
 import { useChatsQuery } from "@/features/chats/hooks/useChats";
 import { useSelectedChatId } from "@/features/chats/store";
@@ -11,6 +12,7 @@ import { RagTraceStream } from "./RagTraceStream";
 
 export function TracePanel() {
   const { t } = useTranslation();
+  const closeAction = useTracePanelCloseAction();
   const [selectedChatId] = useSelectedChatId();
   const chatsQuery = useChatsQuery();
   const chatQuery = useChatDetailQuery(selectedChatId);
@@ -29,7 +31,7 @@ export function TracePanel() {
 
   return (
     <>
-      <PanelHeader title={t("panels.trace")} />
+      <PanelHeader title={t("panels.trace")} action={closeAction} />
 
       <div className="app-panel__body app-panel__body--trace">
         <RagSettingsPanel />
