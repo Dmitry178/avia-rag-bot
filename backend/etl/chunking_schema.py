@@ -197,7 +197,8 @@ class RetrievalLaneSchema(BaseModel):
     """
 
     id: str
-    description: str
+    label: str
+    description: str = ""
     allowed_category_ids: list[str]
     top_k: int
     oversample: int = 10
