@@ -43,6 +43,7 @@ from app.rag.decision_tree import (
 from app.rag.generation import build_context_block
 from app.rag.lane_post_processing import exclude_lane_categories
 from app.rag.pipeline import RagPipeline
+from app.rag.retrieval_lanes import get_retrieval_runtime
 from app.rag.types import RagQueryContext, RagTraceStep
 from app.services.chat_title import schedule_chat_title_generation
 
@@ -157,8 +158,9 @@ class ChatService:
         return item.score
 
     @staticmethod
-    def _serialize_retrieved_chunks(chunks) -> list[dict]:
+    def _serialize_retrieved_chunks(chunks, *, language_code: str) -> list[dict]:
         serialized: list[dict] = []
+        lane_by_id = get_retrieval_runtime(language_code).lane_by_id
 
         for citation_index, item in enumerate(chunks, start=1):
             chunk = item.chunk
@@ -166,6 +168,9 @@ class ChatService:
                 continue
 
             similarity = round(ChatService._chunk_similarity(item), 4)
+            lane_id = item.retrieval_lane or chunk.content_type
+            lane_meta = lane_by_id.get(lane_id)
+            lane_label = lane_meta.label if lane_meta is not None else lane_id
 
             serialized.append(
                 {
@@ -174,7 +179,8 @@ class ChatService:
                     "section": chunk.section,
                     "title": chunk.title,
                     "content_type": chunk.content_type,
-                    "retrieval_lane": item.retrieval_lane or chunk.content_type,
+                    "retrieval_lane": lane_id,
+                    "retrieval_lane_label": lane_label,
                     "score": similarity,
                     "similarity": similarity,
                     "source_query": item.source_query,
@@ -185,6 +191,20 @@ class ChatService:
             )
 
         return serialized
+
+    @staticmethod
+    def _rag_retrieval_metadata(rag_result, *, language_code: str) -> dict:
+        return {
+            "search_queries": rag_result.search_queries,
+            "retrieved_chunk_ids": [
+                item.chunk.id for item in rag_result.chunks if item.chunk.id is not None
+            ],
+            "retrieved_chunks": ChatService._serialize_retrieved_chunks(
+                rag_result.chunks,
+                language_code=language_code,
+            ),
+            "rag_trace": ChatService._serialize_rag_trace(rag_result.trace),
+        }
 
     @staticmethod
     def _serialize_chunk_meta(
@@ -456,17 +476,6 @@ class ChatService:
             enriched["rag_trace"] = ChatService._enrich_rag_trace_steps(rag_trace, chunk_map)
 
         return enriched
-
-    @staticmethod
-    def _rag_retrieval_metadata(rag_result) -> dict:
-        return {
-            "search_queries": rag_result.search_queries,
-            "retrieved_chunk_ids": [
-                item.chunk.id for item in rag_result.chunks if item.chunk.id is not None
-            ],
-            "retrieved_chunks": ChatService._serialize_retrieved_chunks(rag_result.chunks),
-            "rag_trace": ChatService._serialize_rag_trace(rag_result.trace),
-        }
 
     @staticmethod
     def _is_llm_free_mode(llm_config: LlmConfig | None) -> bool:
@@ -893,7 +902,9 @@ class ChatService:
                         ),
                     )
                     await self._publish_rag_trace(body.client_id, rag_result.trace)
-                    settings_metadata.update(self._rag_retrieval_metadata(rag_result))
+                    settings_metadata.update(
+                        self._rag_retrieval_metadata(rag_result, language_code=chat.language_code),
+                    )
 
                     context_for_general = rag_result.context
 
