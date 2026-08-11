@@ -22,7 +22,8 @@
     "chats": "Chats",
     "dialog": "Dialog",
     "trace": "Trace",
-    "parameters": "Parameters"
+    "parameters": "Parameters",
+    "close": "Close panel"
   },
   "chat": {
     "new": "New chat",
