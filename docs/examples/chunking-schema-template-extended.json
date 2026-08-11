@@ -346,6 +346,7 @@
   "retrieval_lanes": [
     {
       "id": "sop",
+      "label": "SOP",
       "description": "Operational SOP lane",
       "allowed_category_ids": [
         "sop"
@@ -357,6 +358,7 @@
     },
     {
       "id": "faq",
+      "label": "FAQ",
       "description": "FAQ lane",
       "allowed_category_ids": [
         "faq"
@@ -368,6 +370,7 @@
     },
     {
       "id": "decision_tree",
+      "label": "Decision trees",
       "description": "Decision-tree lane",
       "allowed_category_ids": [
         "decision_tree"
@@ -387,6 +390,7 @@
     },
     {
       "id": "scenario",
+      "label": "Scenarios",
       "description": "Scenario lane",
       "allowed_category_ids": [
         "scenario"
@@ -398,6 +402,7 @@
     },
     {
       "id": "reference",
+      "label": "Reference",
       "description": "Reference lane",
       "allowed_category_ids": [
         "reference"
