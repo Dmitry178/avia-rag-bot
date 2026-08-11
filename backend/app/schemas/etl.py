@@ -7,31 +7,31 @@ from pydantic import BaseModel, Field
 
 class IngestRequest(BaseModel):
     """
-    Request body for document ingestion.
+    Request body for ingesting one chunking schema file.
     """
 
+    schema_path: str = Field(
+        ...,
+        description="Path to chunking schema JSON (relative to backend root or absolute)",
+    )
     rebuild: bool = Field(
         default=False,
         description="Force full re-embed; when false, reuse unchanged chunks and resume from checkpoint",
     )
-    language_code: str | None = Field(
-        default=None,
-        description="Target KB language code (e.g. ru, en); required unless source_path implies a language",
-    )
     source_path: str | None = Field(
         default=None,
-        description="Override path to markdown source; defaults to the language document in app/core/config.py",
+        description="Optional markdown source path override (relative to schema directory or absolute)",
     )
 
 
 class IngestAllRequest(BaseModel):
     """
-    Request body for ingesting all active knowledge-base languages.
+    Request body for ingesting all schemas in the default data directory.
     """
 
     rebuild: bool = Field(
         default=False,
-        description="Force full re-embed for every language",
+        description="Force full re-embed for every schema",
     )
 
 
@@ -55,7 +55,7 @@ class IngestResponse(BaseModel):
 
 class IngestAllResponse(BaseModel):
     """
-    Result of ingesting all active languages.
+    Result of ingesting every schema in a directory.
     """
 
     results: list[IngestResponse]
