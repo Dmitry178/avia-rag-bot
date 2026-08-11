@@ -23,19 +23,19 @@ Docker backend service uses `healthz` in its healthcheck.
 
 | Command | Description |
 |---------|-------------|
-| `make etl-ingest-ru` | Incremental ingest — Russian KB only (`faiss-ru.index`) |
-| `make etl-ingest-en` | Incremental ingest — English KB only (`faiss-en.index`) |
-| `make etl-ingest-all` | Incremental ingest — **both** `ru` and `en` |
+| `make etl-ingest` | Incremental ingest — all schemas in `backend/data` (`ru` + `en` by default) |
 | `make etl-stats` | Chunk counts by `content_type` (optional `LANG=ru\|en`) |
 | `make etl-manifest` | Latest index manifest (optional `LANG=ru\|en`) |
 
-Docker: `make docker-etl-ingest` indexes **both** languages; `docker-etl-ingest-ru` / `docker-etl-ingest-en` for one language.
+Custom schema directory: `ETL_SCHEMAS_DIR=path make etl-ingest` (uses `ingest-dir`).
+
+Docker: `make docker-etl-ingest` indexes all schemas in `backend/data`.
 
 ### API equivalents
 
 | Method | Path |
 |--------|------|
-| `POST` | `/api/etl/ingest` — body: `{ "rebuild": false, "language_code": "ru", "source_path": null }` |
+| `POST` | `/api/etl/ingest` — body: `{ "schema_path": "data/chunking-schema-ru.json", "rebuild": false }` |
 | `POST` | `/api/etl/ingest-all` — body: `{ "rebuild": false }` |
 | `GET` | `/api/etl/stats` — optional `?language_code=ru` |
 | `GET` | `/api/etl/manifest` — `?language_code=ru` |
@@ -69,7 +69,7 @@ Chunk `id` in SQLite must match FAISS row index per language — both are rebuil
 
 | Trigger | Action |
 |---------|--------|
-| KB content changed | `make etl-ingest-ru`, `etl-ingest-en`, or `etl-ingest-all` (incremental) |
+| KB content changed | `make etl-ingest` (incremental) |
 | Embedding model changed | same targets with `REBUILD=1` |
 | FAISS/DB corruption suspected | Stop backend → backup `backend/data/` → full rebuild |
 | Interrupted ingest | Re-run same command — checkpoint resumes |
@@ -86,14 +86,14 @@ During embedding, ETL writes **resume state** so a long ingest can continue afte
 
 Per language: `ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Updated after each embedding batch.
 
-**On successful completion** (`ETLService.ingest` and `scripts/run_etl.py ingest` / `ingest-all`):
+**On successful completion** (`ETLService.ingest_schema`, `scripts/run_etl.py ingest-schema` / `ingest-dir`):
 
 1. SQLite + FAISS + manifest are persisted.
 2. Checkpoint files for the finished language(s) are **deleted automatically** (service layer + CLI safety pass).
 
 **If ingest was interrupted** (exit code `130`, API error mid-embed, process killed):
 
-- Checkpoint **remains on disk** — re-run the **same** command (`make etl-ingest-en`, etc.); compatible checkpoints are resumed.
+- Checkpoint **remains on disk** — re-run the **same** command (`make etl-ingest`, etc.); compatible checkpoints are resumed.
 - Do **not** delete the checkpoint manually unless you intend to restart embedding from scratch.
 
 Files are listed in `backend/data/.gitignore` — not committed to git.
@@ -164,7 +164,7 @@ Key log events: `etl_ingest_*`, `sse_subscribed`, `llm_api_error`, `rag_index_mi
 
 **Cause:** FAISS index or manifest not found.
 
-**Fix:** Run `make etl-ingest-all` (or the language-specific target). Verify `backend/data/faiss-ru.index` and `faiss-en.index` exist.
+**Fix:** Run `make etl-ingest` (or the language-specific target). Verify `backend/data/faiss-ru.index` and `faiss-en.index` exist.
 
 ### `503 rag_chunks_missing`
 
