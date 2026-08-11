@@ -128,12 +128,6 @@
       "rag_config": "Настройки RAG",
       "decision_tree": "Совпадение с деревом решений",
       "decision_tree_generation": "Проработка дерева решений"
-    },
-    "lanes": {
-      "sop": "SOP (гл. 01–12)",
-      "faq": "FAQ",
-      "decision_tree": "Деревья решений",
-      "scenario": "Сценарии"
     }
   }
 }

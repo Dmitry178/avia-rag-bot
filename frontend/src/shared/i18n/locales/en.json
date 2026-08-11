@@ -128,12 +128,6 @@
       "rag_config": "RAG settings",
       "decision_tree": "Decision tree match",
       "decision_tree_generation": "Decision tree walkthrough"
-    },
-    "lanes": {
-      "sop": "SOP (ch. 01–12)",
-      "faq": "FAQ",
-      "decision_tree": "Decision trees",
-      "scenario": "Scenarios"
     }
   }
 }
