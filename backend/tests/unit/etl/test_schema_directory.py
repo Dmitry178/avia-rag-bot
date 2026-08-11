@@ -112,6 +112,7 @@ def test_schema_chunk_meta_db_path_resolves_under_output_root(tmp_path) -> None:
                 "retrieval_lanes": [
                     {
                         "id": "faq",
+                        "label": "FAQ",
                         "description": "FAQ lane",
                         "allowed_category_ids": ["faq"],
                         "top_k": 3,
