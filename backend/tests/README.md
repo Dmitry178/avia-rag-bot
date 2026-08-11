@@ -55,8 +55,8 @@ From the repository root (via Makefile):
 
 ```bash
 make backend-test          # all tests
-make backend-test-api      # tests/api/ only
-make backend-test-unit     # tests/unit/ only
+uv run pytest tests/api      # tests/api/ only
+uv run pytest tests/unit     # tests/unit/ only
 ```
 
 From `backend/`:

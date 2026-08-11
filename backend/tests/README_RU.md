@@ -55,8 +55,8 @@ tests/
 
 ```bash
 make backend-test          # все тесты
-make backend-test-api      # только tests/api/
-make backend-test-unit     # только tests/unit/
+uv run pytest tests/api      # только tests/api/
+uv run pytest tests/unit     # только tests/unit/
 ```
 
 Из каталога `backend/`:
