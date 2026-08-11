@@ -85,7 +85,7 @@ SQLite автоматически преобразуется в async (`sqlite+a
 
 Контракт схемы: [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md).
 
-Чтобы изменить пути — правка `KB_LANGUAGES` и повторный ingest. Переопределение на запрос: API `source_path` или CLI `--source` у `POST /api/etl/ingest`.
+Чтобы изменить пути — правка `KB_LANGUAGES` и повторный ingest. Переопределение на запрос: API `source_path` или CLI `--source` у `ingest-schema` / `POST /api/etl/ingest`.
 
 ---
 

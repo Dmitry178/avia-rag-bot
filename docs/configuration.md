@@ -85,7 +85,7 @@ Markdown sources for each language are defined in **`backend/app/core/config.py`
 
 Schema contract details: [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md).
 
-To change paths, edit `KB_LANGUAGES` and re-run ingest. Per-request override: API `source_path` or CLI `--source` on `POST /api/etl/ingest`.
+To change paths, edit `KB_LANGUAGES` and re-run ingest. Per-request override: API `source_path` or CLI `--source` on `ingest-schema` / `POST /api/etl/ingest`.
 
 ---
 
