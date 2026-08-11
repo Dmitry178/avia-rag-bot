@@ -30,7 +30,8 @@ class RetrievalLane:
     id: str
     content_types: frozenset[str]
     top_k: int
-    source_label: str
+    label: str
+    description: str = ""
     oversample: int = 10
     min_fetch: int = 80
     min_similarity: float = 0.4
@@ -76,7 +77,8 @@ def get_retrieval_runtime(language_code: str) -> RetrievalRuntime:
                 id=lane.id,
                 content_types=frozenset(lane.allowed_category_ids),
                 top_k=lane.top_k,
-                source_label=lane.description,
+                label=lane.label,
+                description=lane.description,
                 oversample=lane.oversample,
                 min_fetch=lane.min_fetch,
                 min_similarity=lane.min_similarity,
