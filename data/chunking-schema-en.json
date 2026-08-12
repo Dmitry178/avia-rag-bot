@@ -1,0 +1,416 @@
+{
+  "format": "rag.chunking-schema.v3",
+  "document": {
+    "document_id": "avia-kb-en",
+    "language_code": "en",
+    "display_name": "English KB",
+    "source_path": "rag-document-en.md",
+    "heading_patterns": {
+      "h1_regex": "^# (?P<title>.+)$",
+      "h2_regex": "^## (?P<title>.+)$",
+      "h3_regex": "^### (?P<title>.+)$",
+      "section_number_regex": "^(\\d{2})\\.\\s*"
+    }
+  },
+  "io": {
+    "output_root": ".",
+    "overwrite_policy": "allow",
+    "chunk_meta": {
+      "kind": "sqlite",
+      "db_path": "app.db",
+      "table": "chunk_meta",
+      "language_code": "en"
+    },
+    "faiss_index_path": "faiss-en.index",
+    "manifest_path": "manifest-en.json"
+  },
+  "categories": [
+    {
+      "id": "meta",
+      "description": "Project meta context for static prompt.",
+      "indexable": false,
+      "allowed_in_static_prompt": true,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "sop",
+      "description": "Operational chapters 01-12.",
+      "indexable": true,
+      "allowed_in_static_prompt": false,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "out_of_scope",
+      "description": "Out-of-scope policy chapter.",
+      "indexable": false,
+      "allowed_in_static_prompt": true,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "faq",
+      "description": "FAQ chapter and embedded FAQ pairs.",
+      "indexable": true,
+      "allowed_in_static_prompt": false,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "glossary",
+      "description": "Glossary chapter.",
+      "indexable": false,
+      "allowed_in_static_prompt": false,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "decision_tree",
+      "description": "Decision trees for edge cases.",
+      "indexable": true,
+      "allowed_in_static_prompt": false,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    },
+    {
+      "id": "scenario",
+      "description": "Practical scenarios chapter.",
+      "indexable": true,
+      "allowed_in_static_prompt": false,
+      "labels": {
+        "section": "Section",
+        "type": "Type",
+        "source": "Source",
+        "context": "Context",
+        "question": "Question",
+        "answer": "Answer"
+      }
+    }
+  ],
+  "default_category_id": "sop",
+  "classification_rules": [
+    {
+      "id": "section-00-meta",
+      "priority": 10,
+      "target_category_id": "meta",
+      "match": {
+        "section_number_in": [
+          "00"
+        ]
+      }
+    },
+    {
+      "id": "section-13-out-of-scope",
+      "priority": 20,
+      "target_category_id": "out_of_scope",
+      "match": {
+        "section_number_in": [
+          "13"
+        ]
+      }
+    },
+    {
+      "id": "section-14-faq",
+      "priority": 30,
+      "target_category_id": "faq",
+      "match": {
+        "section_number_in": [
+          "14"
+        ]
+      }
+    },
+    {
+      "id": "section-15-glossary",
+      "priority": 40,
+      "target_category_id": "glossary",
+      "match": {
+        "section_number_in": [
+          "15"
+        ]
+      }
+    },
+    {
+      "id": "section-16-decision-tree",
+      "priority": 50,
+      "target_category_id": "decision_tree",
+      "match": {
+        "section_number_in": [
+          "16"
+        ]
+      }
+    },
+    {
+      "id": "section-17-scenario",
+      "priority": 60,
+      "target_category_id": "scenario",
+      "match": {
+        "section_number_in": [
+          "17"
+        ]
+      }
+    },
+    {
+      "id": "keyword-out-of-scope",
+      "priority": 70,
+      "target_category_id": "out_of_scope",
+      "match": {
+        "title_keywords_any": [
+          "out of scope"
+        ]
+      }
+    },
+    {
+      "id": "keyword-faq",
+      "priority": 80,
+      "target_category_id": "faq",
+      "match": {
+        "title_keywords_any": [
+          "faq"
+        ]
+      }
+    },
+    {
+      "id": "keyword-glossary",
+      "priority": 90,
+      "target_category_id": "glossary",
+      "match": {
+        "title_keywords_any": [
+          "глоссарий",
+          "glossary"
+        ]
+      }
+    },
+    {
+      "id": "keyword-decision-tree",
+      "priority": 100,
+      "target_category_id": "decision_tree",
+      "match": {
+        "title_keywords_any": [
+          "decision tree",
+          "деревья решений"
+        ]
+      }
+    },
+    {
+      "id": "keyword-scenario",
+      "priority": 110,
+      "target_category_id": "scenario",
+      "match": {
+        "title_keywords_any": [
+          "практические сценарии",
+          "practical scenarios"
+        ]
+      }
+    }
+  ],
+  "chunking_policies": [
+    {
+      "id": "skip-whole-section",
+      "strategy": "whole_section",
+      "params": {
+        "emit_chunks": false
+      }
+    },
+    {
+      "id": "sop-by-h2-with-h3-overflow",
+      "strategy": "by_subheading",
+      "params": {
+        "heading_level": 2,
+        "max_tokens": 800,
+        "chars_per_token": 4,
+        "overflow_split_level": 3,
+        "include_parent_context": true,
+        "overflow_strategy": "by_subheading",
+        "overflow_overlap": 0
+      }
+    },
+    {
+      "id": "faq-qa-pairs",
+      "strategy": "qa_pairs",
+      "params": {
+        "question_marker": "**Question:**",
+        "answer_marker": "**Answer:**"
+      }
+    },
+    {
+      "id": "decision-tree-regex-split",
+      "strategy": "regex_split",
+      "params": {
+        "split_regex": "^## (\\d+\\.\\d+\\..+)$",
+        "title_capture_group": 1
+      }
+    },
+    {
+      "id": "scenario-regex-split",
+      "strategy": "regex_split",
+      "params": {
+        "split_regex": "^## (Scenario \\d+:.+)$",
+        "title_capture_group": 1
+      }
+    }
+  ],
+  "category_policy_bindings": [
+    {
+      "category_id": "meta",
+      "policy_id": "skip-whole-section"
+    },
+    {
+      "category_id": "out_of_scope",
+      "policy_id": "skip-whole-section"
+    },
+    {
+      "category_id": "glossary",
+      "policy_id": "skip-whole-section"
+    },
+    {
+      "category_id": "sop",
+      "policy_id": "sop-by-h2-with-h3-overflow",
+      "extras": {
+        "embedded_faq_block_regex": "\\n---\\s*\\n\\s*\\*\\*FAQ\\*\\*\\s*\\n",
+        "embedded_faq_policy_id": "faq-qa-pairs",
+        "embedded_faq_category_id": "faq"
+      }
+    },
+    {
+      "category_id": "faq",
+      "policy_id": "faq-qa-pairs"
+    },
+    {
+      "category_id": "decision_tree",
+      "policy_id": "decision-tree-regex-split"
+    },
+    {
+      "category_id": "scenario",
+      "policy_id": "scenario-regex-split"
+    }
+  ],
+  "static_prompt": {
+    "enabled": true,
+    "blocks": [
+      {
+        "id": "chapter-00-project-description",
+        "title": "Chapter 00 - Project description",
+        "guidance_text": "Chapter 00 describes the assistant's purpose, capabilities, limitations, and how staff should use it. Apply these policies when interpreting user requests.",
+        "source": {
+          "section_numbers": [
+            "00"
+          ]
+        }
+      },
+      {
+        "id": "chapter-13-out-of-scope",
+        "title": "Chapter 13 - Out of Scope",
+        "guidance_text": "Chapter 13 defines in-scope and out-of-scope topics and how to refuse or redirect. When the user's question is out of scope, refuse politely using these rules even if retrieved excerpts seem related.",
+        "source": {
+          "section_numbers": [
+            "13"
+          ]
+        }
+      }
+    ]
+  },
+  "retrieval_lanes": [
+    {
+      "id": "sop",
+      "label": "SOP (ch. 01–12)",
+      "description": "Chapters 01–12: operational procedures",
+      "allowed_category_ids": [
+        "sop"
+      ],
+      "top_k": 8,
+      "oversample": 10,
+      "min_fetch": 80,
+      "min_similarity": 0.3
+    },
+    {
+      "id": "faq",
+      "label": "FAQ",
+      "description": "Chapter 14 and embedded FAQ in chapters 01–12",
+      "allowed_category_ids": [
+        "faq"
+      ],
+      "top_k": 5,
+      "oversample": 10,
+      "min_fetch": 80,
+      "min_similarity": 0.3
+    },
+    {
+      "id": "decision_tree",
+      "label": "Decision trees",
+      "description": "Chapter 16: step-by-step decision trees",
+      "allowed_category_ids": [
+        "decision_tree"
+      ],
+      "top_k": 3,
+      "oversample": 10,
+      "min_fetch": 80,
+      "min_similarity": 0.3,
+      "presentation": {
+        "ui_priority": 100,
+        "ui_variant": "decision_tree",
+        "exclude_from_generation_context": true,
+        "verification_strategy": "dedicated_llm",
+        "verification_no_match_token": "NO_DECISION_TREE_MATCH",
+        "max_verification_candidates": 1
+      }
+    },
+    {
+      "id": "scenario",
+      "label": "Scenarios",
+      "description": "Chapter 17: practical scenarios",
+      "allowed_category_ids": [
+        "scenario"
+      ],
+      "top_k": 3,
+      "oversample": 10,
+      "min_fetch": 80,
+      "min_similarity": 0.3
+    }
+  ],
+  "baseline_parity": {
+    "source_implementation": "backend/etl/universal_chunker.py + backend/app/rag/retrieval_lanes.py",
+    "required_checks": [
+      "chunk_count_total",
+      "chunk_count_by_category",
+      "content_hash_set",
+      "retrieval_lane_smoke"
+    ]
+  }
+}
