@@ -9,8 +9,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.core.config import resolve_kb_chunking_schema_path
-from app.exceptions.service import ServiceError
+from src.core.config import resolve_kb_chunking_schema_path
+from src.exceptions.service import ServiceError
 
 
 CHUNKING_SCHEMA_FORMAT = "rag.chunking-schema.v3"
