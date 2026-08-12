@@ -4,7 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Protocol
 
-from etl.universal_chunker import HeadingBlock, UniversalChunker
+from src.etl.universal_chunker import HeadingBlock, UniversalChunker
 
 
 class SupportsEtlWarningLog(Protocol):
