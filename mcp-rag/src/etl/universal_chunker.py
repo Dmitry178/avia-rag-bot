@@ -5,10 +5,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from etl.chunking_schema import CategoryPolicyBinding, ChunkingPolicy, ChunkingSchemaV3, SchemaCategory
-from etl.faq_regex import build_faq_pair_regex
-from etl.hashing import content_hash
-from etl.types import ChunkDraft
+from src.etl.chunking_schema import CategoryPolicyBinding, ChunkingPolicy, ChunkingSchemaV3, SchemaCategory
+from src.etl.faq_regex import build_faq_pair_regex
+from src.etl.hashing import content_hash
+from src.etl.types import ChunkDraft
 
 
 def _slug(value: str, *, limit: int = 40) -> str:
