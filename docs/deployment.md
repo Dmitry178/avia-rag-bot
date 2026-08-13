@@ -12,7 +12,7 @@ Runbook for deploying **avia-bot** in local development and Docker Compose. For 
 |-------------|-----------------|
 | Python | 3.13 (`backend/.python-version`) |
 | Node.js | 20+ (frontend build) |
-| uv | Package manager for backend (`uv sync`) |
+| uv | Package manager for backend and mcp-rag |
 | LLM API | OpenAI-compatible chat + embeddings endpoints |
 | Docker (optional) | Docker Compose v2 |
 
@@ -25,13 +25,15 @@ Runbook for deploying **avia-bot** in local development and Docker Compose. For 
 ```bash
 git clone <repo-url> avia-bot && cd avia-bot
 cp backend/.env.example backend/.env
-# Set LLM__* variables in backend/.env
+cp backend/.env mcp-rag/.env   # same LLM__* for ingest + RAG
+# Set LLM__* variables
 ```
 
 ### 2. Install dependencies
 
 ```bash
 make backend-install
+cd mcp-rag && uv sync && cd ..
 make frontend-install
 ```
 
@@ -41,7 +43,7 @@ make frontend-install
 make etl-ingest
 ```
 
-First run embeds all chunks via the configured embedding API. Expect several minutes depending on document size and API latency.
+Runs **`mcp-rag`** against repo-root `data/` → `data/kb.db` + FAISS. First run embeds all chunks via the configured embedding API.
 
 ### 4. Start services
 
@@ -55,6 +57,12 @@ Terminal 2 — frontend (`:5173`):
 
 ```bash
 make frontend-dev
+```
+
+Optional — MCP server (stdio, for external clients or `runtime=mcp` testing):
+
+```bash
+cd mcp-rag && uv run python -m src.server
 ```
 
 Open `http://127.0.0.1:5173`. Vite proxies `/api` to the backend.
@@ -76,11 +84,11 @@ Open `http://127.0.0.1:5173`. Vite proxies `/api` to the backend.
 Place `.env` in the **repository root** (used by `docker-compose.yml` for backend `env_file`):
 
 ```bash
-cp backend/.env.example .env
+cp .env.docker.example .env
 # Edit LLM credentials
 ```
 
-Ensure `backend/data/` contains an indexed knowledge base, or run ingest after startup.
+Ensure repo-root `data/` contains an indexed KB (`make etl-ingest` on the host), or run ingest after startup.
 
 ### 2. Start stack
 
@@ -93,12 +101,20 @@ make docker-up
 | Frontend (Nginx) | `:80` | `http://localhost:8080` |
 | Backend (FastAPI) | `:8000` | proxied at `/api` |
 
-Data persists via volume `./backend/data:/app/data`.
+**Volumes:**
+
+| Host path | Container path | Contents |
+|-----------|----------------|----------|
+| `./backend/data` | `/app/data` | `app.db` (chats) |
+| `./data` | `/data` | `kb.db`, FAISS, markdown, schemas |
+
+`mcp-rag` is baked into the backend image at `/mcp-rag`; embed RAG resolves KB paths from repo root (`/data/...`).
 
 ### 3. Post-start ingest (if index missing)
 
 ```bash
 make docker-etl-ingest
+# Full re-embed: REBUILD=1 make docker-etl-ingest
 ```
 
 ### 4. Stop
@@ -119,9 +135,9 @@ make docker-logs
 
 | Step | Action |
 |------|--------|
-| 1 | Configure `LLM__*` (chat + embedding models) |
+| 1 | Configure `LLM__*` in `backend/.env` and `mcp-rag/.env` (chat + embedding models) |
 | 2 | Set `APP__CORS_ORIGINS` for actual frontend origin |
-| 3 | Run `etl-ingest` after KB or embedding model changes |
+| 3 | Run `make etl-ingest` after KB or embedding model changes |
 | 4 | Confirm `/api/readyz` returns healthy |
 | 5 | Test RAG mode — without index, API returns `503 rag_index_missing` |
 | 6 | Review [security.md](security.md) — MVP has **no authentication** |
@@ -136,8 +152,11 @@ flowchart TB
         Browser1["Browser :5173"]
         Vite["Vite dev server"]
         API1["FastAPI :8000"]
+        MCP1["mcp-rag stdio\n(optional)"]
         Browser1 --> Vite
         Vite -->|"/api proxy"| API1
+        API1 -->|runtime=mcp| MCP1
+        API1 -->|runtime=embed| RAG1["src.rag in-process"]
     end
 
     subgraph docker ["Docker Compose"]
@@ -159,6 +178,7 @@ flowchart TB
 | SQLite + local FAISS | Single-node; not horizontally scalable |
 | In-memory SSE | Multiple backend replicas need shared pub/sub |
 | Synchronous responses | No token streaming yet |
+| MCP transport | stdio only — no HTTP API for mcp-rag |
 
 See [roadmap.md](roadmap.md) for planned improvements.
 
@@ -171,3 +191,4 @@ See [roadmap.md](roadmap.md) for planned improvements.
 | [operations.md](operations.md) | Backups, ETL maintenance, troubleshooting |
 | [configuration.md](configuration.md) | Full env reference |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design |
+| [mcp-rag/README.md](../mcp-rag/README.md) | MCP server and indexing |

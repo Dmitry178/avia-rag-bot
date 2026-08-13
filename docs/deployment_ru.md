@@ -12,7 +12,7 @@ Runbook развёртывания **avia-bot** в локальной разра
 |------------|---------------------|
 | Python | 3.13 (`backend/.python-version`) |
 | Node.js | 20+ (сборка frontend) |
-| uv | Менеджер пакетов backend (`uv sync`) |
+| uv | Менеджер пакетов backend и mcp-rag |
 | LLM API | OpenAI-совместимые chat + embeddings |
 | Docker (опционально) | Docker Compose v2 |
 
@@ -25,13 +25,15 @@ Runbook развёртывания **avia-bot** в локальной разра
 ```bash
 git clone <repo-url> avia-bot && cd avia-bot
 cp backend/.env.example backend/.env
-# Укажите LLM__* в backend/.env
+cp backend/.env mcp-rag/.env   # те же LLM__* для ingest и RAG
+# Укажите LLM__*
 ```
 
 ### 2. Установка зависимостей
 
 ```bash
 make backend-install
+cd mcp-rag && uv sync && cd ..
 make frontend-install
 ```
 
@@ -41,7 +43,7 @@ make frontend-install
 make etl-ingest
 ```
 
-Первый запуск эмбеддит все чанки через API. Время зависит от размера документа и latency API.
+Запускает **`mcp-rag`** на `data/` в корне репо → `data/kb.db` + FAISS.
 
 ### 4. Запуск сервисов
 
@@ -55,6 +57,12 @@ make backend-dev
 
 ```bash
 make frontend-dev
+```
+
+Опционально — MCP-сервер (stdio):
+
+```bash
+cd mcp-rag && uv run python -m src.server
 ```
 
 Откройте `http://127.0.0.1:5173`. Vite проксирует `/api` на backend.
@@ -73,14 +81,14 @@ make frontend-dev
 
 ### 1. Конфигурация
 
-Файл `.env` в **корне репозитория** (для `env_file` в `docker-compose.yml`):
+Файл `.env` в **корне репозитория**:
 
 ```bash
-cp backend/.env.example .env
-# Укажите учётные данные LLM
+cp .env.docker.example .env
+# Учётные данные LLM
 ```
 
-Убедитесь, что в `backend/data/` есть индекс, или выполните ingest после старта.
+Индекс KB: `make etl-ingest` на хосте или `make docker-etl-ingest` после старта.
 
 ### 2. Запуск
 
@@ -93,12 +101,20 @@ make docker-up
 | Frontend (Nginx) | `:80` | `http://localhost:8080` |
 | Backend (FastAPI) | `:8000` | прокси `/api` |
 
-Данные: volume `./backend/data:/app/data`.
+**Volumes:**
 
-### 3. Ingest после старта (если индекса нет)
+| Путь на хосте | В контейнере | Содержимое |
+|---------------|--------------|------------|
+| `./backend/data` | `/app/data` | `app.db` (чаты) |
+| `./data` | `/data` | `kb.db`, FAISS, markdown, схемы |
+
+`mcp-rag` в образе backend по пути `/mcp-rag`; embed RAG читает KB из `/data/`.
+
+### 3. Ingest после старта
 
 ```bash
 make docker-etl-ingest
+# Полный re-embed: REBUILD=1 make docker-etl-ingest
 ```
 
 ### 4. Остановка
@@ -119,12 +135,12 @@ make docker-logs
 
 | Шаг | Действие |
 |-----|----------|
-| 1 | Настроить `LLM__*` (chat + embedding) |
-| 2 | Задать `APP__CORS_ORIGINS` для реального origin frontend |
-| 3 | Запустить `etl-ingest` после смены KB или embedding model |
-| 4 | Убедиться, что `/api/readyz` healthy |
-| 5 | Проверить RAG — без индекса API вернёт `503 rag_index_missing` |
-| 6 | Изучить [security_ru.md](security_ru.md) — в MVP **нет аутентификации** |
+| 1 | `LLM__*` в `backend/.env` и `mcp-rag/.env` |
+| 2 | `APP__CORS_ORIGINS` для origin frontend |
+| 3 | `make etl-ingest` после смены KB или embedding model |
+| 4 | `/api/readyz` healthy |
+| 5 | RAG без индекса → `503 rag_index_missing` |
+| 6 | [security_ru.md](security_ru.md) — в MVP **нет аутентификации** |
 
 ---
 
@@ -136,8 +152,11 @@ flowchart TB
         Browser1["Браузер :5173"]
         Vite["Vite dev server"]
         API1["FastAPI :8000"]
+        MCP1["mcp-rag stdio\n(опционально)"]
         Browser1 --> Vite
         Vite -->|"/api proxy"| API1
+        API1 -->|runtime=mcp| MCP1
+        API1 -->|runtime=embed| RAG1["src.rag in-process"]
     end
 
     subgraph docker ["Docker Compose"]
@@ -156,9 +175,10 @@ flowchart TB
 | Ограничение | Влияние |
 |-------------|---------|
 | Нет auth | Любой с доступом к сети может вызывать API |
-| SQLite + локальный FAISS | Один узел; без горизонтального масштабирования |
-| In-memory SSE | Несколько реплик backend нужен shared pub/sub |
-| Синхронные ответы | Потоковая выдача токенов пока не реализована |
+| SQLite + локальный FAISS | Один узел |
+| In-memory SSE | Несколько реплик — нужен shared pub/sub |
+| Синхронные ответы | Потоковая выдача токенов пока нет |
+| MCP transport | Только stdio — HTTP API у mcp-rag нет |
 
 Планы — [roadmap_ru.md](roadmap_ru.md).
 
@@ -171,3 +191,4 @@ flowchart TB
 | [operations_ru.md](operations_ru.md) | Бэкапы, ETL, troubleshooting |
 | [configuration_ru.md](configuration_ru.md) | Справочник env |
 | [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md) | Архитектура |
+| [mcp-rag/README.md](../mcp-rag/README.md) | MCP-сервер и индексация |
