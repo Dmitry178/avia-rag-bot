@@ -278,6 +278,7 @@ function parseRagConfigSnapshot(metadata: Record<string, unknown>): RagConfigSna
     use_query_rewriting: source.use_query_rewriting === true,
     use_rerank: source.use_rerank === true,
     top_chunks: Number(source.top_chunks ?? 5),
+    runtime: source.runtime === "mcp" ? "mcp" : "embed",
     use_history:
       metadata.use_history === undefined || metadata.use_history === null
         ? null
