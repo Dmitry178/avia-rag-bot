@@ -22,7 +22,6 @@ from app.llm.prompt_guard import (
 )
 from app.models.chat import ChatType
 from app.models.chat_message import MessageRole
-from app.models.chunk_meta import ChunkMeta
 from app.schemas.chat import (
     ChatDetailResponse,
     ChatMessageResponse,
@@ -36,15 +35,17 @@ from app.schemas.chat import (
 )
 from app.schemas.llm import LlmConfig
 from app.schemas.rag import RagConfig
-from app.rag.decision_tree import (
+from app.rag.client import get_rag_client
+from app.rag.kb_access import load_chunks_by_ids
+from app.rag.src_bridge import (
+    build_context_block,
+    build_generation_prompt,
+    exclude_lane_categories,
     generate_lane_verification_guidance,
+    get_retrieval_runtime,
     verification_metadata_key,
 )
-from app.rag.generation import build_context_block
-from app.rag.lane_post_processing import exclude_lane_categories
-from app.rag.pipeline import RagPipeline
-from app.rag.retrieval_lanes import get_retrieval_runtime
-from app.rag.types import RagQueryContext, RagTraceStep
+from app.rag.types import ChunkRecord, RagQueryContext, RagTraceStep
 from app.services.chat_title import schedule_chat_title_generation
 
 
@@ -208,7 +209,7 @@ class ChatService:
 
     @staticmethod
     def _serialize_chunk_meta(
-        chunk: ChunkMeta,
+        chunk: ChunkRecord,
         *,
         citation_index: int,
         score: float | None = None,
@@ -309,7 +310,7 @@ class ChatService:
         metadata_list: list[dict],
         *,
         language_code: str,
-    ) -> dict[int, ChunkMeta]:
+    ) -> dict[int, ChunkRecord]:
         chunk_ids: set[int] = set()
 
         for metadata in metadata_list:
@@ -318,12 +319,10 @@ class ChatService:
         if not chunk_ids:
             return {}
 
-        chunks = await self.db.etl.chunks.list_by_ids(language_code, list(chunk_ids))
-
-        return {chunk.id: chunk for chunk in chunks if chunk.id is not None}
+        return await load_chunks_by_ids(language_code, list(chunk_ids))
 
     @staticmethod
-    def _enrich_trace_hit(hit: dict, chunk_map: dict[int, ChunkMeta]) -> dict:
+    def _enrich_trace_hit(hit: dict, chunk_map: dict[int, ChunkRecord]) -> dict:
         enriched = dict(hit)
         chunk_id = enriched.get("id")
 
@@ -352,7 +351,7 @@ class ChatService:
         return enriched
 
     @staticmethod
-    def _enrich_rag_trace_steps(trace: list, chunk_map: dict[int, ChunkMeta]) -> list:
+    def _enrich_rag_trace_steps(trace: list, chunk_map: dict[int, ChunkRecord]) -> list:
         enriched_steps: list = []
 
         for step in trace:
@@ -401,7 +400,7 @@ class ChatService:
         return enriched_steps
 
     @staticmethod
-    def _enrich_rag_metadata(metadata: dict, chunk_map: dict[int, ChunkMeta]) -> dict:
+    def _enrich_rag_metadata(metadata: dict, chunk_map: dict[int, ChunkRecord]) -> dict:
         enriched = dict(metadata)
         similarity_by_id = ChatService._similarity_scores_from_trace(enriched)
 
@@ -507,7 +506,7 @@ class ChatService:
             closed_at=chat.closed_at,
         )
 
-    def _message_to_response(self, message, *, chunk_map: dict[int, ChunkMeta] | None = None) -> ChatMessageResponse:
+    def _message_to_response(self, message, *, chunk_map: dict[int, ChunkRecord] | None = None) -> ChatMessageResponse:
         metadata = message.message_metadata
 
         if chunk_map is not None:
@@ -891,8 +890,8 @@ class ChatService:
 
                 if chat_type == ChatType.RAG:
                     rag_config = rag_snapshot or RagConfig()
-                    pipeline = RagPipeline(self.db, self.settings)
-                    rag_result = await pipeline.run(
+                    rag_client = get_rag_client(rag_config, self.db, self.settings)
+                    rag_result = await rag_client.retrieve(
                         RagQueryContext(
                             query=body.content,
                             history=self._rag_history_messages(history, use_history=use_history_value),
@@ -953,7 +952,7 @@ class ChatService:
 
                     assistant_text, llm_metadata = await client.complete(
                         llm_messages,
-                        system_prompt=pipeline.build_generation_prompt(
+                        system_prompt=build_generation_prompt(
                             context=context_for_general,
                             reply_language=reply_language,
                             language_code=chat.language_code,
