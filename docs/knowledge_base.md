@@ -2,7 +2,7 @@
 
 **English** · [Русский](knowledge_base_ru.md)
 
-How to structure, write, and update the markdown knowledge base for **avia-bot**. Technical parsing details: [backend/etl/README.md](../backend/etl/README.md). **Schema-driven ETL mapping:** [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md).
+How to structure, write, and update the markdown knowledge base for **avia-bot**. Technical parsing details: [mcp-rag/src/etl/README.md](../mcp-rag/src/etl/README.md). **Schema-driven ETL mapping:** [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md).
 
 ---
 
@@ -10,8 +10,8 @@ How to structure, write, and update the markdown knowledge base for **avia-bot**
 
 | Item | Value |
 |------|-------|
-| Default paths | `backend/data/rag-document-ru.md`, `backend/data/rag-document-en.md` (see `KB_LANGUAGES` in `config.py`) |
-| ETL schema | `backend/data/chunking-schema-{ru,en}.json` — see [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md) |
+| Default paths | `data/rag-document-ru.md`, `data/rag-document-en.md` (see `KB_LANGUAGES` in `mcp-rag/src/core/config.py`) |
+| ETL schema | `data/chunking-schema-{ru,en}.json` — see [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md) |
 | After edits | Run `make etl-ingest` |
 
 ---
@@ -118,7 +118,7 @@ flowchart LR
 | 1 | KB owner | Edit markdown; compliance review for real KB |
 | 2 | Developer / CI | Run ingest (incremental by default) |
 | 3 | QA | Run [rag_evaluation.md](rag_evaluation.md) golden questions |
-| 4 | Ops | Backup `backend/data/` before major rewrites |
+| 4 | Ops | Backup `data/` before major rewrites |
 
 ### Incremental vs full rebuild
 
@@ -149,5 +149,5 @@ flowchart LR
 |----------|---------|
 | [rag_evaluation.md](rag_evaluation.md) | Quality testing |
 | [operations.md](operations.md) | ETL commands |
-| [backend/etl/README.md](../backend/etl/README.md) | Parser/chunker rules |
+| [mcp-rag/src/etl/README.md](../mcp-rag/src/etl/README.md) | Parser/chunker rules |
 | [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md) | Schema v3 ETL contract |

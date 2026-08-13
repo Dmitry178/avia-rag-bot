@@ -2,7 +2,7 @@
 
 **Русский** · [English](knowledge_base.md)
 
-Структура, написание и обновление markdown-базы знаний для **avia-bot**. Технические детали парсинга: [backend/etl/README_RU.md](../backend/etl/README_RU.md). **Schema-driven ETL-маппинг:** [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md).
+Структура, написание и обновление markdown-базы знаний для **avia-bot**. Технические детали парсинга: [mcp-rag/src/etl/README_RU.md](../mcp-rag/src/etl/README_RU.md). **Schema-driven ETL-маппинг:** [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md).
 
 ---
 
@@ -10,8 +10,8 @@
 
 | Параметр | Значение |
 |----------|----------|
-| Пути по умолчанию | `backend/data/rag-document-ru.md`, `backend/data/rag-document-en.md` (см. `KB_LANGUAGES` в `config.py`) |
-| ETL-схема | `backend/data/chunking-schema-{ru,en}.json` — см. [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md) |
+| Пути по умолчанию | `data/rag-document-ru.md`, `data/rag-document-en.md` (см. `KB_LANGUAGES` в `mcp-rag/src/core/config.py`) |
+| ETL-схема | `data/chunking-schema-{ru,en}.json` — см. [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md) |
 | После правок | `make etl-ingest` |
 
 ---
@@ -118,7 +118,7 @@ flowchart LR
 | 1 | Владелец KB | Правка markdown; compliance для реальной KB |
 | 2 | Dev / CI | Ingest (инкрементально) |
 | 3 | QA | [rag_evaluation_ru.md](rag_evaluation_ru.md) |
-| 4 | Ops | Бэкап `backend/data/` перед крупными правками |
+| 4 | Ops | Бэкап `data/` перед крупными правками |
 
 ### Инкремент vs полный rebuild
 
@@ -149,5 +149,5 @@ flowchart LR
 |----------|------------|
 | [rag_evaluation_ru.md](rag_evaluation_ru.md) | Тестирование качества |
 | [operations_ru.md](operations_ru.md) | Команды ETL |
-| [backend/etl/README_RU.md](../backend/etl/README_RU.md) | Парсер и чанкер |
+| [mcp-rag/src/etl/README_RU.md](../mcp-rag/src/etl/README_RU.md) | Парсер и чанкер |
 | [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md) | Контракт ETL schema v3 |
