@@ -1,6 +1,6 @@
 BACKEND_DIR := backend
 FRONTEND_DIR := frontend
-ETL_SCHEMAS_DIR ?= data
+MCP_RAG_DIR := mcp-rag
 
 .PHONY: help \
 	etl-ingest etl-stats etl-manifest \
@@ -11,10 +11,9 @@ ETL_SCHEMAS_DIR ?= data
 
 help:
 	@echo "Targets:"
-	@echo "ETL — discover schema JSON files in a directory and build SQLite + FAISS:"
-	@echo "  make etl-ingest           Ingest all schemas in backend/$(ETL_SCHEMAS_DIR)"
+	@echo "ETL (mcp-rag / repo-root data/ + data/kb.db):"
+	@echo "  make etl-ingest           Ingest all schemas (delegates to mcp-rag)"
 	@echo "  Optional: REBUILD=1       Force full re-embed"
-	@echo "  Optional: ETL_SCHEMAS_DIR=path   Schema directory relative to backend/ (default: data)"
 	@echo "  make etl-stats           Chunk counts (optional LANG=ru|en)"
 	@echo "  make etl-manifest        Latest manifest (optional LANG=ru|en, default ru)"
 	@echo ""
@@ -35,27 +34,17 @@ help:
 	@echo "  make docker-up              Build and start backend + frontend (:8080)"
 	@echo "  make docker-down            Stop containers"
 	@echo "  make docker-build           Build images only"
-	@echo "  make docker-etl-ingest      Index all schemas in backend/data (inside container)"
+	@echo "  make docker-etl-ingest      Index schemas via mcp-rag (inside container)"
 	@echo "  make docker-logs            Follow compose logs"
 
-# Discover schema JSON files in a directory and ingest each into SQLite + FAISS.
-ifeq ($(ETL_SCHEMAS_DIR),data)
 etl-ingest:
-	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest-all \
-		$(if $(REBUILD),--rebuild,)
-else
-etl-ingest:
-	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py ingest-dir --dir $(ETL_SCHEMAS_DIR) \
-		$(if $(REBUILD),--rebuild,)
-endif
+	$(MAKE) -C $(MCP_RAG_DIR) etl-ingest $(if $(REBUILD),REBUILD=1,)
 
 etl-stats:
-	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py stats \
-		$(if $(LANG),--lang $(LANG),)
+	$(MAKE) -C $(MCP_RAG_DIR) etl-stats $(if $(LANG),LANG=$(LANG),)
 
 etl-manifest:
-	cd $(BACKEND_DIR) && uv run python scripts/run_etl.py manifest \
-		--lang $(or $(LANG),ru)
+	$(MAKE) -C $(MCP_RAG_DIR) etl-manifest $(if $(LANG),LANG=$(LANG),)
 
 backend-install:
 	cd $(BACKEND_DIR) && uv sync
@@ -94,8 +83,7 @@ docker-build:
 	docker compose build
 
 docker-etl-ingest:
-	docker compose exec backend uv run python scripts/run_etl.py ingest-all \
-		$(if $(REBUILD),--rebuild,)
+	docker compose exec backend sh -c 'cd /mcp-rag && uv run python scripts/run_etl.py ingest-dir --dir /data $(if $(REBUILD),--rebuild,)'
 
 docker-logs:
 	docker compose logs -f
