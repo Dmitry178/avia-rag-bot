@@ -231,8 +231,8 @@ Runtime invariants:
 ## 7. Current Project Baseline (Parity Contract)
 
 For current project, schema-driven mode must replicate existing behavior for:
-- `backend/data/rag-document-ru.md`
-- `backend/data/rag-document-en.md`
+- `data/rag-document-ru.md`
+- `data/rag-document-en.md`
 
 Baseline category mapping:
 - `00 -> meta`
@@ -263,7 +263,7 @@ Parity acceptance checks:
 Primary production command:
 
 ```bash
-uv run --project backend python backend/scripts/run_etl.py ingest-dir --dir data
+uv run --project mcp-rag python scripts/run_etl.py ingest-dir --dir ../data
 ```
 
 `ingest-dir` behavior:
@@ -294,7 +294,7 @@ Required behavior:
 If CLI is started without arguments, it must open an interactive prompt and collect inputs via `input()`:
 
 ```bash
-uv run --project backend python backend/scripts/run_etl.py
+cd mcp-rag && uv run python scripts/run_etl.py
 ```
 
 Prompt flow:

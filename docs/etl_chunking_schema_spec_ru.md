@@ -194,8 +194,8 @@ Runtime-инварианты:
 ## 7. Baseline parity для текущего проекта
 
 Входы:
-- `backend/data/rag-document-ru.md`
-- `backend/data/rag-document-en.md`
+- `data/rag-document-ru.md`
+- `data/rag-document-en.md`
 
 Категоризация глав:
 - `00 -> meta`
@@ -226,7 +226,7 @@ Runtime-инварианты:
 Основная production-команда:
 
 ```bash
-uv run --project backend python backend/scripts/run_etl.py ingest-dir --dir data
+uv run --project mcp-rag python scripts/run_etl.py ingest-dir --dir ../data
 ```
 
 `ingest-dir`:
@@ -257,7 +257,7 @@ uv run --project backend python backend/scripts/run_etl.py ingest-dir --dir data
 Если CLI запускается без аргументов, должен запускаться интерактивный сценарий на `input()`:
 
 ```bash
-uv run --project backend python backend/scripts/run_etl.py
+cd mcp-rag && uv run python scripts/run_etl.py
 ```
 
 Сценарий опроса:
