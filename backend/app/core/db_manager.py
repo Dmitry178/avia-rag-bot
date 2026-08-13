@@ -3,9 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.repositories.chat import ChatRepository
 from app.repositories.chat_message import ChatMessageRepository
-from app.repositories.chunk import ChunkRepository
 from app.repositories.health import HealthRepository
-from app.repositories.index_manifest import IndexManifestRepository
 
 
 class DBManager:
@@ -21,19 +19,8 @@ class DBManager:
         self.session_factory = session_factory
         self.session: AsyncSession | None = None
 
-        # repositories (set in __aenter__)
         self.health: HealthRepository
-        self.etl: "DBManager.EtlDBManager"
         self.chat: "DBManager.ChatDBManager"
-
-    class EtlDBManager:
-        """
-        ETL-related repositories.
-        """
-
-        def __init__(self, session: AsyncSession) -> None:
-            self.chunks = ChunkRepository(session)
-            self.index_manifest = IndexManifestRepository(session)
 
     class ChatDBManager:
         """
@@ -48,7 +35,6 @@ class DBManager:
         self.session = self.session_factory()
 
         self.chat = self.ChatDBManager(self.session)
-        self.etl = self.EtlDBManager(self.session)
         self.health = HealthRepository(self.session)
 
         return self
@@ -57,14 +43,10 @@ class DBManager:
         if self.session is None:
             return
 
-        # Always end any open transaction before returning the connection to the pool.
-        # Relying on session.close() alone can leave connections "idle in transaction"
-        # if a transaction was implicitly started (even for read-only queries).
         try:
             if self.session.in_transaction():
                 await self.session.rollback()
         except Exception:
-            # Best-effort: never fail request teardown due to rollback issues.
             pass
 
         try:
@@ -79,5 +61,5 @@ class DBManager:
 
     async def rollback(self) -> None:
         if self.session is None:
-            return
+            raise RuntimeError("DBManager session is not initialized")
         await self.session.rollback()
