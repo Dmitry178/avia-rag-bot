@@ -7,7 +7,8 @@
 | Слой | Каталог | Что проверяет |
 |------|---------|---------------|
 | **API** (интеграционные) | `tests/api/` | HTTP-эндпоинты FastAPI через `httpx.AsyncClient` |
-| **Unit** (модульные) | `tests/unit/` | Бизнес-логика без HTTP: schema-driven ETL, RAG-хелперы, сервисы и т.д. |
+| **Unit** (модульные) | `tests/unit/` | RAG client, LLM guards, сервисы чата |
+| **Parity** (opt-in) | `tests/parity/` | embed vs MCP на одном томе `data/` |
 | **Exceptions** | `tests/exceptions/` | Хелперы нормализации ошибок БД/API |
 
 Стек: **pytest**, **pytest-asyncio** (режим `auto`), **httpx** (ASGI-транспорт).
@@ -29,6 +30,10 @@ tests/
 │   ├── test_chat_events.py  # SSE-эндпоинт подписки
 │   ├── test_etl.py     # ETL-эндпоинты
 │   └── test_health.py  # healthz / readyz
+├── parity/
+│   ├── conftest.py     # фикстуры KB volume; проверка prerequisites
+│   ├── compare.py      # сравнение embed vs MCP
+│   └── test_mcp_rag_parity.py  # opt-in parity embed vs mcp-rag
 ├── exceptions/
 │   └── test_db_errors.py   # маппинг exception → ServiceError
 └── unit/
@@ -65,6 +70,7 @@ uv run pytest tests/unit     # только tests/unit/
 uv run pytest                    # все
 uv run pytest tests/api          # API
 uv run pytest tests/unit         # unit
+uv run pytest tests/parity --run-parity -v   # embed vs MCP (нужны индексы + LLM)
 uv run pytest tests/api/test_chat.py -v   # один файл
 uv run pytest -k "soft_delete"   # по имени теста
 ```
@@ -88,6 +94,25 @@ Engine создаётся лениво при первом обращении, �
 
 Файл `tests/.pytest_app.db` добавлен в `.gitignore`.
 
+## Parity-тесты (`tests/parity/`)
+
+Opt-in интеграционный набор: сравнение **embed** (in-process `src.rag`) и **mcp stdio** (`mcp-rag` subprocess). Оба используют **`data/`** в корне репо. Маркер `@pytest.mark.parity`; пропускаются без `--run-parity`.
+
+**Требования:**
+
+- `faiss-ru.index` / `faiss-en.index` в `data/`
+- `data/kb.db` с чанками и manifest (после `make etl-ingest`)
+- `app.db` с `index_manifest` и чанками в обоих томах (одинаковый `doc_hash` после ingest)
+- `LLM__BASE_URL`, `LLM__EMBEDDING_MODEL` (и ключ при необходимости) в `backend/.env`
+- `uv` в PATH (MCP-клиент запускает `uv run python -m src.server` в `mcp-rag/`)
+
+```bash
+cd backend
+uv run pytest tests/parity --run-parity -v
+```
+
+**Проверки:** `doc_hash` / `chunk_count` в manifest (ru, en); при retrieval — id чанков, similarities (±0.0001), context, имена шагов trace для фиксированных запросов.
+
 ## API-тесты (`tests/api/`)
 
 Поднимают полное приложение (`app.main:app`) с инициализацией lifespan (создание таблиц, зависимости). Запросы идут через in-process ASGI — отдельный сервер не нужен.
@@ -107,7 +132,6 @@ Engine создаётся лениво при первом обращении, �
 | Файл | Эндпоинты | Тесты |
 |------|-----------|-------|
 | `test_health.py` | `GET /api/healthz`, `GET /api/readyz` | ok, JSON content-type, валидация метода; readiness `503` при недоступной БД (мок) |
-| `test_etl.py` | `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest` | ingest success/rebuild/error (мок `ETLService`); stats пустая БД + мок; manifest 404 + мок |
 | `test_chat_events.py` | `GET /api/chats/events` | нет/пустой `client_id` → 422; handler возвращает `EventSourceResponse` |
 | `test_chat.py` | CRUD чатов, сообщения, close, edit, rating | создание, листинг, фильтр; настройки; 404 get/delete; close + повторный close; edit/rate; отправка (мок LLM/RAG); guards, заголовки, идемпотентность |
 
@@ -226,7 +250,8 @@ Engine создаётся лениво при первом обращении, �
 Константы путей к тестовым данным:
 
 - `BACKEND_ROOT` — корень `backend/`;
-- `RAG_DOCUMENT` — `backend/data/rag-document.md`.
+- `KB_DATA_DIR` — `data/` в корне репо;
+- `RAG_DOCUMENT` — `data/rag-document-ru.md`.
 
 Используйте при добавлении unit-тестов, которым нужны файлы с диска.
 
@@ -235,7 +260,7 @@ Engine создаётся лениво при первом обращении, �
 1. **Именование файлов** — `test_<модуль>.py`; функции — `test_<поведение>`.
 2. **Docstrings** — на английском, кратко описывают ожидаемое поведение (см. существующие тесты).
 3. **API-тесты** — только в `tests/api/`; HTTP-фикстуры — в `tests/api/conftest.py`; изоляция БД — в корневом `tests/conftest.py`.
-4. **Unit-тесты** — зеркалят структуру кода: `app/services/chat.py` → `tests/unit/services/test_chat.py`, `etl/universal_chunker.py` → `tests/unit/etl/test_chunker.py`.
+4. **Unit-тесты** — зеркалят backend; ETL-тесты — в `mcp-rag/tests/`.
 5. **Новые API-роутеры** — `tests/api/test_<router>.py`, **2–3 теста на эндпоинт**; см. `.cursor/rules/backend-api-tests.mdc`; не смешивайте с unit.
 6. **Асинхронность** — API-тесты помечайте `@pytest.mark.asyncio` (или полагайтесь на `asyncio_mode = "auto"`).
 7. **Внешний I/O в API-тестах** — патчите LLM, RAG и FAISS на границе сервиса (`unittest.mock.patch`), чтобы тесты оставались быстрыми и офлайн.

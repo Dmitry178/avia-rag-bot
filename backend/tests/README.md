@@ -7,7 +7,8 @@ Test suite for `avia-bot-backend`. Split into three areas:
 | Layer | Directory | What it covers |
 |-------|-----------|----------------|
 | **API** (integration) | `tests/api/` | FastAPI HTTP endpoints via `httpx.AsyncClient` |
-| **Unit** | `tests/unit/` | Business logic without HTTP: schema-driven ETL, RAG helpers, services, etc. |
+| **Unit** | `tests/unit/` | RAG client, LLM guards, chat services, SSE |
+| **Parity** (opt-in) | `tests/parity/` | embed vs MCP on single `data/` volume |
 | **Exceptions** | `tests/exceptions/` | DB/API error normalization helpers |
 
 Stack: **pytest**, **pytest-asyncio** (`auto` mode), **httpx** (ASGI transport).
@@ -18,36 +19,27 @@ Currently **148 tests** across all areas (53 API).
 
 ```
 tests/
-├── README.md           # this file
-├── README_RU.md        # Russian version
-├── conftest.py         # DB isolation for API tests (see below)
-├── paths.py            # shared paths to test data
+├── README.md
+├── conftest.py
+├── paths.py            # KB paths → repo-root data/
 ├── api/
-│   ├── conftest.py     # client fixture (lifespan + AsyncClient)
-│   ├── mocks.py        # shared mock payloads for ETL API tests
-│   ├── test_chat.py    # chat CRUD, settings, messages, guards, titles
-│   ├── test_chat_events.py  # SSE subscription endpoint
-│   ├── test_etl.py     # ETL endpoints
-│   └── test_health.py  # healthz / readyz
+│   ├── test_chat.py
+│   ├── test_chat_events.py
+│   └── test_health.py
+├── parity/             # --run-parity
+│   ├── compare.py
+│   └── test_mcp_rag_parity.py
 ├── exceptions/
-│   └── test_db_errors.py   # exception → ServiceError mapping
+│   └── test_db_errors.py
 └── unit/
-    ├── etl/
-    │   ├── test_chunker.py       # universal chunker integration checks
-    │   ├── test_schema.py        # schema loader + FAQ helper checks
-    │   └── test_schema_parity.py # baseline parity for RU/EN schemas
+    ├── core/
     ├── llm/
-    │   ├── test_chat_title.py    # chat title prompt/model helpers
-    │   ├── test_prompts.py       # system prompt builder
-    │   └── test_prompt_guard.py  # injection / off-topic guards
     ├── rag/
-    │   └── test_pipeline.py      # RRF, query-transform / rerank registry
+    │   └── test_client.py
     └── services/
-        ├── test_chat_title_service.py      # background title persistence
-        ├── test_etl_plan.py                # incremental ingest planning
-        ├── test_etl_progress.py            # ETL progress helpers
-        └── test_rag_metadata_enrichment.py # RAG trace / chunk id helpers
 ```
+
+ETL unit tests live in **`mcp-rag/tests/`**.
 
 ## Running tests
 
@@ -65,6 +57,7 @@ From `backend/`:
 uv run pytest                    # all
 uv run pytest tests/api          # API
 uv run pytest tests/unit         # unit
+uv run pytest tests/parity --run-parity -v   # embed vs MCP (needs indexes + LLM)
 uv run pytest tests/api/test_chat.py -v   # single file
 uv run pytest -k "soft_delete"   # by test name
 ```
@@ -88,6 +81,24 @@ This matters: previously tests wrote to `data/app.db`, and after `make backend-t
 
 The file `tests/.pytest_app.db` is listed in `.gitignore`.
 
+## Parity tests (`tests/parity/`)
+
+Opt-in integration suite comparing **embed** (in-process `src.rag`) vs **mcp stdio** (`mcp-rag` subprocess). Both use repo-root **`data/`** (`kb.db` + FAISS). Marked `@pytest.mark.parity`; skipped unless `--run-parity` is passed.
+
+**Prerequisites:**
+
+- `faiss-ru.index` / `faiss-en.index` in repo-root `data/`
+- `data/kb.db` with `index_manifest` + chunks (after `make etl-ingest`)
+- `LLM__BASE_URL`, `LLM__EMBEDDING_MODEL` (and API key if required) in `backend/.env`
+- `uv` on PATH (MCP client spawns `uv run python -m src.server` in `mcp-rag/`)
+
+```bash
+cd backend
+uv run pytest tests/parity --run-parity -v
+```
+
+**Checks:** manifest `doc_hash` / `chunk_count` (ru, en); retrieval chunk ids, similarities (±0.0001), context, trace step names for fixed queries.
+
 ## API tests (`tests/api/`)
 
 Boot the full application (`app.main:app`) with lifespan initialization (table creation, dependencies). Requests go through in-process ASGI — no separate server required.
@@ -107,7 +118,6 @@ See also the **API test coverage** table in [docs/api.md](../docs/api.md) (EN) /
 | File | Endpoints | Tests |
 |------|-----------|-------|
 | `test_health.py` | `GET /api/healthz`, `GET /api/readyz` | ok status, JSON content-type, method validation; readiness `503` when DB unreachable (mocked) |
-| `test_etl.py` | `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest` | ingest success/rebuild/error (mocked `ETLService`); stats empty DB + mocked distribution; manifest 404 + mocked metadata |
 | `test_chat_events.py` | `GET /api/chats/events` | missing/empty `client_id` → 422; handler returns `EventSourceResponse` |
 | `test_chat.py` | chat CRUD, messages, close, edit, rating | create, list, filter by `chat_type`; settings on create/PATCH; get/delete 404; close chat + idempotent close; edit user/assistant/missing message; rate assistant/user/missing; send messages (mocked LLM/RAG); guards, titles, idempotency |
 
@@ -115,97 +125,16 @@ Message tests patch external I/O (`ChatCompletionClient.complete`, `RagPipeline`
 
 ## Unit tests (`tests/unit/`)
 
-Call functions and classes directly, without the HTTP layer. Fast; no FastAPI startup required.
+Call functions and classes directly, without the HTTP layer. ETL chunker/plan tests moved to **`mcp-rag/tests/unit/`**.
 
-### `unit/etl/test_chunker.py`
+Notable modules:
 
-Exercises schema-driven ETL (`etl/chunking_schema.py`, `etl/universal_chunker.py`) against real KB documents:
-
-| Test | Assertion |
-|------|-----------|
-| `test_chunk_document_produces_expected_categories_ru` | universal chunker emits expected RU categories; ≥ 200 chunks |
-| `test_chunks_have_retrieval_prefix` | every chunk has `[Раздел:` and `[Тип:` prefixes |
-
-### `unit/services/test_etl_plan.py`
-
-Tests incremental ingest planning (`app/services/etl_plan.py`):
-
-| Test | Assertion |
-|------|-----------|
-| `test_plan_reuses_unchanged_chunks_from_faiss` | unchanged chunks reuse existing FAISS vectors |
-| `test_plan_embeds_changed_and_new_chunks` | content-hash changes trigger re-embedding |
-| `test_plan_marks_removed_chunks` | drafts missing from source are marked removed |
-| `test_plan_uses_checkpoint_vectors_before_existing` | checkpoint vectors take priority over FAISS |
-| `test_plan_rebuild_embeds_everything` | rebuild mode reuses checkpoint vectors only |
-
-### `unit/services/test_etl_progress.py`
-
-| Test | Assertion |
-|------|-----------|
-| `test_chunk_progress_context_returns_section_counters` | `_chunk_progress_context` exposes H1 section name and per-section completion |
-
-### `unit/rag/test_pipeline.py`
-
-| Test | Assertion |
-|------|-----------|
-| `test_reciprocal_rank_fusion_merges_ranked_lists` | RRF boosts chunks appearing in multiple ranked lists |
-| `test_resolve_exclusive_query_method_prefers_first_enabled_flag` | only one query-transform method active (HyDE wins over multi-query / rewriting) |
-| `test_resolve_rerank_method_when_enabled` | rerank method resolved independently from query transforms |
-
-### `unit/llm/test_prompts.py`
-
-| Test | Assertion |
-|------|-----------|
-| `test_build_system_prompt_adds_russian_language_hint` | Russian reply hint appended |
-| `test_build_system_prompt_adds_english_language_hint` | English reply hint appended |
-| `test_build_system_prompt_without_language_returns_base` | no language hint when `reply_language` omitted |
-
-### `unit/llm/test_prompt_guard.py`
-
-Parametrized tests for prompt-injection and off-topic detection (`app/llm/prompt_guard.py`), plus:
-
-| Test | Assertion |
-|------|-----------|
-| `test_evaluate_user_message_prioritizes_injection_over_off_topic` | injection checked before off-topic |
-| `test_wrap_user_message_adds_boundaries` | `<<USER>>` / `<</USER>>` delimiters |
-| `test_harden_messages_for_llm_wraps_only_latest_user_message` | only the last user turn is wrapped |
-| `test_reply_language_for_user_text` | Cyrillic → `ru`, Latin → `en` |
-| `test_blocked_refusal_matches_user_language` | refusal text matches user language |
-
-### `unit/llm/test_chat_title.py`
-
-Chat title generation helpers (`app/llm/chat_title.py`, `app/core/chat_constants.py`):
-
-| Test | Assertion |
-|------|-----------|
-| `test_is_default_chat_title` | recognizes default titles in EN/RU |
-| `test_normalize_chat_title_truncates_long_text` | long titles truncated with ellipsis |
-| `test_build_title_user_prompt_rag_uses_question_only` | RAG prompt uses user question only |
-| `test_build_title_user_prompt_llm_custom_includes_system_prompt` | LLM custom prompt included in title prompt |
-| `test_build_title_user_prompt_llm_builtin_uses_question_only` | built-in LLM mode uses question only |
-| `test_resolve_summarization_model_prefers_dedicated_setting` | `summarization_model` overrides main model |
-| `test_resolve_summarization_model_falls_back_to_main_model` | falls back to `model` when unset |
-| `test_parse_chat_title_response_strips_quotes_and_first_line` | strips quotes, markdown, extra lines |
-
-### `unit/services/test_chat_title_service.py`
-
-Background title persistence (`app/services/chat_title.py`); uses test DB via root `conftest.py`:
-
-| Test | Assertion |
-|------|-----------|
-| `test_generate_and_persist_updates_title_in_db` | generated title saved to chat row |
-| `test_generate_and_persist_skips_deleted_chat` | no update after soft-delete |
-| `test_generate_and_persist_skips_non_default_title` | custom title left unchanged |
-| `test_generate_and_persist_publishes_sse_on_generation_failure` | SSE `error` event on LLM failure |
-
-### `unit/services/test_rag_metadata_enrichment.py`
-
-RAG metadata helpers on `ChatService`:
-
-| Test | Assertion |
-|------|-----------|
-| `test_enrich_rag_trace_steps_adds_missing_content_preview` | trace hits get `content_preview` from chunk map |
-| `test_chunk_ids_from_metadata_includes_trace_hits` | chunk ids merged from `retrieved_chunk_ids` and trace |
+| Path | Focus |
+|------|-------|
+| `unit/rag/test_client.py` | `EmbedRagClient`, `McpRagClient`, factory |
+| `unit/llm/test_prompt_guard.py` | injection / off-topic guards |
+| `unit/services/test_rag_metadata_enrichment.py` | trace enrichment via `kb_access` |
+| `unit/services/test_chat_title_service.py` | background title persistence |
 
 ## Exception tests (`tests/exceptions/`)
 
@@ -225,8 +154,8 @@ Pure helpers without HTTP or DB.
 
 Path constants for test data:
 
-- `BACKEND_ROOT` — `backend/` root;
-- `RAG_DOCUMENT` — `backend/data/rag-document.md`.
+- `KB_DATA_DIR` — repo-root `data/` (markdown, FAISS, `kb.db`);
+- `RAG_DOCUMENT` — `data/rag-document-ru.md`.
 
 Use when adding unit tests that need files from disk.
 
@@ -235,7 +164,7 @@ Use when adding unit tests that need files from disk.
 1. **File naming** — `test_<module>.py`; functions — `test_<behavior>`.
 2. **Docstrings** — in English, briefly describe expected behavior (see existing tests).
 3. **API tests** — only in `tests/api/`; HTTP fixtures in `tests/api/conftest.py`; DB isolation in the root `tests/conftest.py`.
-4. **Unit tests** — mirror code layout: `app/services/chat.py` → `tests/unit/services/test_chat.py`, `etl/universal_chunker.py` → `tests/unit/etl/test_chunker.py`.
+4. **Unit tests** — mirror backend layout; ETL tests belong in `mcp-rag/tests/`.
 5. **New API routers** — add `tests/api/test_<router>.py` with **2–3 tests per endpoint**; see `.cursor/rules/backend-api-tests.mdc`; do not mix with unit tests.
 6. **Async** — mark API tests with `@pytest.mark.asyncio` (or rely on `asyncio_mode = "auto"`).
 7. **External I/O in API tests** — patch LLM, RAG, and FAISS at the service boundary (`unittest.mock.patch`) so tests stay fast and offline.
@@ -244,7 +173,6 @@ Use when adding unit tests that need files from disk.
 
 As the project grows:
 
-- `tests/unit/etl/test_universal_chunker_edges.py` — optional edge cases for schema strategies on synthetic markdown;
 - `tests/unit/services/test_chat.py` — chat service with mocked repositories;
 - `tests/api/test_rag.py` — dedicated RAG endpoint tests when exposed separately.
 
