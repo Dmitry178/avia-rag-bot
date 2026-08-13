@@ -51,7 +51,7 @@ export function useCreateChatMutation() {
       }
 
       if (chatType === "rag") {
-        useRagSettingsStore.getState().hydrateFromChat(chat.rag_config, chat.use_history);
+        useRagSettingsStore.getState().hydrateFromChat(chat.rag_config, chat.use_history, locale);
       }
 
       setSelectedChatId(locale, chatType, chat.id);
