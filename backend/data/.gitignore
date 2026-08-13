@@ -1,4 +1,0 @@
-*
-!.gitignore
-!rag-document*.md
-!chunking-schema*.json
