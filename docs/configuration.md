@@ -2,11 +2,11 @@
 
 **English** · [Русский](configuration_ru.md)
 
-All backend settings are loaded via **pydantic-settings** from `backend/.env` and environment variables. Nested keys use double underscore (`__`) as delimiter.
+Backend settings: **pydantic-settings** from `backend/.env` (`app/core/config.py`).  
+KB / indexing settings: **`mcp-rag/.env`** (`mcp-rag/src/core/config.py`).  
+Nested keys use `__` (e.g. `LLM__BASE_URL`).
 
-Example: `LLM__BASE_URL` → `settings.llm.base_url`.
-
-See also: [deployment.md](deployment.md), [ARCHITECTURE.md](ARCHITECTURE.md#configuration).
+See also: [deployment.md](deployment.md), [ARCHITECTURE.md](ARCHITECTURE.md#data-volumes).
 
 ---
 
@@ -14,92 +14,125 @@ See also: [deployment.md](deployment.md), [ARCHITECTURE.md](ARCHITECTURE.md#conf
 
 ```bash
 cp backend/.env.example backend/.env
-# Edit LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
+# LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
+
+cp backend/.env mcp-rag/.env   # same LLM vars for ingest + RAG
+make etl-ingest                # builds data/kb.db + FAISS in repo-root data/
 ```
 
-Frontend (optional): `cp frontend/.env.example frontend/.env` — only needed when overriding `VITE_API_URL`.
+Frontend (optional): `cp frontend/.env.example frontend/.env`.
 
 ---
 
-## Application (`APP__`)
+## Data volumes (after stage 9)
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `APP__TITLE` | string | `Avia Bot API` | OpenAPI title |
-| `APP__DESCRIPTION` | string | `RAG assistant for airport staff` | OpenAPI description |
-| `APP__CORS_ORIGINS` | JSON array | `["http://localhost:5173"]` | Allowed browser origins |
+| Volume | Owner | Contents |
+|--------|-------|----------|
+| **`data/`** (repo root) | **mcp-rag** | KB sources (git), `kb.db`, FAISS, manifest JSON, ingest checkpoints |
+| **`backend/data/`** | **backend** | **`app.db` only** — `Chat`, `ChatMessage` |
 
-**Docker:** `docker-compose.yml` overrides CORS to `http://localhost:8080`.
+Both `runtime=embed` and `runtime=mcp` read KB artifacts from **`data/`** (`data/kb.db` + `data/faiss-*.index`).
 
----
-
-## Logging (`LOG__`)
-
-| Variable | Type | Default | Values |
-|----------|------|---------|--------|
-| `LOG__NAME` | string | `avia-bot-api` | Logger name |
-| `LOG__LEVEL` | string | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `FATAL`, `CRITICAL` |
-| `LOG__FORMAT` | string | `TEXT` | `TEXT`, `JSON` |
-
-Use `LOG__FORMAT=JSON` in production for log aggregation.
+```
+runtime=embed  →  backend/data/app.db  +  data/kb.db  +  data/faiss-*
+runtime=mcp    →                        data/kb.db  +  data/faiss-*
+```
 
 ---
 
-## Database (`DB__`)
+## Backend application (`APP__`, `LOG__`)
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `DB__URL` | string | `sqlite:///./data/app.db` | SQLAlchemy URL; file paths are relative to `backend/` |
+| Prefix | Examples |
+|--------|----------|
+| `APP__` | `TITLE`, `DESCRIPTION`, `CORS_ORIGINS` |
+| `LOG__` | `NAME`, `LEVEL`, `FORMAT` |
 
-SQLite URLs are automatically converted to async (`sqlite+aiosqlite`) at runtime.
-
----
-
-## Data directory (`DATA__`)
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `DATA__DIR` | string | `./data` | Runtime artifacts: SQLite, manifest JSON, transient ingest checkpoints (removed on successful ingest) |
-
-Created on startup if missing.
+Docker overrides CORS to `http://localhost:8080` — see [deployment.md](deployment.md).
 
 ---
 
-## FAISS (`FAISS__`)
+## Backend database (`DB__`)
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `FAISS__DIR` | string | `./data` | Directory for per-language vector index files |
-| `FAISS__INDEX_FILE` | string | `faiss-{language_code}.index` | Index filename pattern (`{language_code}` → `ru`, `en`) |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB__URL` | `sqlite:///./data/app.db` | Chat DB only; path relative to `backend/` |
+
+SQLite → `sqlite+aiosqlite` at runtime. **No** KB tables in this file.
+
+---
+
+## LLM provider (`LLM__`) — backend + mcp-rag
+
+Set in **both** `backend/.env` and `mcp-rag/.env` (or shared copy):
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LLM__BASE_URL` | Yes | OpenAI-compatible API |
+| `LLM__API_KEY` | Provider-dependent | Bearer token |
+| `LLM__MODEL` | Yes | Chat (RAG answers, HyDE, rerank, titles) |
+| `LLM__EMBEDDING_MODEL` | Yes (ETL/RAG) | Embeddings |
+
+Changing `LLM__EMBEDDING_MODEL` requires full re-ingest (`REBUILD=1` / `rebuild=true`). Manifest stores the model used at build time.
 
 ---
 
 ## Knowledge-base languages (code, not env)
 
-Markdown sources for each language are defined in **`backend/app/core/config.py`** → `KB_LANGUAGES`:
+Defined in **`mcp-rag/src/core/config.py`** → `KB_LANGUAGES` (paths relative to **repo root**):
 
-| Code | Document | ETL chunking schema |
-|------|----------|---------------------|
+| Code | Document | Schema |
+|------|----------|--------|
 | `ru` | `data/rag-document-ru.md` | `data/chunking-schema-ru.json` |
 | `en` | `data/rag-document-en.md` | `data/chunking-schema-en.json` |
 
-Schema contract details: [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md).
+Schema contract: [etl_chunking_schema_spec.md](etl_chunking_schema_spec.md).
 
-To change paths, edit `KB_LANGUAGES` and re-run ingest. Per-request override: API `source_path` or CLI `--source` on `ingest-schema` / `POST /api/etl/ingest`.
+Per-request markdown override: CLI `--source` on `ingest-schema` (no HTTP ETL API on backend).
 
 ---
 
-## LLM provider (`LLM__`)
+## mcp-rag / KB database (`MCP_RAG__`)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `LLM__BASE_URL` | **Yes** (for chat/RAG/ETL) | OpenAI-compatible API base URL (e.g. `https://api.example/v1`) |
-| `LLM__API_KEY` | Depends on provider | Bearer token; may be empty for local gateways |
-| `LLM__MODEL` | **Yes** | Chat completion model (RAG answers, HyDE, rerank, titles) |
-| `LLM__SUMMARIZATION_MODEL` | Optional | Reserved for future summarization; may match `LLM__MODEL` |
-| `LLM__EMBEDDING_MODEL` | **Yes** (for ETL/RAG) | Embeddings model name |
+Used by `mcp-rag` CLI, MCP tools, and embed in-process RAG.
 
-**Important:** changing `LLM__EMBEDDING_MODEL` requires a full re-ingest (`rebuild=true`). The manifest stores the model used at build time; mismatch raises `etl_embedding_mismatch`.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_RAG__SCHEMAS_DIR` | `../data` | KB volume; relative to `mcp-rag/` cwd |
+| `MCP_RAG__LANGUAGE` | `en` | Default KB language; UI syncs RU/EN header |
+| `MCP_RAG__DB__URL` | `sqlite:///./data/kb.db` | KB SQLite (`data/kb.db` under repo root) |
+
+Prefer **`MCP_RAG__DB__URL`** (or `MCP_RAG__DB_URL`) over bare `DB__URL` in shared Docker/env files so it does not clash with backend chat `DB__URL`. Legacy `DB__URL` in `mcp-rag/.env` still works for local-only setups.
+
+MCP subprocess JSON (UI): `python -m src.server`, `cwd: ../mcp-rag`, env `MCP_RAG__SCHEMAS_DIR=../data`.
+
+---
+
+## Embed runtime dependency
+
+Backend optional extra **`rag`** installs editable **`mcp-rag`** (`backend/pyproject.toml`):
+
+```bash
+cd backend && uv sync --extra rag   # full RAG (embed + dev)
+cd backend && uv sync               # thin backend (chat API; runtime=mcp)
+```
+
+Dev dependency group includes `mcp-rag` by default for local work (`uv sync` in backend).
+
+`runtime=embed` lazy-imports `src.rag` — requires the `rag` extra (or dev group). Missing package → HTTP **503** `rag_embed_not_installed`.
+
+`runtime=mcp` spawns subprocess only; core backend imports do not require `mcp-rag`.
+
+---
+
+## Indexing commands (not backend HTTP)
+
+| Command | Description |
+|---------|-------------|
+| `make etl-ingest` | All schemas → `data/kb.db` + FAISS (delegates to `mcp-rag/`) |
+| `make -C mcp-rag etl-ingest` | Same, from mcp-rag Makefile |
+| `make etl-stats` / `etl-manifest` | CLI via mcp-rag |
+
+MCP tools: `ingest_schema`, `ingest_all`, `stats`, `index_status`.
 
 ---
 
@@ -107,39 +140,50 @@ To change paths, edit `KB_LANGUAGES` and re-run ingest. Per-request override: AP
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VITE_API_URL` | `""` (empty) | API base URL; empty = relative `/api` (dev proxy / Docker Nginx) |
+| `VITE_API_URL` | `""` | Empty = relative `/api` |
 
 ---
 
-## Docker Compose overrides
+## Docker Compose
 
-`docker-compose.yml` sets:
+Compose mounts two host directories:
 
-```yaml
-DATA__DIR: ./data
-DB__URL: sqlite:///./data/app.db
-FAISS__DIR: ./data
-FAISS__INDEX_FILE: faiss-{language_code}.index
-APP__CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
+| Host | Container | Purpose |
+|------|-----------|---------|
+| `./backend/data` | `/app/data` | Chat SQLite (`app.db`) |
+| `./data` | `/data` | KB (`kb.db`, FAISS, markdown, schemas) |
+
+Backend image includes `mcp-rag` at `/mcp-rag`. Do **not** set a single `DB__URL` in Compose for both apps — backend defaults to `app.db`; mcp-rag loads `kb.db` from `mcp-rag/.env` or defaults.
+
+Ingest inside a running stack: `make docker-etl-ingest`. See [deployment.md](deployment.md).
+
+---
+
+## Parity tests
+
+```bash
+cd backend
+# After: make etl-ingest, LLM__* in .env, data/kb.db + faiss-*.index present
+uv run pytest tests/parity --run-parity -v
 ```
 
-Host port: `FRONTEND_PORT` (default `8080`). Data bind-mount: `./backend/data:/app/data`.
+Single KB volume; compares embed in-process vs MCP stdio. Skipped in default CI without `--run-parity`.
 
 ---
 
-## RAG tuning constants (code, not env)
+## RAG tuning constants (code)
 
-These live in `backend/app/core/rag_constants.py` and require a code change to adjust:
+In **`mcp-rag/src/core/rag_constants.py`**:
 
 | Constant | Default | Purpose |
 |----------|---------|---------|
-| `RETRIEVAL_TOP_K` | 30 | FAISS oversampling per search |
-| `RERANK_TOP_N` | 5 | Candidates sent to LLM reranker |
-| `MULTI_QUERY_COUNT` | 3 | Variants for Multi-Query |
-| `DEFAULT_TOP_CHUNKS` | 5 | Chunks in generation context |
-| `DECISION_TREE_MIN_SIMILARITY` | 0.30 | Threshold for decision-tree walkthrough |
+| `RETRIEVAL_TOP_K` | 30 | FAISS oversampling |
+| `RERANK_TOP_N` | 5 | Rerank candidates |
+| `MULTI_QUERY_COUNT` | 3 | Multi-query variants |
+| `DEFAULT_TOP_CHUNKS` | 5 | Context size |
+| `DECISION_TREE_MIN_SIMILARITY` | 0.30 | Decision-tree threshold |
 
-Per-request overrides: `rag_config.top_chunks` (3–21) via API/UI.
+Per-request: `rag_config.top_chunks` (3–21) via API/UI.
 
 ---
 
@@ -147,6 +191,6 @@ Per-request overrides: `rag_config.top_chunks` (3–21) via API/UI.
 
 | Document | Content |
 |----------|---------|
-| [deployment.md](deployment.md) | Where to set variables per environment |
-| [operations.md](operations.md) | ETL after config changes |
-| [security.md](security.md) | Secrets handling |
+| [operations.md](operations.md) | ETL, backups, troubleshooting |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Component diagram |
+| [mcp_rag_migration_agent.md](../_/mcp_rag_migration_agent.md) | Migration playbook |

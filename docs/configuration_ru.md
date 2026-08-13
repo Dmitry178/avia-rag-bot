@@ -2,9 +2,9 @@
 
 **Русский** · [English](configuration.md)
 
-Все настройки backend загружаются через **pydantic-settings** из `backend/.env` и переменных окружения. Вложенные ключи разделяются двойным подчёркиванием (`__`).
-
-Пример: `LLM__BASE_URL` → `settings.llm.base_url`.
+Backend: **pydantic-settings** из `backend/.env` (`app/core/config.py`).  
+KB / индексация: **`mcp-rag/.env`** (`mcp-rag/src/core/config.py`).  
+Вложенные ключи через `__` (например `LLM__BASE_URL`).
 
 См. также: [deployment_ru.md](deployment_ru.md), [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md).
 
@@ -14,132 +14,112 @@
 
 ```bash
 cp backend/.env.example backend/.env
-# Укажите LLM__BASE_URL, LLM__API_KEY, LLM__MODEL, LLM__EMBEDDING_MODEL
+cp backend/.env mcp-rag/.env
+make etl-ingest    # data/kb.db + FAISS в data/ (корень репо)
 ```
 
-Frontend (опционально): `cp frontend/.env.example frontend/.env` — только при переопределении `VITE_API_URL`.
+---
+
+## Тома данных (после этапа 9)
+
+| Том | Владелец | Содержимое |
+|-----|----------|------------|
+| **`data/`** (корень репо) | **mcp-rag** | Исходники KB, `kb.db`, FAISS, manifest, checkpoint ingest |
+| **`backend/data/`** | **backend** | Только **`app.db`** — чаты |
+
+Оба runtime читают KB из **`data/`**:
+
+```
+embed  →  backend/data/app.db  +  data/kb.db  +  data/faiss-*
+mcp    →                        data/kb.db  +  data/faiss-*
+```
 
 ---
 
-## Приложение (`APP__`)
+## Backend: `APP__`, `LOG__`, `DB__`
 
-| Переменная | Тип | По умолчанию | Описание |
-|------------|-----|--------------|----------|
-| `APP__TITLE` | string | `Avia Bot API` | Заголовок OpenAPI |
-| `APP__DESCRIPTION` | string | `RAG assistant for airport staff` | Описание OpenAPI |
-| `APP__CORS_ORIGINS` | JSON-массив | `["http://localhost:5173"]` | Разрешённые origins браузера |
+| `DB__URL` | По умолчанию | Описание |
+|-----------|--------------|----------|
+| | `sqlite:///./data/app.db` | Только чаты; путь относительно `backend/` |
 
-**Docker:** `docker-compose.yml` переопределяет CORS на `http://localhost:8080`.
+KB-таблиц в этом файле нет.
 
 ---
 
-## Логирование (`LOG__`)
+## LLM (`LLM__`) — backend и mcp-rag
 
-| Переменная | Тип | По умолчанию | Значения |
-|------------|-----|--------------|----------|
-| `LOG__NAME` | string | `avia-bot-api` | Имя логгера |
-| `LOG__LEVEL` | string | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `FATAL`, `CRITICAL` |
-| `LOG__FORMAT` | string | `TEXT` | `TEXT`, `JSON` |
+Одинаковые переменные в `backend/.env` и `mcp-rag/.env`: `BASE_URL`, `API_KEY`, `MODEL`, `EMBEDDING_MODEL`.
 
-В продакшене используйте `LOG__FORMAT=JSON` для агрегации логов.
+Смена `LLM__EMBEDDING_MODEL` → полный re-ingest (`REBUILD=1`).
 
 ---
 
-## База данных (`DB__`)
+## Языки KB (код)
 
-| Переменная | Тип | По умолчанию | Описание |
-|------------|-----|--------------|----------|
-| `DB__URL` | string | `sqlite:///./data/app.db` | URL SQLAlchemy; пути относительно `backend/` |
+**`mcp-rag/src/core/config.py`** → `KB_LANGUAGES` (пути от **корня репо**):
 
-SQLite автоматически преобразуется в async (`sqlite+aiosqlite`) при старте.
-
----
-
-## Каталог данных (`DATA__`)
-
-| Переменная | Тип | По умолчанию | Описание |
-|------------|-----|--------------|----------|
-| `DATA__DIR` | string | `./data` | Артефакты: SQLite, manifest JSON, временные checkpoint ingest (удаляются при успешном ingest) |
-
-Создаётся при старте, если отсутствует.
-
----
-
-## FAISS (`FAISS__`)
-
-| Переменная | Тип | По умолчанию | Описание |
-|------------|-----|--------------|----------|
-| `FAISS__DIR` | string | `./data` | Каталог файлов векторного индекса по языкам |
-| `FAISS__INDEX_FILE` | string | `faiss-{language_code}.index` | Шаблон имени файла (`{language_code}` → `ru`, `en`) |
-
----
-
-## Языки базы знаний (код, не env)
-
-Пути к markdown задаются в **`backend/app/core/config.py`** → `KB_LANGUAGES`:
-
-| Код | Документ | ETL chunking schema |
-|-----|----------|---------------------|
+| Код | Документ | Схема |
+|-----|----------|-------|
 | `ru` | `data/rag-document-ru.md` | `data/chunking-schema-ru.json` |
 | `en` | `data/rag-document-en.md` | `data/chunking-schema-en.json` |
 
-Контракт схемы: [etl_chunking_schema_spec_ru.md](etl_chunking_schema_spec_ru.md).
+Переопределение markdown: CLI `--source` у `ingest-schema`. HTTP `/api/etl/*` на backend **удалён**.
 
-Чтобы изменить пути — правка `KB_LANGUAGES` и повторный ingest. Переопределение на запрос: API `source_path` или CLI `--source` у `ingest-schema` / `POST /api/etl/ingest`.
+## Docker Compose
 
----
+Два mount в Compose:
 
-## LLM-провайдер (`LLM__`)
+| Хост | Контейнер | Назначение |
+|------|-----------|------------|
+| `./backend/data` | `/app/data` | Чаты (`app.db`) |
+| `./data` | `/data` | KB (`kb.db`, FAISS, markdown, схемы) |
 
-| Переменная | Обязательна | Описание |
-|------------|-------------|----------|
-| `LLM__BASE_URL` | **Да** (для chat/RAG/ETL) | Базовый URL OpenAI-совместимого API |
-| `LLM__API_KEY` | Зависит от провайдера | Bearer-токен; может быть пустым для локальных шлюзов |
-| `LLM__MODEL` | **Да** | Модель chat completion (ответы RAG, HyDE, rerank, заголовки) |
-| `LLM__SUMMARIZATION_MODEL` | Нет | Зарезервировано; может совпадать с `LLM__MODEL` |
-| `LLM__EMBEDDING_MODEL` | **Да** (для ETL/RAG) | Модель эмбеддингов |
+В образ backend входит `mcp-rag` (`/mcp-rag`). Не задавайте один `DB__URL` в Compose для обоих пакетов.
 
-**Важно:** смена `LLM__EMBEDDING_MODEL` требует полного re-ingest (`rebuild=true`). Модель фиксируется в manifest; несовпадение даёт `etl_embedding_mismatch`.
+Ingest в контейнере: `make docker-etl-ingest`. См. [deployment_ru.md](deployment_ru.md).
 
 ---
 
-## Frontend (`VITE_*`)
+## mcp-rag / `kb.db`
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `VITE_API_URL` | `""` | Базовый URL API; пусто = относительный `/api` (dev proxy / Docker Nginx) |
+| `MCP_RAG__SCHEMAS_DIR` | `../data` | Том KB (от cwd `mcp-rag/`) |
+| `MCP_RAG__LANGUAGE` | `en` | Язык по умолчанию |
+| `MCP_RAG__DB__URL` | `sqlite:///./data/kb.db` | → `data/kb.db` в корне репо |
+
+MCP JSON в UI: `python -m src.server`, `cwd: ../mcp-rag`.
 
 ---
 
-## Переопределения Docker Compose
+## Embed
 
-`docker-compose.yml` задаёт:
+Опциональный extra **`rag`** ставит **`mcp-rag`** (`uv sync --extra rag`). Dev-группа включает `mcp-rag` по умолчанию. `runtime=embed` импортирует `src.rag` (lazy); без пакета — **503** `rag_embed_not_installed`.
 
-```yaml
-DATA__DIR: ./data
-DB__URL: sqlite:///./data/app.db
-FAISS__DIR: ./data
-FAISS__INDEX_FILE: faiss-{language_code}.index
-APP__CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
+---
+
+## Индексация
+
+| Команда | Описание |
+|---------|----------|
+| `make etl-ingest` | Делегирует в `mcp-rag/Makefile` |
+| MCP tools | `ingest_schema`, `ingest_all`, `stats`, `index_status` |
+
+---
+
+## Parity-тесты
+
+```bash
+cd backend && uv run pytest tests/parity --run-parity -v
 ```
 
-Порт на хосте: `FRONTEND_PORT` (по умолчанию `8080`). Bind-mount: `./backend/data:/app/data`.
+Один том `data/`; сравнение embed vs MCP stdio. Нужны ingest + `LLM__*`.
 
 ---
 
-## Константы RAG (код, не env)
+## Константы RAG
 
-В `backend/app/core/rag_constants.py`; для изменения нужен деплой кода:
-
-| Константа | По умолчанию | Назначение |
-|-----------|--------------|------------|
-| `RETRIEVAL_TOP_K` | 30 | Oversampling FAISS на поиск |
-| `RERANK_TOP_N` | 5 | Кандидаты для LLM rerank |
-| `MULTI_QUERY_COUNT` | 3 | Варианты Multi-Query |
-| `DEFAULT_TOP_CHUNKS` | 5 | Чанки в контексте генерации |
-| `DECISION_TREE_MIN_SIMILARITY` | 0.30 | Порог walkthrough decision tree |
-
-Переопределение на запрос: `rag_config.top_chunks` (3–21) через API/UI.
+В **`mcp-rag/src/core/rag_constants.py`** (см. [configuration.md](configuration.md)).
 
 ---
 
@@ -147,6 +127,5 @@ APP__CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
 
 | Документ | Содержание |
 |----------|------------|
-| [deployment_ru.md](deployment_ru.md) | Настройки по окружениям |
-| [operations_ru.md](operations_ru.md) | ETL после смены конфигурации |
-| [security_ru.md](security_ru.md) | Работа с секретами |
+| [operations_ru.md](operations_ru.md) | ETL, бэкапы |
+| [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md) | Архитектура |
