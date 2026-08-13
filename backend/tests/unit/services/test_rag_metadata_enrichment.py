@@ -1,12 +1,12 @@
 """Tests for RAG metadata enrichment helpers."""
 
-from app.models.chunk_meta import ChunkMeta
+from app.rag.types import ChunkRecord
 from app.services.chat import ChatService
 
 
 def test_enrich_rag_trace_steps_adds_missing_content_preview() -> None:
     chunk_map = {
-        196: ChunkMeta(
+        196: ChunkRecord(
             language_code="ru",
             id=196,
             content="[Раздел: FAQ]\n[Тип: faq]\n\nЧто такое ЧС? Ответ...",
