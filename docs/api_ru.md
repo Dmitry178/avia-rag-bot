@@ -18,10 +18,6 @@ HTTP-контракт backend **avia-bot**. Базовый путь: `/api`. И�
 |-------|------|-------|--------|
 | `GET` | `/api/healthz` | `test_health.py` | покрыт |
 | `GET` | `/api/readyz` | `test_health.py` | покрыт |
-| `POST` | `/api/etl/ingest` | `test_etl.py` | покрыт |
-| `POST` | `/api/etl/ingest-all` | `test_etl.py` | покрыт |
-| `GET` | `/api/etl/stats` | `test_etl.py` | покрыт |
-| `GET` | `/api/etl/manifest` | `test_etl.py` | покрыт |
 | `GET` | `/api/chats/events` | `test_chat_events.py` | покрыт |
 | `GET` | `/api/chats` | `test_chat.py` | покрыт |
 | `POST` | `/api/chats` | `test_chat.py` | покрыт |
@@ -70,50 +66,17 @@ HTTP-статус по типу исключения (обычно `400`, `404`,
 
 ---
 
-## ETL (`/api/etl`)
+## Индексация (ETL)
 
-Каждый **язык** KB (`ru`, `en`) имеет свой набор чанков в SQLite, файл FAISS (`faiss-{code}.index`) и sidecar-манифест (`manifest-{code}.json`). Маппинг язык → документ **захардкожен** в `backend/app/core/config.py` (`KB_LANGUAGES`; см. [руководство по эксплуатации](operations_ru.md#языки-базы-знаний)).
+**Не часть HTTP API backend** (удалено на этапе 9). Используйте:
 
-### `POST /ingest`
+| Вход | Команда |
+|------|---------|
+| Makefile | `make etl-ingest`, `make etl-stats`, `make etl-manifest` |
+| CLI | `uv run --project mcp-rag python scripts/run_etl.py ingest-dir --dir ../data` |
+| MCP | `ingest_schema`, `ingest_all`, `stats`, `index_status` |
 
-Ingest одного JSON-файла chunking schema в SQLite + FAISS.
-
-**Тело запроса:**
-
-```json
-{
-  "schema_path": "data/chunking-schema-ru.json",
-  "rebuild": false,
-  "source_path": null
-}
-```
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `schema_path` | string | Путь к JSON схемы (относительно `backend/` или абсолютный) |
-| `rebuild` | boolean | Полный re-embed (`false` = инкрементально) |
-| `source_path` | string \| null | Опциональный override markdown (относительно каталога схемы или абсолютный) |
-
-**Ответ `200`:** `IngestResponse` — `language_code`, `chunk_count`, `doc_hash`, `embedding_model`, `source_path`, `built_at`, `added`, `updated`, `unchanged`, `removed`, `embedded`.
-
-### `POST /ingest-all`
-
-Обнаружить все `rag.chunking-schema.v3` в `backend/data` и выполнить ingest для каждой схемы.
-
-**Тело:** `{ "rebuild": false }`  
-**Ответ `200`:** `{ "results": [ IngestResponse, ... ] }`
-
-### `GET /stats`
-
-**Query:** `language_code` (опционально) — фильтр по языку.
-
-**Ответ `200`:** `{ "language_code": string \| null, "total": int, "by_content_type": { "sop": int, ... } }`
-
-### `GET /manifest`
-
-**Query:** `language_code` (по умолчанию `ru`).
-
-**Ответ `200`:** метаданные последней сборки индекса для языка.
+Артефакты KB: `data/` в корне репо (`kb.db`, `faiss-{lang}.index`). См. [operations_ru.md](operations_ru.md) и [mcp-rag/README.md](../mcp-rag/README.md).
 
 ---
 

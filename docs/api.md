@@ -18,10 +18,6 @@ Each endpoint should have **2–3 HTTP tests** in `backend/tests/api/` (mocked e
 |--------|------|-------|--------|
 | `GET` | `/api/healthz` | `test_health.py` | covered |
 | `GET` | `/api/readyz` | `test_health.py` | covered |
-| `POST` | `/api/etl/ingest` | `test_etl.py` | covered |
-| `POST` | `/api/etl/ingest-all` | `test_etl.py` | covered |
-| `GET` | `/api/etl/stats` | `test_etl.py` | covered |
-| `GET` | `/api/etl/manifest` | `test_etl.py` | covered |
 | `GET` | `/api/chats/events` | `test_chat_events.py` | covered |
 | `GET` | `/api/chats` | `test_chat.py` | covered |
 | `POST` | `/api/chats` | `test_chat.py` | covered |
@@ -70,50 +66,17 @@ HTTP status follows exception type (typically `400`, `404`, `503`).
 
 ---
 
-## ETL (`/api/etl`)
+## Indexing (ETL)
 
-Each knowledge-base **language** (`ru`, `en`) has its own chunk set in SQLite, FAISS file (`faiss-{code}.index`), and manifest sidecar (`manifest-{code}.json`). Language → document mapping is **hardcoded** in `backend/app/core/config.py` (`KB_LANGUAGES`; see [Operations guide](operations.md#knowledge-base-languages)).
+**Not part of backend HTTP API** (removed in stage 9). Use:
 
-### `POST /ingest`
+| Entry | Command |
+|-------|---------|
+| Makefile | `make etl-ingest`, `make etl-stats`, `make etl-manifest` |
+| CLI | `uv run --project mcp-rag python scripts/run_etl.py ingest-dir --dir ../data` |
+| MCP | `ingest_schema`, `ingest_all`, `stats`, `index_status` |
 
-Ingest one chunking schema JSON into SQLite + FAISS.
-
-**Request body:**
-
-```json
-{
-  "schema_path": "data/chunking-schema-ru.json",
-  "rebuild": false,
-  "source_path": null
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `schema_path` | string | Path to chunking schema JSON (relative to `backend/` or absolute) |
-| `rebuild` | boolean | Force full re-embed (default `false` = incremental) |
-| `source_path` | string \| null | Optional markdown override (relative to schema directory or absolute) |
-
-**Response `200`:** `IngestResponse` — `language_code`, `chunk_count`, `doc_hash`, `embedding_model`, `source_path`, `built_at`, `added`, `updated`, `unchanged`, `removed`, `embedded`.
-
-### `POST /ingest-all`
-
-Discover every `rag.chunking-schema.v3` JSON in `backend/data` and ingest each schema.
-
-**Request body:** `{ "rebuild": false }`  
-**Response `200`:** `{ "results": [ IngestResponse, ... ] }`
-
-### `GET /stats`
-
-**Query:** `language_code` (optional) — filter to one language.
-
-**Response `200`:** `{ "language_code": string \| null, "total": int, "by_content_type": { "sop": int, ... } }`
-
-### `GET /manifest`
-
-**Query:** `language_code` (default `ru`).
-
-**Response `200`:** latest index metadata for the language — `language_code`, `source_path`, `doc_hash`, `embedding_model`, `chunker_version`, `chunk_count`, `built_at`.
+KB artifacts: repo-root `data/` (`kb.db`, `faiss-{lang}.index`, `manifest-{lang}.json`). See [operations.md](operations.md) and [mcp-rag/README.md](../mcp-rag/README.md).
 
 ---
 
