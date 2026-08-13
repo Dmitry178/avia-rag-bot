@@ -2,15 +2,15 @@
 
 [English](README.md) · **Русский**
 
-Демонстрационный проект — RAG-бот для сотрудников аэропорта: ответы на вопросы по внутренней базе знаний (SOP, FAQ, сценарии, decision trees). Интерфейс позволяет вести диалог с ассистентом, управлять списком чатов, настраивать параметры LLM/RAG и (в режиме RAG) наблюдать трассировку пайплайна.
+**Avia-bot** — демонстрационное чат-приложение для сотрудников аэропорта. **Индексация базы знаний (ETL)** и **RAG** вынесены в отдельный пакет **`mcp-rag`** — [MCP](https://modelcontextprotocol.io)-сервер по stdio (`retrieve`, `ingest_schema`, `stats`, …). FastAPI-backend отвечает за чаты, LLM-guards и SSE-трассировку; к `mcp-rag` он обращается **in-process** (`runtime=embed`, по умолчанию) или через **MCP subprocess** (`runtime=mcp`). Индексация не на HTTP API — `make etl-ingest`, CLI `mcp-rag` или MCP tools.
 
-Цель проекта — показать на учебной базе знаний принципы работы различных методов RAG: **HyDE**, **Multi-Query**, **Query Rewriting** и **Rerank**. Их можно включать и комбинировать в панели настроек и сравнивать результат по трассировке пайплайна и использованным чанкам.
+В UI — диалог, сравнение методов RAG (HyDE, Multi-Query, Query Rewriting, Rerank), трассировка пайплайна. Параллельно режим **только LLM** без базы знаний.
 
-Monorepo: **backend** (FastAPI, индексация, RAG, API чатов) + **frontend** (React SPA).
+Monorepo: **`backend/`** (FastAPI, чаты) · **`mcp-rag/`** (канонический RAG + ETL, MCP stdio) · **`frontend/`** (React SPA) · **`data/`** (том KB: markdown, `kb.db`, FAISS).
 
 ## Что умеет приложение
 
-- **Индексация базы знаний** — markdown-документ разбивается на чанки, для каждого строятся embeddings и сохраняются в SQLite + FAISS.
+- **Индексация базы знаний** — `mcp-rag` парсит markdown, чанкует по схеме, строит embeddings и сохраняет в `data/kb.db` + FAISS (не через HTTP backend).
 - **Чаты** — создание, выбор, закрытие и удаление диалогов; история сообщений и настройки хранятся на backend.
 - **Два режима работы** (переключаются в шапке UI):
   - **LLM** — прямой диалог с языковой моделью без поиска по базе знаний. Панель **Параметры**: история диалога, свой системный промпт (свободный режим без guard).
@@ -35,68 +35,57 @@ Monorepo: **backend** (FastAPI, индексация, RAG, API чатов) + **f
 
 | Часть | Технологии |
 |-------|------------|
-| Backend | Python 3.13, FastAPI, SQLModel, SQLite, FAISS, uv |
+| Backend | Python 3.13, FastAPI, SQLModel, uv |
+| **mcp-rag** | RAG-пайплайн, ETL, FAISS, MCP stdio (FastMCP) |
 | LLM | OpenAI-compatible API (chat + embeddings) |
 | Frontend | React 19, TypeScript, Vite, PrimeReact, TanStack Query, Zustand |
-| Данные | SQLite (`chunk_meta`, чаты) + FAISS-индекс на диске |
+| Данные | `backend/data/app.db` (чаты) + `data/kb.db` + FAISS (KB) |
 
 ## Структура проекта
 
 ```
 avia-bot/
-├── backend/
+├── backend/                 # FastAPI — чаты, SSE, RAG-адаптеры
 │   ├── app/
-│   │   ├── api/routers/        # api-роутеры
-│   │   ├── services/           # слой бизнес-логики
-│   │   ├── repositories/       # CRUD
-│   │   ├── models/             # модели БД
-│   │   ├── schemas/            # chat, rag, llm DTO
-│   │   ├── rag/                # RAG-пайплайн
-│   │   ├── llm/                # вызов LLM
-│   │   ├── core/               # настройки, контекстные менеджеры
-│   │   ├── db/                 # настройки БД
-│   │   └── exceptions/         # исключения
-│   ├── etl/                    # парсер и chunker markdown
-│   ├── data/                   # SQLite, RAG-документ, faiss.index
-│   ├── scripts/                # скрипты для локального запуска
-│   └── tests/                  # тесты
+│   │   ├── api/routers/     # health, chats (без HTTP ETL)
+│   │   ├── services/        # ChatService, …
+│   │   ├── rag/             # EmbedRagClient, McpRagClient, src_bridge
+│   │   ├── llm/             # чат, guards
+│   │   └── …
+│   ├── data/                # app.db (только чаты)
+│   └── tests/
+├── mcp-rag/                 # Канонический RAG + ETL + MCP-сервер
+│   ├── src/                 # пакет `src` (RagPipeline, ETLService, …)
+│   ├── scripts/run_etl.py
+│   └── Makefile             # etl-ingest, etl-stats, etl-manifest
+├── data/                    # Том KB (git-источники + kb.db, FAISS)
 ├── frontend/
-│   ├── src/
-│   │   ├── app/                # layout, провайдеры
-│   │   ├── features/
-│   │   │   ├── chats/          # список чатов
-│   │   │   ├── chat/           # диалог, composer
-│   │   │   ├── rag/            # настройки RAG
-│   │   │   ├── llm/            # настройки LLM
-│   │   │   └── trace/          # панель трассировки (RAG)
-│   │   ├── shared/             # API, i18n
-│   │   ├── theme/              # цветовые схемы
-│   │   └── styles/             # глобальные стили
-│   └── package.json
-├── docs/                       # документация (см. docs/README_RU.md)
-│   ├── ARCHITECTURE.md         # техническая архитектура (EN)
-│   ├── ARCHITECTURE_RU.md      # техническая архитектура (RU)
-│   ├── PRD.md                  # продуктовые требования (EN)
-│   ├── PRD_RU.md               # продуктовые требования (RU)
-│   └── …                       # api, deployment, security, adr/ и др.
-├── images/                     # скриншоты UI для README
-├── Makefile
-├── README.md
-└── README_RU.md
+├── docs/
+└── Makefile                 # делегирует etl-* в mcp-rag
 ```
 
 ### Backend (`backend/app/`)
 
 Поток зависимостей: **API → Service → Repository → Model**.  
-Внешние интеграции (LLM, FAISS, SSE) — в `llm/`, `core/` и `rag/`.
+Реализация RAG/ETL: **`mcp-rag/src/`**; в `backend/app/rag/` — только тонкие адаптеры.
 
 | Каталог | Назначение |
 |---------|------------|
-| `api/routers/` | HTTP-эндпоинты health, индексации и чатов |
-| `services/` | Индексация базы знаний и логика чатов |
-| `rag/` | Multi-lane RAG: query transform → параллельный поиск по корпусам → rerank → контекст для LLM |
-| `llm/` | Вызов LLM, эмбеддинги, системные промпты, фильтрация запросов |
-| `core/` | Конфигурация, логирование, FAISS-индекс, SSE-события |
+| `api/routers/` | HTTP: health, chats (без `/api/etl`) |
+| `services/` | Оркестрация чатов, guards, заголовки |
+| `rag/` | `EmbedRagClient`, `McpRagClient`, lazy-импорты `src` |
+| `llm/` | Вызов LLM, промпты, фильтрация запросов |
+
+### mcp-rag (`mcp-rag/src/`)
+
+| Область | Назначение |
+|---------|------------|
+| `rag/` | `RagPipeline`, multi-lane retrieval, HyDE / rerank |
+| `etl/` | Schema-driven чанкование markdown |
+| `services/` | `ETLService`, планирование ingest |
+| `mcp/` | MCP tools (`retrieve`, `ingest_*`, `stats`) |
+
+Запуск: `python -m src.server` (stdio). Индексация: `make etl-ingest` или `scripts/run_etl.py`.
 
 ### Frontend (`frontend/src/`)
 
@@ -143,7 +132,7 @@ HyDE, Multi-Query и Query Rewriting **взаимоисключающие** (в 
 | **Использовать историю** | Передавать ли предыдущие сообщения в LLM (по умолчанию включено) |
 | **Свой системный промпт** | Кастомный system prompt; guard отключается. Пустой промпт = без system prompt |
 
-### RAG-пайплайн (backend)
+### RAG-пайплайн (`mcp-rag/src/rag/`)
 
 ```
 [HyDE | Multi-Query | Query Rewriting | прямой запрос]
@@ -154,7 +143,7 @@ HyDE, Multi-Query и Query Rewriting **взаимоисключающие** (в 
         → [если совпадение в lane decision_tree ≥ 0.30] отдельная проработка дерева → карточка в UI
 ```
 
-**Деревья решений (гл. 16):** при достаточно релевантном чанке из lane `decision_tree` backend запускает **отдельную проработку** (`app/rag/decision_tree.py`) — независимо от общего RAG-ответа. Чанки decision tree исключаются из основного контекста. Frontend показывает результат в карточке **«Оперативный алгоритм»** с предупреждающим цветом рамки и фона над текстом ассистента (`metadata.decision_tree_guidance`).
+**Деревья решений (гл. 16):** при достаточно релевантном чанке из lane `decision_tree` запускается **отдельная проработка** (`src/rag/decision_tree.py`). Frontend показывает карточку **«Оперативный алгоритм»** (`metadata.decision_tree_guidance`).
 
 | Lane | Источник | Квота |
 |------|----------|-------|
@@ -163,7 +152,7 @@ HyDE, Multi-Query и Query Rewriting **взаимоисключающие** (в 
 | `decision_tree` | Глава 16 | 3 |
 | `scenario` | Глава 17 | 3 |
 
-Lane выполняются параллельно (`app/rag/retrieval_lanes.py`, `VectorRetriever.search_lanes()`). Один общий FAISS-индекс; каждый lane фильтрует по `content_type`. Классы методов: `backend/app/rag/methods/`. Оркестратор: `RagPipeline` в `rag/pipeline.py`.
+Lane выполняются параллельно (`src/rag/retrieval_lanes.py`). Один FAISS-индекс на язык; каждый lane фильтрует по `content_type`. Оркестратор: `RagPipeline` в `src/rag/pipeline.py`. Backend вызывает через `EmbedRagClient` или `McpRagClient`.
 
 Трассировка (SSE + `metadata.rag_trace`): снимок `rag_config`, шаг query transform, `retrieval` с `lanes[]` и объединёнными hits, опциональный `rerank`, опциональные `decision_tree` / `decision_tree_generation`. У каждого чанка — `retrieval_lane` и глава в `section`.
 
@@ -205,30 +194,31 @@ Unit-тесты: `backend/tests/unit/llm/test_prompt_guard.py`.
 ```bash
 cp backend/.env.example backend/.env   # заполнить LLM__*
 make backend-install
-make etl-ingest                    # обязательно для RAG (все схемы в backend/data)
+make etl-ingest                    # обязательно для RAG (все схемы в data/)
 make etl-stats
 make etl-manifest
 ```
 
-API: `POST /api/etl/ingest`, `GET /api/etl/stats`, `GET /api/etl/manifest`.
+Индексация **не** на backend HTTP. Makefile, `mcp-rag/scripts/run_etl.py` или MCP tools. См. [operations_ru.md](docs/operations_ru.md).
 
 **FAISS / AVX:** пакет `faiss-cpu` с PyPI поставляется с generic-сборкой. При старте могут появляться INFO-сообщения об отсутствии модулей AVX512/AVX2; затем FAISS загружает стандартную библиотеку (`Successfully loaded faiss.`). Это нормально, ничего делать не нужно. Шум `faiss.loader` подавлен до уровня WARNING в настройках логирования.
 
 **Прерывание ingest:** `Ctrl+C` во время ingest сохраняет checkpoint после последнего завершённого batch и завершает процесс с кодом 130. Повторный запуск той же цели продолжит с места остановки.
 
-Документ по умолчанию: `backend/data/rag-document.md` (`ETL__DOCUMENT_PATH`).  
-Детали модуля ETL: [`backend/etl/README_RU.md`](backend/etl/README_RU.md).
+Документы по умолчанию: `data/rag-document-{ru,en}.md`.  
+Детали модуля ETL: [`mcp-rag/src/etl/README_RU.md`](mcp-rag/src/etl/README_RU.md).
 
 | Путь | Назначение |
 |------|------------|
-| `backend/data/app.db` | SQLite: чанки, манифест, чаты |
-| `backend/data/faiss-ru.index`, `faiss-en.index` | FAISS-индексы по языкам |
-| `backend/data/manifest-ru.json`, `manifest-en.json` | копии манифестов |
-| `backend/data/rag-document.md` | исходный markdown для ETL |
+| `backend/data/app.db` | SQLite: только чаты |
+| `data/kb.db` | SQLite: чанки, манифесты |
+| `data/faiss-ru.index`, `faiss-en.index` | FAISS-индексы по языкам |
+| `data/manifest-ru.json`, `manifest-en.json` | копии манифестов |
+| `data/rag-document-{ru,en}.md` | исходный markdown для ETL |
 
 ## База знаний
 
-Источники RAG — два markdown-файла по языкам: [`backend/data/rag-document-ru.md`](backend/data/rag-document-ru.md) и [`backend/data/rag-document-en.md`](backend/data/rag-document-en.md). Каждый разбит на пронумерованные главы (H1) и намеренно неоднороден: процедуры, FAQ, деревья решений и сценарии относятся к разным группам глав и чанкуются по разным правилам.
+Источники RAG — два markdown-файла по языкам: [`data/rag-document-ru.md`](data/rag-document-ru.md) и [`data/rag-document-en.md`](data/rag-document-en.md). Каждый разбит на пронумерованные главы (H1) и намеренно неоднороден: процедуры, FAQ, деревья решений и сценарии относятся к разным группам глав и чанкуются по разным правилам.
 
 ### Группы глав
 
@@ -316,7 +306,7 @@ make docker-etl-ingest
 ```
 
 Откройте `http://127.0.0.1:8080`. Nginx отдаёт frontend и проксирует `/api` на backend.  
-Данные SQLite, FAISS и RAG-документ сохраняются в `backend/data/` на хосте (bind mount).
+Чаты — в `backend/data/app.db`; артефакты KB (`kb.db`, FAISS, markdown) — в `data/` в корне репо (bind mount — см. [deployment_ru.md](docs/deployment_ru.md)).
 
 Полезные команды:
 
@@ -331,6 +321,7 @@ make docker-build     # только пересобрать образы
 ## Текущий статус
 
 **Готово:**
-- Backend: ETL (инкрементальный ingest, resume по checkpoint), FAISS, multi-lane RAG, статические главы 00/13 в system prompt, CRUD чатов, LLM/RAG ответы, SSE trace
-- Frontend: layout (чаты · диалог · трассировка/параметры), настройки RAG/LLM, просмотр trace по lane, i18n, theme
-- Docker: production-сборка frontend (nginx) + backend (uvicorn), `docker compose`
+- **mcp-rag:** ETL (инкрементальный ingest, resume по checkpoint), FAISS, multi-lane RAG, MCP stdio tools
+- Backend: CRUD чатов, адаптеры embed/MCP RAG, LLM guards, SSE trace
+- Frontend: layout (чаты · диалог · трассировка/параметры), настройки RAG/LLM, переключатель runtime (embed/mcp), trace viewer, i18n, theme
+- Docker: nginx + backend; чаты в `backend/data/`, KB в `data/`
