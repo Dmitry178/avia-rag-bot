@@ -39,7 +39,8 @@ Central index for **avia-bot** documentation. For quick start and screenshots se
 
 | Document | Description |
 |----------|-------------|
-| [backend/etl/README.md](../backend/etl/README.md) | Parser and chunker internals |
+| [mcp-rag/README.md](../mcp-rag/README.md) | MCP stdio server, indexing CLI, data volumes |
+| [mcp-rag/src/etl/README.md](../mcp-rag/src/etl/README.md) | Parser and chunker internals |
 | [backend/tests/README.md](../backend/tests/README.md) | Test layout and commands |
 
 ## Naming convention

@@ -39,7 +39,8 @@
 
 | Документ | Содержание |
 |----------|------------|
-| [backend/etl/README_RU.md](../backend/etl/README_RU.md) | Парсер и чанкер |
+| [mcp-rag/README.md](../mcp-rag/README.md) | MCP stdio, CLI индексации, тома данных |
+| [mcp-rag/src/etl/README_RU.md](../mcp-rag/src/etl/README_RU.md) | Парсер и чанкер |
 | [backend/tests/README_RU.md](../backend/tests/README_RU.md) | Тесты и команды |
 
 ## Соглашение об именах
