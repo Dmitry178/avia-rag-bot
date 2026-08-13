@@ -5,7 +5,7 @@
 **Version:** 1.0  
 **Date:** July 11, 2026  
 **Status:** Demonstration MVP → product concept  
-**Sources:** [README.md](../README.md), [ARCHITECTURE.md](ARCHITECTURE.md), knowledge base `backend/data/rag-document.md` (chapters 00, 13)
+**Sources:** [README.md](../README.md), [ARCHITECTURE.md](ARCHITECTURE.md), knowledge base `data/rag-document-ru.md` (chapters 00, 13)
 
 ---
 
@@ -357,9 +357,10 @@ flowchart TB
 
 ### 13.1. Implemented (MVP / demo)
 
-- Backend: ETL, FAISS, multi-lane RAG, decision-tree walkthrough, chats, LLM/RAG replies, SSE trace, prompt guards
-- Frontend: three-column UI, RAG/LLM settings, trace viewer, operational procedure cards (decision trees), i18n, themes
-- Docker: nginx + backend, persistence in `backend/data/`
+- **mcp-rag:** ETL, FAISS, multi-lane RAG, MCP stdio; decision-tree walkthrough
+- Backend: chats, embed/MCP RAG adapters, LLM/RAG replies, SSE trace, prompt guards
+- Frontend: three-column UI, RAG/LLM settings, runtime switch, trace viewer, operational procedure cards, i18n, themes
+- Docker: nginx + backend; chats in `backend/data/`, KB in repo-root `data/`
 - Educational KB with realistic airport SOP structure
 
 ### 13.2. Proposed phases (business roadmap)
@@ -445,4 +446,4 @@ flowchart TB
 | [README.md](README.md) | Documentation index |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Technical architecture |
 | [roadmap.md](roadmap.md) | Product roadmap |
-| [backend/data/rag-document.md](../backend/data/rag-document.md) | Educational knowledge base |
+| [data/rag-document-ru.md](../data/rag-document-ru.md) | Educational knowledge base |

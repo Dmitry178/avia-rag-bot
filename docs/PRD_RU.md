@@ -5,7 +5,7 @@
 **Версия:** 1.0  
 **Дата:** 11 июля 2026  
 **Статус:** Демонстрационный MVP → продуктовая концепция  
-**Источники:** [README_RU.md](../README_RU.md), [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md), база знаний `backend/data/rag-document.md` (главы 00, 13)
+**Источники:** [README_RU.md](../README_RU.md), [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md), база знаний `data/rag-document-ru.md` (главы 00, 13)
 
 ---
 
@@ -357,9 +357,10 @@ flowchart TB
 
 ### 13.1. Реализовано (MVP / демо)
 
-- Backend: ETL, FAISS, multi-lane RAG, проработка деревьев решений, чаты, LLM/RAG ответы, SSE trace, prompt guards
-- Frontend: трёхколоночный UI, настройки RAG/LLM, trace viewer, карточки оперативного алгоритма (decision trees), i18n, темы
-- Docker: nginx + backend, персистентность `backend/data/`
+- **mcp-rag:** ETL, FAISS, multi-lane RAG, MCP stdio; проработка деревьев решений
+- Backend: чаты, адаптеры embed/MCP RAG, LLM/RAG ответы, SSE trace, prompt guards
+- Frontend: трёхколоночный UI, настройки RAG/LLM, переключатель runtime, trace viewer, карточки оперативного алгоритма, i18n, темы
+- Docker: nginx + backend; чаты в `backend/data/`, KB в `data/` в корне репо
 - Учебная KB с реалистичной структурой аэропортовых SOP
 
 ### 13.2. Предлагаемые фазы (бизнес-roadmap)
@@ -446,4 +447,4 @@ flowchart TB
 | [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md) | Техническая архитектура |
 | [roadmap_ru.md](roadmap_ru.md) | Дорожная карта |
 | [PRD.md](PRD.md) | Product requirements (English) |
-| [backend/data/rag-document.md](../backend/data/rag-document.md) | Учебная база знаний |
+| [data/rag-document-ru.md](../data/rag-document-ru.md) | Учебная база знаний |
