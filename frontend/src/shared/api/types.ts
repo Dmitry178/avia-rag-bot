@@ -2,12 +2,23 @@ export type MessageRole = "user" | "assistant" | "system";
 
 export type ChatMode = "rag" | "llm";
 
+export type RagRuntime = "embed" | "mcp";
+
+export interface McpConnectionConfig {
+  command: string;
+  args: string[];
+  cwd?: string | null;
+  env?: Record<string, string>;
+}
+
 export interface RagConfig {
   use_hyde?: boolean | null;
   use_multi_query?: boolean | null;
   use_query_rewriting?: boolean | null;
   use_rerank?: boolean | null;
   top_chunks?: number | null;
+  runtime?: RagRuntime | null;
+  mcp?: McpConnectionConfig | null;
 }
 
 export interface LlmConfig {
