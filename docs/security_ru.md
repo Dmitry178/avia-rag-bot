@@ -85,9 +85,9 @@
 | 2 | Приватный / on-prem LLM | Высокий |
 | 3 | HTTPS (TLS на Nginx/ingress) | Критично |
 | 4 | Аутентификация и audit log | Критично |
-| 5 | ETL ingest только для admin | Высокий |
+| 5 | ETL ingest только для admin (Makefile / MCP / CLI — публичного HTTP ingest нет) | Высокий |
 | 6 | `LOG__FORMAT=JSON` + централизованные логи | Средний |
-| 7 | Права на `backend/data/` | Средний |
+| 7 | Права на `backend/data/` (чаты) и `data/` (KB) | Средний |
 | 8 | Rate limiting на `/messages` | Средний |
 | 9 | Обновление зависимостей | Средний |
 | 10 | Security review реальной KB перед пилотом | Высокий |

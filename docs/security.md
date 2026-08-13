@@ -85,9 +85,9 @@ Structured `error_code` in API responses — no stack traces to clients in produ
 | 2 | Use private / on-prem LLM endpoint | High |
 | 3 | Enable HTTPS (TLS termination at Nginx/ingress) | Critical |
 | 4 | Implement authentication and audit log | Critical |
-| 5 | Restrict ETL ingest to admin role | High |
+| 5 | Restrict ETL ingest to admin role (Makefile / MCP tools / CLI — no public HTTP ingest) | High |
 | 6 | `LOG__FORMAT=JSON` + centralized logging | Medium |
-| 7 | Filesystem permissions on `backend/data/` | Medium |
+| 7 | Filesystem permissions on `backend/data/` (chats) and `data/` (KB) | Medium |
 | 8 | Rate limiting on `/api/chats/*/messages` | Medium |
 | 9 | Regular dependency updates (`uv`, `npm audit`) | Medium |
 | 10 | Security review of real KB before pilot | High |
