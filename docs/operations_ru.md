@@ -19,59 +19,53 @@ Docker healthcheck backend использует `healthz`.
 
 ## Операции ETL
 
+Канонический код и CLI — в **`mcp-rag/`**. Корневой `Makefile` делегирует в `mcp-rag/Makefile`.
+
 ### Команды
 
 | Команда | Описание |
 |---------|----------|
-| `make etl-ingest` | Инкрементальный ingest — все схемы в `backend/data` (по умолчанию `ru` + `en`) |
+| `make etl-ingest` | Инкрементальный ingest — все схемы в `data/` (по умолчанию `ru` + `en`) |
 | `make etl-stats` | Количество чанков по `content_type` (опционально `LANG=ru\|en`) |
 | `make etl-manifest` | Последний manifest (опционально `LANG=ru\|en`) |
 
-Свой каталог схем: `ETL_SCHEMAS_DIR=path make etl-ingest` (через `ingest-dir`).
+Свой каталог схем: `ETL_SCHEMAS_DIR=path make -C mcp-rag etl-ingest`.
 
-Docker: `make docker-etl-ingest` индексирует все схемы в `backend/data`.
-
-### API-эквиваленты
-
-| Метод | Путь |
-|-------|------|
-| `POST` | `/api/etl/ingest` — body: `{ "schema_path": "data/chunking-schema-ru.json", "rebuild": false }` |
-| `POST` | `/api/etl/ingest-all` — body: `{ "rebuild": false }` |
-| `GET` | `/api/etl/stats` — опционально `?language_code=ru` |
-| `GET` | `/api/etl/manifest` — `?language_code=ru` |
+Docker: `make docker-etl-ingest` (нужен mount `data/` — см. [deployment_ru.md](deployment_ru.md)).
 
 ### Языки базы знаний
 
-Поддерживаемые языки **захардкожены** в `backend/app/core/config.py` (`KB_LANGUAGES`, не в БД):
+Языки заданы в **`mcp-rag/src/core/config.py`** (`KB_LANGUAGES`):
 
 | Код | Документ | Метка |
 |-----|----------|-------|
-| `ru` | `backend/data/rag-document-ru.md` | Русский |
-| `en` | `backend/data/rag-document-en.md` | English |
+| `ru` | `data/rag-document-ru.md` | Русский |
+| `en` | `data/rag-document-en.md` | English |
 
-В чатах, чанках и manifest используется столбец `language_code` со значениями `ru` или `en`.
+В чатах — `language_code` в настройках; чанки/manifest — в `data/kb.db`.
 
 ### Артефакты на диске
 
 | Файл | Назначение |
 |------|------------|
-| `backend/data/app.db` | SQLite (чанки, чаты, manifests) |
-| `backend/data/faiss-ru.index` | FAISS (русская KB) |
-| `backend/data/faiss-en.index` | FAISS (английская KB) |
-| `backend/data/manifest-ru.json` | Метаданные последней сборки (ru) |
-| `backend/data/manifest-en.json` | Метаданные последней сборки (en) |
-| `backend/data/ingest_checkpoint_{lang}.json` | Checkpoint resume (временный; см. ниже) |
-| `backend/data/ingest_checkpoint_{lang}.tmp` | Temp при записи checkpoint (временный) |
+| `backend/data/app.db` | SQLite — **только чаты** |
+| `data/kb.db` | SQLite — `chunk_meta`, `index_manifest` |
+| `data/faiss-ru.index` | FAISS (русская KB) |
+| `data/faiss-en.index` | FAISS (английская KB) |
+| `data/manifest-ru.json` | Метаданные последней сборки (ru) |
+| `data/manifest-en.json` | Метаданные последней сборки (en) |
+| `data/ingest_checkpoint_{lang}.json` | Checkpoint resume (временный; см. ниже) |
+| `data/ingest_checkpoint_{lang}.tmp` | Temp при записи checkpoint (временный) |
 
-`id` чанка в SQLite должен совпадать с позицией строки в FAISS **внутри языка** — при полном ingest пересобираются вместе.
+`id` чанка в `kb.db` должен совпадать с позицией строки в FAISS **внутри языка** — при полном ingest пересобираются вместе.
 
 ### Когда перезапускать ingest
 
 | Событие | Действие |
 |---------|----------|
 | Изменился контент KB | `make etl-ingest` (инкрементально) |
-| Сменилась embedding model | те же цели с `REBUILD=1` |
-| Подозрение на рассинхрон FAISS/БД | Остановить backend → бэкап `backend/data/` → полный rebuild |
+| Сменилась embedding model | `REBUILD=1 make etl-ingest` |
+| Подозрение на рассинхрон FAISS/БД | Остановить сервисы → бэкап `data/` → полный rebuild |
 | Прерванный ingest | Повторить ту же команду — checkpoint продолжит |
 
 ### Checkpoint ingest (временные файлы)
@@ -86,7 +80,7 @@ Docker: `make docker-etl-ingest` индексирует все схемы в `ba
 
 По языкам: `ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Обновляются после каждого батча эмбеддингов.
 
-**При успешном завершении** (`ETLService.ingest_schema`, CLI `ingest-schema` / `ingest-dir`):
+**При успешном завершении** (`ETLService.ingest_schema`, `mcp-rag/scripts/run_etl.py`):
 
 1. Сохраняются SQLite + FAISS + manifest.
 2. Checkpoint для завершённых языков **удаляется автоматически** (сервис + дополнительная очистка в CLI).
@@ -96,7 +90,7 @@ Docker: `make docker-etl-ingest` индексирует все схемы в `ba
 - Checkpoint **остаётся на диске** — повторите **ту же** команду (`make etl-ingest` и т.д.); совместимый checkpoint подхватится.
 - Не удаляйте checkpoint вручную, если хотите продолжить с места остановки.
 
-Файлы в `backend/data/.gitignore` — в git не коммитятся.
+Файлы в `data/.gitignore` — runtime-артефакты не коммитятся.
 
 При `Ctrl+C` CLI выводит инструкцию по resume (`exit code 130`).
 
@@ -109,25 +103,27 @@ Docker: `make docker-etl-ingest` индексирует все схемы в `ba
 Минимум для восстановления RAG:
 
 ```
-backend/data/app.db
-backend/data/faiss-ru.index
-backend/data/faiss-en.index
-backend/data/manifest-ru.json
-backend/data/manifest-en.json
-backend/data/rag-document-ru.md
-backend/data/rag-document-en.md
+data/kb.db
+data/faiss-ru.index
+data/faiss-en.index
+data/manifest-ru.json
+data/manifest-en.json
+data/rag-document-ru.md
+data/rag-document-en.md
 ```
+
+Для истории чатов также бэкапьте `backend/data/app.db`.
 
 ### Процедура
 
 1. Остановить backend (или убедиться, что ingest не идёт).
-2. Скопировать каталог `backend/data/` с меткой времени.
+2. Скопировать `data/` и `backend/data/app.db` с меткой времени.
 3. Секреты `.env` хранить отдельно (не в git).
 
 ### Восстановление
 
 1. Остановить backend.
-2. Заменить `backend/data/` из бэкапа.
+2. Заменить `data/` и `backend/data/app.db` из бэкапа.
 3. Проверить совпадение `embedding_model` в manifest с `LLM__EMBEDDING_MODEL`.
 4. Запустить backend; выполнить `make etl-stats`.
 
@@ -151,7 +147,7 @@ backend/data/rag-document-en.md
 |--------|---------------|
 | API жив | `/api/healthz` |
 | БД готова | `/api/readyz` |
-| Индекс есть | `/api/etl/manifest` или `make etl-manifest` |
+| Индекс есть | `make etl-manifest` |
 | Распределение чанков | `make etl-stats` |
 | Связь с LLM | Тестовое сообщение в режиме LLM |
 | RAG pipeline | Сообщение в RAG + trace panel |
@@ -164,7 +160,7 @@ backend/data/rag-document-en.md
 
 **Причина:** нет FAISS-индекса или manifest.
 
-**Решение:** `make etl-ingest` (или цель для конкретного языка). Проверить `backend/data/faiss-ru.index` и `faiss-en.index`.
+**Решение:** `make etl-ingest`. Проверить `data/faiss-ru.index` и `data/faiss-en.index`.
 
 ### `503 rag_chunks_missing`
 

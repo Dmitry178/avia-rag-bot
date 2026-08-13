@@ -19,59 +19,53 @@ Docker backend service uses `healthz` in its healthcheck.
 
 ## ETL operations
 
+Canonical code and CLI live in **`mcp-rag/`**. Root `Makefile` delegates to `mcp-rag/Makefile`.
+
 ### Commands
 
 | Command | Description |
 |---------|-------------|
-| `make etl-ingest` | Incremental ingest — all schemas in `backend/data` (`ru` + `en` by default) |
+| `make etl-ingest` | Incremental ingest — all schemas in repo-root `data/` (`ru` + `en`) |
 | `make etl-stats` | Chunk counts by `content_type` (optional `LANG=ru\|en`) |
 | `make etl-manifest` | Latest index manifest (optional `LANG=ru\|en`) |
 
-Custom schema directory: `ETL_SCHEMAS_DIR=path make etl-ingest` (uses `ingest-dir`).
+Custom schema directory: `ETL_SCHEMAS_DIR=path make -C mcp-rag etl-ingest`.
 
-Docker: `make docker-etl-ingest` indexes all schemas in `backend/data`.
-
-### API equivalents
-
-| Method | Path |
-|--------|------|
-| `POST` | `/api/etl/ingest` — body: `{ "schema_path": "data/chunking-schema-ru.json", "rebuild": false }` |
-| `POST` | `/api/etl/ingest-all` — body: `{ "rebuild": false }` |
-| `GET` | `/api/etl/stats` — optional `?language_code=ru` |
-| `GET` | `/api/etl/manifest` — `?language_code=ru` |
+Docker: `make docker-etl-ingest` (ensure `data/` volume is mounted — see [deployment.md](deployment.md)).
 
 ### Knowledge-base languages
 
-Supported languages are **hardcoded** in `backend/app/core/config.py` (`KB_LANGUAGES`, not stored in the database):
+Supported languages are defined in **`mcp-rag/src/core/config.py`** (`KB_LANGUAGES`):
 
 | Code | Document | UI label |
 |------|----------|----------|
-| `ru` | `backend/data/rag-document-ru.md` | Русский |
-| `en` | `backend/data/rag-document-en.md` | English |
+| `ru` | `data/rag-document-ru.md` | Русский |
+| `en` | `data/rag-document-en.md` | English |
 
-Chats, chunks, and manifests use `language_code` column values `ru` or `en`. To change paths, edit `KB_LANGUAGES` in `config.py` and re-run ingest.
+Chats store `language_code` on settings; chunks/manifests use `ru` or `en` in `data/kb.db`.
 
 ### On-disk artifacts
 
 | File | Purpose |
 |------|---------|
-| `backend/data/app.db` | SQLite (chunks, chats, manifests) |
-| `backend/data/faiss-ru.index` | FAISS vectors (Russian KB) |
-| `backend/data/faiss-en.index` | FAISS vectors (English KB) |
-| `backend/data/manifest-ru.json` | Latest Russian build metadata |
-| `backend/data/manifest-en.json` | Latest English build metadata |
-| `backend/data/ingest_checkpoint_{lang}.json` | Checkpoint resume (transient; see below) |
-| `backend/data/ingest_checkpoint_{lang}.tmp` | Temp file while writing checkpoint (transient) |
+| `backend/data/app.db` | SQLite — **chats only** |
+| `data/kb.db` | SQLite — `chunk_meta`, `index_manifest` |
+| `data/faiss-ru.index` | FAISS vectors (Russian KB) |
+| `data/faiss-en.index` | FAISS vectors (English KB) |
+| `data/manifest-ru.json` | Latest Russian build metadata |
+| `data/manifest-en.json` | Latest English build metadata |
+| `data/ingest_checkpoint_{lang}.json` | Checkpoint resume (transient; see below) |
+| `data/ingest_checkpoint_{lang}.tmp` | Temp file while writing checkpoint (transient) |
 
-Chunk `id` in SQLite must match FAISS row index per language — both are rebuilt together on full ingest.
+Chunk `id` in `kb.db` must match FAISS row index per language — both are rebuilt together on full ingest.
 
 ### When to re-ingest
 
 | Trigger | Action |
 |---------|--------|
 | KB content changed | `make etl-ingest` (incremental) |
-| Embedding model changed | same targets with `REBUILD=1` |
-| FAISS/DB corruption suspected | Stop backend → backup `backend/data/` → full rebuild |
+| Embedding model changed | `REBUILD=1 make etl-ingest` |
+| FAISS/DB corruption suspected | Stop services → backup `data/` → full rebuild |
 | Interrupted ingest | Re-run same command — checkpoint resumes |
 
 ### Ingest checkpoint (transient)
@@ -86,7 +80,7 @@ During embedding, ETL writes **resume state** so a long ingest can continue afte
 
 Per language: `ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Updated after each embedding batch.
 
-**On successful completion** (`ETLService.ingest_schema`, `scripts/run_etl.py ingest-schema` / `ingest-dir`):
+**On successful completion** (`ETLService.ingest_schema`, `mcp-rag/scripts/run_etl.py`):
 
 1. SQLite + FAISS + manifest are persisted.
 2. Checkpoint files for the finished language(s) are **deleted automatically** (service layer + CLI safety pass).
@@ -96,7 +90,7 @@ Per language: `ingest_checkpoint_ru.json`, `ingest_checkpoint_en.json`. Updated 
 - Checkpoint **remains on disk** — re-run the **same** command (`make etl-ingest`, etc.); compatible checkpoints are resumed.
 - Do **not** delete the checkpoint manually unless you intend to restart embedding from scratch.
 
-Files are listed in `backend/data/.gitignore` — not committed to git.
+Files are listed in `data/.gitignore` — runtime artifacts not committed to git.
 
 On `Ctrl+C`, the CLI prints resume instructions (`exit code 130`).
 
@@ -109,25 +103,27 @@ On `Ctrl+C`, the CLI prints resume instructions (`exit code 130`).
 Minimum for RAG recovery:
 
 ```
-backend/data/app.db
-backend/data/faiss-ru.index
-backend/data/faiss-en.index
-backend/data/manifest-ru.json
-backend/data/manifest-en.json
-backend/data/rag-document-ru.md
-backend/data/rag-document-en.md
+data/kb.db
+data/faiss-ru.index
+data/faiss-en.index
+data/manifest-ru.json
+data/manifest-en.json
+data/rag-document-ru.md
+data/rag-document-en.md
 ```
+
+For chat history, also back up `backend/data/app.db`.
 
 ### Suggested procedure
 
 1. Stop backend (or ensure no ingest in progress).
-2. Copy entire `backend/data/` directory with timestamp.
+2. Copy `data/` and `backend/data/app.db` with timestamp.
 3. Store `.env` secrets separately (not in git).
 
 ### Restore
 
 1. Stop backend.
-2. Replace `backend/data/` from backup.
+2. Replace `data/` and `backend/data/app.db` from backup.
 3. Verify `manifest.json` `embedding_model` matches current `LLM__EMBEDDING_MODEL`.
 4. Start backend; run `make etl-stats`.
 
@@ -151,7 +147,7 @@ Key log events: `etl_ingest_*`, `sse_subscribed`, `llm_api_error`, `rag_index_mi
 |--------|--------------|
 | API up | `/api/healthz` |
 | DB ready | `/api/readyz` |
-| Index present | `/api/etl/manifest` or `make etl-manifest` |
+| Index present | `make etl-manifest` |
 | Chunk distribution | `make etl-stats` |
 | LLM connectivity | Send test message in LLM mode |
 | RAG pipeline | Send test message in RAG mode; inspect trace panel |
@@ -164,7 +160,7 @@ Key log events: `etl_ingest_*`, `sse_subscribed`, `llm_api_error`, `rag_index_mi
 
 **Cause:** FAISS index or manifest not found.
 
-**Fix:** Run `make etl-ingest` (or the language-specific target). Verify `backend/data/faiss-ru.index` and `faiss-en.index` exist.
+**Fix:** Run `make etl-ingest`. Verify `data/faiss-ru.index` and `data/faiss-en.index` exist.
 
 ### `503 rag_chunks_missing`
 
