@@ -6,10 +6,15 @@ from contextlib import contextmanager
 from httpx import AsyncClient
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models.chunk_meta import ChunkMeta
-from app.rag.types import LaneVerificationCandidate
-from app.rag.retrieval_lanes import LanePresentation, RetrievalLane
-from app.rag.types import RagPipelineResult, RagTraceStep, RetrievedChunk
+from app.rag.types import (
+    ChunkRecord,
+    LanePresentation,
+    LaneVerificationCandidate,
+    RagPipelineResult,
+    RagTraceStep,
+    RetrievalLane,
+    RetrievedChunk,
+)
 
 LLM_MOCK_RETURN = (
     "Test reply",
@@ -25,24 +30,28 @@ LLM_MOCK_RETURN = (
 
 @contextmanager
 def mock_rag_pipeline():
-    pipeline = MagicMock()
-    pipeline.run = AsyncMock(
-        return_value=RagPipelineResult(
-            context="[1] Baggage rules",
-            chunks=[],
-            trace=[RagTraceStep(step="retrieval", duration_ms=1, data={"candidate_count": 1})],
-            search_queries=["baggage allowance"],
-        ),
+    rag_result = RagPipelineResult(
+        context="[1] Baggage rules",
+        chunks=[],
+        trace=[RagTraceStep(step="retrieval", duration_ms=1, data={"candidate_count": 1})],
+        search_queries=["baggage allowance"],
     )
-    pipeline.build_generation_prompt = MagicMock(return_value="RAG system prompt")
+    rag_client = MagicMock()
+    rag_client.retrieve = AsyncMock(return_value=rag_result)
 
-    with patch("app.services.chat.RagPipeline", return_value=pipeline):
-        yield pipeline
+    with (
+        patch("app.services.chat.get_rag_client", return_value=rag_client),
+        patch(
+            "app.services.chat.build_generation_prompt",
+            return_value="RAG system prompt",
+        ),
+    ):
+        yield rag_client
 
 
 @contextmanager
 def mock_rag_pipeline_with_decision_tree(*, llm_side_effect):
-    chunk = ChunkMeta(
+    chunk = ChunkRecord(
         language_code="ru",
         id=708,
         content="Сработала пожарная сигнализация...",
@@ -73,8 +82,8 @@ def mock_rag_pipeline_with_decision_tree(*, llm_side_effect):
             max_verification_candidates=1,
         ),
     )
-    pipeline = MagicMock()
-    pipeline.run = AsyncMock(
+    rag_client = MagicMock()
+    rag_client.retrieve = AsyncMock(
         return_value=RagPipelineResult(
             context="[1] Baggage rules",
             chunks=[tree_hit],
@@ -84,17 +93,20 @@ def mock_rag_pipeline_with_decision_tree(*, llm_side_effect):
             applicable_decision_trees=[tree_hit],
         ),
     )
-    pipeline.build_generation_prompt = MagicMock(return_value="RAG system prompt")
 
     with (
-        patch("app.services.chat.RagPipeline", return_value=pipeline),
+        patch("app.services.chat.get_rag_client", return_value=rag_client),
+        patch(
+            "app.services.chat.build_generation_prompt",
+            return_value="RAG system prompt",
+        ),
         patch(
             "app.services.chat.ChatCompletionClient.complete",
             new_callable=AsyncMock,
             side_effect=llm_side_effect,
         ),
     ):
-        yield pipeline
+        yield rag_client
 
 
 @pytest.mark.asyncio
@@ -337,6 +349,85 @@ async def test_create_rag_chat_applies_default_settings(client: AsyncClient) -> 
     assert data["rag_config"]["use_query_rewriting"] is False
     assert data["rag_config"]["use_rerank"] is False
     assert data["rag_config"]["top_chunks"] == 5
+    assert data["rag_config"]["runtime"] == "embed"
+    assert data["rag_config"]["mcp"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_rag_settings_runtime_mcp(client: AsyncClient) -> None:
+    """
+    PATCH should persist MCP runtime settings on a RAG chat.
+    """
+
+    create = await client.post("/api/chats", json={"title": "RAG MCP", "chat_type": "rag"})
+    chat_id = create.json()["id"]
+
+    patched = await client.patch(
+        f"/api/chats/{chat_id}",
+        json={
+            "rag_config": {
+                "runtime": "mcp",
+                "mcp": {
+                    "command": "python",
+                    "args": ["-m", "src.server"],
+                    "cwd": "../mcp-rag",
+                    "env": {"MCP_RAG__SCHEMAS_DIR": "../data"},
+                },
+            },
+        },
+    )
+
+    assert patched.status_code == 200
+    data = patched.json()
+    assert data["rag_config"]["runtime"] == "mcp"
+    assert data["rag_config"]["mcp"]["command"] == "python"
+    assert data["rag_config"]["mcp"]["args"] == ["-m", "src.server"]
+
+
+@pytest.mark.asyncio
+async def test_send_rag_message_uses_mcp_client_when_runtime_mcp(client: AsyncClient) -> None:
+    """
+    RAG message flow should use the MCP client when runtime is mcp.
+    """
+
+    create = await client.post("/api/chats", json={"title": "RAG MCP send", "chat_type": "rag"})
+    chat_id = create.json()["id"]
+
+    await client.patch(
+        f"/api/chats/{chat_id}",
+        json={"rag_config": {"runtime": "mcp"}},
+    )
+
+    rag_result = RagPipelineResult(
+        context="[1] Baggage rules",
+        chunks=[],
+        trace=[RagTraceStep(step="retrieval", duration_ms=1, data={"candidate_count": 1})],
+        search_queries=["baggage allowance"],
+    )
+    rag_client = MagicMock()
+    rag_client.retrieve = AsyncMock(return_value=rag_result)
+
+    with (
+        patch("app.services.chat.get_rag_client", return_value=rag_client) as get_client_mock,
+        patch(
+            "app.services.chat.ChatCompletionClient.complete",
+            new_callable=AsyncMock,
+            return_value=LLM_MOCK_RETURN,
+        ),
+        patch(
+            "app.services.chat.build_generation_prompt",
+            return_value="RAG system prompt",
+        ),
+    ):
+        send = await client.post(
+            f"/api/chats/{chat_id}/messages",
+            json={"content": "baggage allowance?"},
+        )
+
+    assert send.status_code == 200
+    get_client_mock.assert_called_once()
+    assert get_client_mock.call_args.args[0].runtime == "mcp"
+    rag_client.retrieve.assert_awaited_once()
 
 
 @pytest.mark.asyncio
