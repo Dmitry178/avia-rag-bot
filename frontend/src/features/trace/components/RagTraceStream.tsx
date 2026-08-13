@@ -266,6 +266,10 @@ function RagConfigUsedSection({
           </dd>
         </div>
         <div className="rag-trace__config-row">
+          <dt>{t("trace.appliedRuntime")}</dt>
+          <dd>{config.runtime === "mcp" ? t("rag.runtimeMcp") : t("rag.runtimeEmbed")}</dd>
+        </div>
+        <div className="rag-trace__config-row">
           <dt>{t("rag.topChunks")}</dt>
           <dd>{config.top_chunks ?? 5}</dd>
         </div>
