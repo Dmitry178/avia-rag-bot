@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+# Build from repository root: docker compose build (context = .)
 
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS base
 
@@ -10,18 +11,17 @@ ENV UV_HTTP_TIMEOUT=120
 
 FROM base AS deps
 
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+COPY backend/pyproject.toml backend/uv.lock ./
+COPY mcp-rag /mcp-rag
+RUN uv sync --frozen --no-dev --extra rag --no-install-project
 
 FROM base AS runtime
 
 COPY --from=deps /app/.venv /app/.venv
-COPY pyproject.toml uv.lock ./
-COPY app ./app
-COPY etl ./etl
-COPY scripts ./scripts
-COPY data/rag-document.md ./data/rag-document.md
-RUN uv sync --frozen --no-dev
+COPY backend/pyproject.toml backend/uv.lock ./
+COPY backend/app ./app
+COPY mcp-rag /mcp-rag
+RUN uv sync --frozen --no-dev --extra rag
 
 ENV PATH="/app/.venv/bin:$PATH"
 
