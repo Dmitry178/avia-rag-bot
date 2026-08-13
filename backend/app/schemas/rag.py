@@ -1,13 +1,35 @@
 """RAG pipeline configuration schemas."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.core.rag_constants import DEFAULT_TOP_CHUNKS, MAX_TOP_CHUNKS, MIN_TOP_CHUNKS
 
 
+class McpConnectionConfig(BaseModel):
+    """
+    How the backend spawns the mcp-rag server over stdio.
+    """
+
+    command: str = Field(default="uv", description="Executable used to start the MCP subprocess.")
+    args: list[str] = Field(
+        default_factory=lambda: ["run", "python", "-m", "src.server"],
+        description="Arguments passed to the MCP server command.",
+    )
+    cwd: str | None = Field(
+        default=None,
+        description="Working directory for the MCP subprocess (defaults to <repo>/mcp-rag).",
+    )
+    env: dict[str, str] = Field(
+        default_factory=dict,
+        description="Extra environment variables merged into the MCP subprocess environment.",
+    )
+
+
 class RagConfig(BaseModel):
     """
-    Toggle flags for optional RAG retrieval stages.
+    Toggle flags for optional RAG retrieval stages and runtime selection.
     """
 
     use_hyde: bool | None = Field(
@@ -31,6 +53,14 @@ class RagConfig(BaseModel):
         ge=MIN_TOP_CHUNKS,
         le=MAX_TOP_CHUNKS,
         description="Number of knowledge chunks included in the LLM context.",
+    )
+    runtime: Literal["embed", "mcp"] = Field(
+        default="embed",
+        description="RAG execution path: embedded pipeline in backend or external mcp-rag MCP server.",
+    )
+    mcp: McpConnectionConfig | None = Field(
+        default=None,
+        description="MCP subprocess configuration when runtime is mcp.",
     )
 
     def to_metadata_dict(self) -> dict[str, bool]:
