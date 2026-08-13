@@ -12,8 +12,10 @@ The repository is a **monorepo**:
 
 | Part | Role |
 |------|------|
-| `backend/` | FastAPI API, ETL, FAISS index, RAG pipeline, chat persistence |
+| `backend/` | FastAPI — chats, SSE, LLM guards; RAG via `mcp-rag` (`embed` or `mcp` stdio) |
+| `mcp-rag/` | Canonical RAG + ETL (`src/` package), MCP stdio server, indexing CLI |
 | `frontend/` | React SPA — chat UI, settings panels, trace viewer |
+| `data/` (repo root) | KB volume — markdown, schemas, `kb.db`, FAISS |
 
 ## System context
 
@@ -25,18 +27,23 @@ flowchart LR
 
     subgraph backend ["Backend (FastAPI)"]
         API["API routers"]
-        SVC["Services"]
-        RAG["RAG pipeline"]
-        LLM["LLM clients"]
+        SVC["ChatService"]
+        ADP["RAG adapters\nclient / src_bridge"]
         API --> SVC
-        SVC --> RAG
-        SVC --> LLM
+        SVC --> ADP
     end
 
-    subgraph storage ["On-disk storage"]
-        DB[("SQLite")]
-        FAISS["FAISS index"]
-        DOC["rag-document.md"]
+    subgraph mcp_rag ["mcp-rag (src)"]
+        RAG["RagPipeline"]
+        ETL["ETLService"]
+        MCP["MCP stdio tools"]
+    end
+
+    subgraph storage ["On-disk"]
+        APPDB[("backend/data/app.db")]
+        KBDB[("data/kb.db")]
+        FAISS["data/faiss-*.index"]
+        DOC["data/rag-document-*.md"]
     end
 
     subgraph external ["External"]
@@ -44,13 +51,17 @@ flowchart LR
     end
 
     UI -->|"/api/*"| API
-    SVC --> DB
+    SVC --> APPDB
+    ADP -->|embed in-process| RAG
+    ADP -->|runtime=mcp| MCP
+    MCP --> RAG
+    RAG --> KBDB
     RAG --> FAISS
-    RAG --> DB
-    LLM --> LLM_API
-    ETL["ETL ingest"] --> DOC
-    ETL --> DB
+    ETL --> DOC
+    ETL --> KBDB
     ETL --> FAISS
+    SVC --> LLM_API
+    RAG --> LLM_API
 ```
 
 In **development**, Vite proxies `/api` to `http://127.0.0.1:8000`. In **Docker**, Nginx serves the built SPA and proxies `/api` to the backend container.
@@ -60,29 +71,27 @@ In **development**, Vite proxies `/api` to `http://127.0.0.1:8000`. In **Docker*
 ```
 avia-bot/
 ├── backend/
-│   ├── app/                 # FastAPI application
-│   │   ├── api/routers/     # HTTP layer
-│   │   ├── services/        # Use cases / orchestration
-│   │   ├── repositories/    # Data access
-│   │   ├── models/          # SQLModel tables
-│   │   ├── schemas/         # API DTOs (Pydantic)
-│   │   ├── rag/             # Retrieval pipeline (lanes, methods, generation)
-│   │   ├── llm/             # Chat, embeddings, guards
-│   │   ├── core/            # Config, FAISS, SSE, logging
-│   │   ├── db/              # Session factory, init
-│   │   └── exceptions/      # Error types and handlers
-│   ├── etl/                 # Markdown parse + chunk (no I/O)
-│   ├── data/                # SQLite, FAISS, source document
-│   ├── scripts/             # CLI wrappers (e.g. run_etl.py)
-│   └── tests/
+│   ├── app/                 # FastAPI — chats only in DB layer
+│   │   ├── api/routers/     # HTTP (health, chats)
+│   │   ├── services/        # ChatService, …
+│   │   ├── repositories/    # chat repos
+│   │   ├── models/          # Chat, ChatMessage
+│   │   ├── rag/             # Thin adapters: client, types, mcp_deserialize, kb_access, src_bridge
+│   │   ├── llm/             # Chat completion, guards (no KB ingest)
+│   │   └── core/            # Config, SSE, logging
+│   └── data/                # app.db (chats)
+├── mcp-rag/
+│   ├── src/                 # Canonical RAG + ETL (package `src`)
+│   │   ├── rag/             # RagPipeline, retrieval, methods
+│   │   ├── etl/             # Schema-driven chunker
+│   │   ├── services/        # ETLService
+│   │   ├── mcp/             # MCP tool handlers
+│   │   └── core/            # Config, FAISS, db_manager
+│   ├── scripts/run_etl.py   # Indexing CLI
+│   └── Makefile             # etl-ingest, etl-stats, etl-manifest
+├── data/                    # KB volume (git sources + runtime artifacts)
 ├── frontend/
-│   └── src/
-│       ├── app/             # Shell, layout, providers
-│       ├── features/        # chats, chat, rag, llm, trace
-│       ├── shared/          # API client, i18n, utilities
-│       └── theme/
-├── docker-compose.yml
-└── Makefile
+└── Makefile                 # Delegates etl-* to mcp-rag
 ```
 
 ## Backend layered architecture
@@ -94,12 +103,13 @@ api/routers  →  services/  →  repositories/  →  models/
                       ↘  rag/  llm/  core/  ↗
 ```
 
-| Layer | Location | Responsibility | Must not |
-|-------|----------|----------------|----------|
-| API | `app/api/routers/` | HTTP, validation, `Depends`, call services | SQL, FAISS, LLM, business rules |
-| Service | `app/services/` | Use cases, orchestration, `@handle_basic_db_errors` | Direct session/SQL access |
-| Repository | `app/repositories/` | CRUD, queries; raw SQLAlchemy errors bubble up | Business rules, HTTP |
-| Model | `app/models/` | SQLModel table definitions | Logic, I/O |
+| Layer | Location | Responsibility |
+|-------|----------|----------------|
+| API | `backend/app/api/routers/` | HTTP, validation, call services |
+| Service | `backend/app/services/` | Chat use cases |
+| Repository | `backend/app/repositories/` | Chat CRUD |
+| RAG adapters | `backend/app/rag/` | `EmbedRagClient`, `McpRagClient`, lazy `src` imports |
+| **Canonical RAG/ETL** | **`mcp-rag/src/`** | `RagPipeline`, `ETLService`, FAISS, `kb.db` |
 
 **Schemas** (`app/schemas/`) are Pydantic DTOs for requests and responses — separate from SQLModel tables.
 
@@ -108,8 +118,9 @@ api/routers  →  services/  →  repositories/  →  models/
 ### Request lifecycle
 
 1. FastAPI route receives a Pydantic body/query and injects `DBManager` via `get_db()`.
-2. Route instantiates a service (`ChatService(db)`, `ETLService(db)`, …) and delegates.
-3. Service calls repositories through `DBManager` attributes (`db.chat`, `db.etl`, …).
+2. Route instantiates `ChatService(db)` and delegates.
+3. Service calls repositories through `DBManager` (`db.chat`, …).
+4. RAG mode uses `get_rag_client()` → embed (`src.rag`) or MCP stdio.
 4. On success, service may `await db.commit()`; `DBManager` rolls back and closes the session on exit.
 5. `ServiceError` and `BaseCustomException` subclasses are mapped to HTTP responses by global exception handlers.
 
@@ -118,104 +129,62 @@ api/routers  →  services/  →  repositories/  →  models/
 `DBManager` is the single entry point for database access per request:
 
 - `db.health` — readiness checks
-- `db.etl.chunks`, `db.etl.index_manifest` — knowledge base metadata
 - `db.chat.chats`, `db.chat.messages` — conversations
+
+KB access for trace enrichment: `app/rag/kb_access.py` opens a short-lived session to **`data/kb.db`** via mcp-rag `src`.
 
 It is used as an async context manager (`async with DBManager(SessionLocal) as db`) in the FastAPI dependency and in tests.
 
-## Data model
+## Data volumes
 
-### SQLite tables
+### `backend/data/app.db` (chats)
 
 | Table | Purpose |
 |-------|---------|
-| `chunk_meta` | Text chunks; `id` equals FAISS row index (0…N−1) |
-| `index_manifest` | Metadata of the latest vector index build |
 | `chat` | Conversation thread (type, settings, soft-delete) |
 | `chat_message` | User/assistant messages with JSON metadata |
 
-`Chat.chat_type` is `llm` or `rag`. Settings (`rag_config`, `llm_config`, `use_history`) are stored on the chat and snapshotted into each message's `metadata` on send.
+### `data/kb.db` + FAISS (knowledge base)
 
-### On-disk artifacts
+| Artifact | Purpose |
+|----------|---------|
+| `data/kb.db` — `chunk_meta`, `index_manifest` | Chunk rows + build metadata |
+| `data/faiss-{lang}.index` | Per-language FAISS `IndexFlatIP` |
+| `data/manifest-{lang}.json` | Sidecar metadata |
+| `data/rag-document-{lang}.md` | Source markdown (git) |
+| `data/chunking-schema-{lang}.json` | ETL schema v3 (git) |
+| `data/ingest_checkpoint_{lang}.json` | Transient resume state (deleted on success) |
 
-| Path | Purpose |
-|------|---------|
-| `backend/data/app.db` | SQLite database |
-| `backend/data/faiss-{lang}.index` | Per-language FAISS `IndexFlatIP` |
-| `backend/data/manifest-{lang}.json` | Latest index build metadata per language |
-| `backend/data/rag-document-{lang}.md` | Source markdown per KB language |
-| `backend/data/chunking-schema-ru.json` | RU schema-driven ETL contract |
-| `backend/data/chunking-schema-en.json` | EN schema-driven ETL contract |
-| `backend/data/ingest_checkpoint_{lang}.json` | Transient embedding resume state (deleted on successful ingest) |
-| `backend/data/ingest_checkpoint_{lang}.tmp` | Transient atomic-write sibling for checkpoint JSON |
+Chunk `id` in `kb.db` must match FAISS row index — rebuilt together on ingest.
 
-Chunk `id` in SQLite and FAISS row position must stay aligned — both are rebuilt together on full ingest.
+## ETL pipeline (mcp-rag)
 
-**Checkpoint lifecycle:** created/updated during the embed phase so ingest can resume after interrupt; removed automatically when ingest completes successfully (`ETLService` + CLI). See [operations.md](operations.md#ingest-checkpoint-transient).
+Canonical code: **`mcp-rag/src/`** (`ETLService`, `etl/universal_chunker.py`).  
+**No** `/api/etl` on backend.
 
-## ETL pipeline
+Entry points:
 
-ETL splits into a **pure parsing package** and an **orchestrating service**.
+| Entry | Command / tool |
+|-------|----------------|
+| Makefile | `make etl-ingest`, `make -C mcp-rag etl-ingest` |
+| CLI | `mcp-rag/scripts/run_etl.py` |
+| MCP | `ingest_schema`, `ingest_all`, `stats`, `index_status` |
 
-```mermaid
-flowchart TB
-    MD["rag-document-{lang}.md"]
-    SCH["chunking-schema-{lang}.json"]
-    C["etl/universal_chunker.py"]
-    S["ETLService.ingest()"]
-    E["EmbeddingClient"]
-    DB[("SQLite")]
-    F["FAISS"]
+See [mcp-rag/src/etl/README.md](../mcp-rag/src/etl/README.md) and [operations.md](operations.md).
 
-    SCH --> C
-    MD --> C --> S
-    S --> E
-    S --> DB
-    S --> F
-```
+Sources: `data/rag-document-{lang}.md` (repo root). Chapter groups — see [knowledge_base.md](knowledge_base.md).
 
-### `etl/` package (bounded context)
+Chapters **00** and **13** are injected at generation time via `src/llm/kb_static_context.py` — not in FAISS.
 
-- No FastAPI, SQLite, or FAISS imports.
-- `chunking_schema.py` — schema v3 contract and runtime schema loading from `chunking-schema-{code}.json`.
-- `universal_chunker.py` — policy-driven markdown chunking (`whole_section`, `by_subheading`, `qa_pairs`, `qa_by_heading_prefix`, `regex_split`, `token_window`).
-- `faq_regex.py` — FAQ marker-based extraction helper used by schema policies.
-- Unit-tested in isolation with schema-driven fixtures.
+## RAG pipeline (mcp-rag)
 
-### `ETLService` phases
+Orchestrator: **`src/rag/pipeline.py`** (`RagPipeline`).  
+Backend invokes it via:
 
-1. **Parse & chunk** — read document, produce `ChunkDraft` list.
-2. **Plan** — incremental diff vs existing chunks (`etl_plan.py`): reuse unchanged vectors, embed only new/changed.
-3. **Embed** — batched calls to the embedding API; checkpoint saved per batch (resume on interrupt; **deleted on success**). See [operations.md](operations.md#ingest-checkpoint-transient).
-4. **Persist SQLite** — replace `chunk_meta`, insert new `index_manifest` row, commit.
-5. **Persist FAISS** — build `IndexFlatIP`, atomic write to `faiss.index`.
-6. **Write `manifest.json`** — after DB commit.
-
-Entry points: `POST /api/etl/ingest`, `make etl-ingest`, `scripts/run_etl.py`.
-
-See [backend/etl/README.md](../backend/etl/README.md) for chunking rules per chapter group.
-
-## Knowledge base document
-
-Single source file: `backend/data/rag-document.md`. Chapter groups differ in indexing strategy:
-
-| Chapters | Role | Indexed |
-|----------|------|---------|
-| 00 | Project meta-policy | No — injected into RAG system prompt |
-| 01–12 | Operational SOPs | Yes (`sop`) |
-| 13 | Out-of-scope rules | No — injected into RAG system prompt |
-| 14 | Central FAQ | Yes (`faq`) |
-| 15 | Glossary | No (disabled in MVP) |
-| 16 | Decision trees | Yes (`decision_tree`) |
-| 17 | Scenarios | Yes (`scenario`) |
-
-FAQ chunks unify **chapter 14** and **per-chapter FAQ blocks** at the end of SOP sections (01–12). Each FAQ chunk carries `[Источник: <chapter>]` metadata for trace and context.
-
-Chapters **00** and **13** are loaded at runtime by `app/llm/kb_static_context.py` and appended in `RagPipeline.build_generation_prompt()` — they never pass through FAISS. For MVP the full chapter text is included (not summarized).
-
-## RAG pipeline
-
-Orchestrator: `RagPipeline` in `app/rag/pipeline.py`.
+| `rag_config.runtime` | Path |
+|----------------------|------|
+| `embed` (default) | `EmbedRagClient` → lazy import `src.rag.pipeline` |
+| `mcp` | `McpRagClient` → stdio MCP tool `retrieve` |
 
 ```mermaid
 flowchart TB
@@ -249,7 +218,7 @@ flowchart TB
 
 ### Multi-lane retrieval
 
-Lane definitions live in `app/rag/retrieval_lanes.py`. `VectorRetriever.search_lanes()` runs all lanes **in parallel** (`asyncio.gather`):
+Lane definitions: `src/rag/retrieval_lanes.py`. Decision-tree walkthrough: `src/rag/decision_tree.py` (orchestrated from `ChatService` via `src_bridge`).
 
 | Lane | `content_type` filter | Quota | Source |
 |------|----------------------|-------|--------|
@@ -266,7 +235,7 @@ Each `RetrievedChunk` carries `retrieval_lane` for trace and UI.
 
 When the `decision_tree` lane returns a chunk whose similarity is at or above the threshold (`DECISION_TREE_MIN_SIMILARITY`, default **0.30**), the pipeline treats it as an **operational situation** that warrants a dedicated procedure — not a generic knowledge-base excerpt.
 
-Logic lives in `app/rag/decision_tree.py`; orchestration in `RagPipeline` and `ChatService`:
+Logic lives in `src/rag/decision_tree.py`; orchestration in `RagPipeline` and `ChatService` (via `src_bridge`):
 
 1. **Detection** — after multi-lane retrieval, `select_applicable_decision_trees()` inspects the `decision_tree` lane independently of the global `top_chunks` trim (at most one tree per answer).
 2. **Context split** — matching `decision_tree` chunks are **excluded** from the general RAG context so the main answer is not diluted by mixed corpora.
@@ -327,7 +296,7 @@ sequenceDiagram
 
 1. Same guard pre-check as LLM (unless overridden by mode rules).
 2. `RagPipeline.run()` — retrieval + trace.
-3. Context block built from retrieved chunks **excluding** applicable decision trees (`rag/generation.py`).
+3. Context block built from retrieved chunks **excluding** applicable decision trees (`src/rag/generation.py`).
 4. System prompt = RAG template + static chapters 00/13 + context.
 5. `ChatCompletionClient` generates the general answer.
 6. If a decision tree matched — a **second** LLM call produces the operational walkthrough (`decision_tree_guidance` in metadata).
@@ -393,18 +362,16 @@ All backend calls go to `/api/*` (relative URL). Dev: Vite proxy (`vite.config.t
 
 ## Configuration
 
-Settings use **pydantic-settings** (`app/core/config.py`), loaded from `backend/.env`:
+Settings use **pydantic-settings**:
 
-| Prefix | Examples |
-|--------|----------|
-| `LLM__` | `BASE_URL`, `API_KEY`, `MODEL`, `EMBEDDING_MODEL` |
-| `DB__` | `URL` (default SQLite) |
-| `DATA__` | `DIR` |
-| `FAISS__` | `DIR` |
-| `ETL__` | `DOCUMENT_PATH` |
-| `APP__` | `CORS_ORIGINS` |
+| Package | Config module | Prefix | Examples |
+|---------|---------------|--------|----------|
+| backend | `app/core/config.py` | `LLM__`, `DB__`, `APP__` | chat DB, CORS, LLM API |
+| mcp-rag | `src/core/config.py` | `MCP_RAG__`, `LLM__`, `DB__`, `DATA__`, `FAISS__` | `kb.db`, FAISS dir, ETL paths |
 
-Docker overrides paths via `docker-compose.yml` environment and bind-mounts `./backend/data`.
+Backend loads `backend/.env`; mcp-rag loads `mcp-rag/.env` (or env vars when imported from backend embed mode).
+
+See [configuration.md](configuration.md) for volume layout (`backend/data/app.db` vs repo-root `data/`).
 
 ## Deployment topologies
 
@@ -422,7 +389,14 @@ Docker overrides paths via `docker-compose.yml` environment and bind-mounts `./b
 | `backend` | `backend/Dockerfile` (uv + Python 3.13) | Internal `:8000`, healthcheck on `/api/healthz` |
 | `frontend` | `frontend/Dockerfile` (Node build → Nginx) | Host `:8080` (configurable `FRONTEND_PORT`) |
 
-Data persists on the host via volume `./backend/data:/app/data`.
+Data volumes (stage 9):
+
+| Mount | Contents |
+|-------|----------|
+| `./backend/data` | `app.db` (chats) |
+| `./data` | `kb.db`, FAISS, markdown, schemas |
+
+See [deployment.md](deployment.md) for Compose details.
 
 ## External dependencies
 
@@ -443,19 +417,21 @@ Data persists on the host via volume `./backend/data:/app/data`.
 
 | Suite | Location | Focus |
 |-------|----------|-------|
-| API integration | `backend/tests/api/` | HTTP contracts, chat, ETL endpoints |
-| Unit | `backend/tests/unit/` | ETL chunker, RAG methods, prompt guard, services |
-| ETL package | `backend/tests/unit/etl/` | Schema loader + universal chunker without DB |
+| API integration | `backend/tests/api/` | HTTP contracts, chat endpoints |
+| Unit | `backend/tests/unit/` | RAG client, prompt guard, services |
+| Parity (opt-in) | `backend/tests/parity/` | embed vs MCP stdio (`--run-parity`) |
+| mcp-rag unit | `mcp-rag/tests/` | ETL chunker, MCP tools, import smoke |
 
-Run: `make backend-test` (from repo root). See [backend/tests/README.md](../backend/tests/README.md).
+Run: `make backend-test` (repo root). ETL tests live in **`mcp-rag/tests/`**. See [backend/tests/README.md](../backend/tests/README.md).
 
 ## API surface (summary)
 
 | Area | Prefix | Key endpoints |
 |------|--------|---------------|
 | Health | `/api` | `GET /healthz`, `GET /readyz` |
-| ETL | `/api/etl` | `POST /ingest`, `GET /stats`, `GET /manifest` |
 | Chats | `/api/chats` | CRUD, `POST /{id}/messages`, `GET /events` (SSE) |
+
+Indexing (ETL) is **not** exposed on backend HTTP — use `make etl-ingest`, `mcp-rag/scripts/run_etl.py`, or MCP tools. See [operations.md](operations.md).
 
 Full request/response shapes are in `app/schemas/`.
 
@@ -478,6 +454,6 @@ Full request/response shapes are in `app/schemas/`.
 | [api.md](api.md) | HTTP API reference |
 | [deployment.md](deployment.md) | Deployment runbook |
 | [operations.md](operations.md) | ETL, backups, troubleshooting |
-| [backend/etl/README.md](../backend/etl/README.md) | Schema-driven ETL internals |
+| [mcp-rag/src/etl/README.md](../mcp-rag/src/etl/README.md) | Schema-driven ETL internals |
 | [backend/tests/README.md](../backend/tests/README.md) | Test layout and commands |
 | [adr/](adr/) | Architecture Decision Records |

@@ -12,8 +12,10 @@ Avia-bot — демонстрационный RAG-ассистент для со
 
 | Часть | Роль |
 |-------|------|
-| `backend/` | FastAPI API, ETL, FAISS-индекс, RAG-пайплайн, хранение чатов |
-| `frontend/` | React SPA — чат, панели настроек, просмотр трассировки |
+| `backend/` | FastAPI — чаты, SSE, LLM guards; RAG через `mcp-rag` (`embed` или `mcp` stdio) |
+| `mcp-rag/` | Канонический RAG + ETL (пакет `src/`), MCP stdio, CLI индексации |
+| `frontend/` | React SPA — чат, панели настроек, трассировка |
+| `data/` (корень репо) | Том KB — markdown, схемы, `kb.db`, FAISS |
 
 ## Контекст системы
 
@@ -25,18 +27,23 @@ flowchart LR
 
     subgraph backend ["Backend (FastAPI)"]
         API["API-роутеры"]
-        SVC["Сервисы"]
-        RAG["RAG-пайплайн"]
-        LLM["LLM-клиенты"]
+        SVC["ChatService"]
+        ADP["RAG-адаптеры\nclient / src_bridge"]
         API --> SVC
-        SVC --> RAG
-        SVC --> LLM
+        SVC --> ADP
     end
 
-    subgraph storage ["Хранилище на диске"]
-        DB[("SQLite")]
-        FAISS["FAISS-индекс"]
-        DOC["rag-document.md"]
+    subgraph mcp_rag ["mcp-rag (src)"]
+        RAG["RagPipeline"]
+        ETL["ETLService"]
+        MCP["MCP stdio tools"]
+    end
+
+    subgraph storage ["На диске"]
+        APPDB[("backend/data/app.db")]
+        KBDB[("data/kb.db")]
+        FAISS["data/faiss-*.index"]
+        DOC["data/rag-document-*.md"]
     end
 
     subgraph external ["Внешние сервисы"]
@@ -44,13 +51,17 @@ flowchart LR
     end
 
     UI -->|"/api/*"| API
-    SVC --> DB
+    SVC --> APPDB
+    ADP -->|embed in-process| RAG
+    ADP -->|runtime=mcp| MCP
+    MCP --> RAG
+    RAG --> KBDB
     RAG --> FAISS
-    RAG --> DB
-    LLM --> LLM_API
-    ETL["ETL ingest"] --> DOC
-    ETL --> DB
+    ETL --> DOC
+    ETL --> KBDB
     ETL --> FAISS
+    SVC --> LLM_API
+    RAG --> LLM_API
 ```
 
 В **разработке** Vite проксирует `/api` на `http://127.0.0.1:8000`. В **Docker** Nginx отдаёт собранный SPA и проксирует `/api` в контейнер backend.
@@ -60,29 +71,27 @@ flowchart LR
 ```
 avia-bot/
 ├── backend/
-│   ├── app/                 # Приложение FastAPI
-│   │   ├── api/routers/     # HTTP-слой
-│   │   ├── services/        # Сценарии / оркестрация
-│   │   ├── repositories/    # Доступ к данным
-│   │   ├── models/          # Таблицы SQLModel
-│   │   ├── schemas/         # DTO API (Pydantic)
-│   │   ├── rag/             # Пайплайн retrieval (lanes, methods, generation)
-│   │   ├── llm/             # Чат, embeddings, guard
-│   │   ├── core/            # Конфиг, FAISS, SSE, логи
-│   │   ├── db/              # Фабрика сессий, init
-│   │   └── exceptions/      # Ошибки и обработчики
-│   ├── etl/                 # Парсинг markdown + чанкинг (без I/O)
-│   ├── data/                # SQLite, FAISS, исходный документ
-│   ├── scripts/             # CLI-обёртки (напр. run_etl.py)
-│   └── tests/
+│   ├── app/                 # FastAPI — в DB только чаты
+│   │   ├── api/routers/     # HTTP (health, chats)
+│   │   ├── services/        # ChatService, …
+│   │   ├── repositories/    # chat repos
+│   │   ├── models/          # Chat, ChatMessage
+│   │   ├── rag/             # Тонкие адаптеры: client, types, mcp_deserialize, kb_access, src_bridge
+│   │   ├── llm/             # Чат, guards (без KB ingest)
+│   │   └── core/            # Конфиг, SSE, логи
+│   └── data/                # app.db (чаты)
+├── mcp-rag/
+│   ├── src/                 # Канонический RAG + ETL (пакет `src`)
+│   │   ├── rag/             # RagPipeline, retrieval, methods
+│   │   ├── etl/             # Schema-driven chunker
+│   │   ├── services/        # ETLService
+│   │   ├── mcp/             # MCP tool handlers
+│   │   └── core/            # Конфиг, FAISS, db_manager
+│   ├── scripts/run_etl.py   # CLI индексации
+│   └── Makefile             # etl-ingest, etl-stats, etl-manifest
+├── data/                    # Том KB (git-источники + runtime-артефакты)
 ├── frontend/
-│   └── src/
-│       ├── app/             # Оболочка, layout, провайдеры
-│       ├── features/        # chats, chat, rag, llm, trace
-│       ├── shared/          # API-клиент, i18n, утилиты
-│       └── theme/
-├── docker-compose.yml
-└── Makefile
+└── Makefile                 # Делегирует etl-* в mcp-rag
 ```
 
 ## Слоистая архитектура backend
@@ -94,12 +103,13 @@ api/routers  →  services/  →  repositories/  →  models/
                       ↘  rag/  llm/  core/  ↗
 ```
 
-| Слой | Расположение | Ответственность | Запрещено |
-|------|--------------|-----------------|-----------|
-| API | `app/api/routers/` | HTTP, валидация, `Depends`, вызов сервисов | SQL, FAISS, LLM, бизнес-правила |
-| Service | `app/services/` | Сценарии, оркестрация, `@handle_basic_db_errors` | Прямой доступ к сессии/SQL |
-| Repository | `app/repositories/` | CRUD, запросы; сырые ошибки SQLAlchemy пробрасываются | Бизнес-правила, HTTP |
-| Model | `app/models/` | Определения таблиц SQLModel | Логика, I/O |
+| Слой | Расположение | Ответственность |
+|------|--------------|-----------------|
+| API | `backend/app/api/routers/` | HTTP, валидация, вызов сервисов |
+| Service | `backend/app/services/` | Сценарии чата |
+| Repository | `backend/app/repositories/` | CRUD чатов |
+| RAG-адаптеры | `backend/app/rag/` | `EmbedRagClient`, `McpRagClient`, lazy-импорты `src` |
+| **Канонический RAG/ETL** | **`mcp-rag/src/`** | `RagPipeline`, `ETLService`, FAISS, `kb.db` |
 
 **Schemas** (`app/schemas/`) — Pydantic DTO для запросов и ответов, отдельно от таблиц SQLModel.
 
@@ -108,8 +118,9 @@ api/routers  →  services/  →  repositories/  →  models/
 ### Жизненный цикл запроса
 
 1. Роут FastAPI принимает тело/query Pydantic и инжектит `DBManager` через `get_db()`.
-2. Роут создаёт сервис (`ChatService(db)`, `ETLService(db)`, …) и делегирует работу.
-3. Сервис вызывает репозитории через атрибуты `DBManager` (`db.chat`, `db.etl`, …).
+2. Роут создаёт `ChatService(db)` и делегирует работу.
+3. Сервис вызывает репозитории через `DBManager` (`db.chat`, …).
+4. RAG: `get_rag_client()` → embed (`src.rag`) или MCP stdio.
 4. При успехе сервис может вызвать `await db.commit()`; при выходе `DBManager` откатывает транзакцию и закрывает сессию.
 5. `ServiceError` и подклассы `BaseCustomException` преобразуются в HTTP-ответы глобальными обработчиками.
 
@@ -118,104 +129,62 @@ api/routers  →  services/  →  repositories/  →  models/
 `DBManager` — единая точка доступа к БД на запрос:
 
 - `db.health` — проверки готовности
-- `db.etl.chunks`, `db.etl.index_manifest` — метаданные базы знаний
 - `db.chat.chats`, `db.chat.messages` — диалоги
+
+Доступ к KB для обогащения trace: `app/rag/kb_access.py` открывает короткую сессию к **`data/kb.db`** через mcp-rag `src`.
 
 Используется как async context manager (`async with DBManager(SessionLocal) as db`) в зависимости FastAPI и в тестах.
 
-## Модель данных
+## Тома данных
 
-### Таблицы SQLite
+### `backend/data/app.db` (чаты)
 
 | Таблица | Назначение |
 |---------|------------|
-| `chunk_meta` | Текстовые чанки; `id` совпадает с номером строки в FAISS (0…N−1) |
-| `index_manifest` | Метаданные последней сборки векторного индекса |
 | `chat` | Тред диалога (тип, настройки, мягкое удаление) |
 | `chat_message` | Сообщения user/assistant с JSON metadata |
 
-`Chat.chat_type` — `llm` или `rag`. Настройки (`rag_config`, `llm_config`, `use_history`) хранятся в чате и снимком попадают в `metadata` каждого сообщения при отправке.
+### `data/kb.db` + FAISS (база знаний)
 
-### Артефакты на диске
+| Артефакт | Назначение |
+|----------|------------|
+| `data/kb.db` — `chunk_meta`, `index_manifest` | Чанки + метаданные сборки |
+| `data/faiss-{lang}.index` | FAISS `IndexFlatIP` по языку |
+| `data/manifest-{lang}.json` | Sidecar-метаданные |
+| `data/rag-document-{lang}.md` | Исходный markdown (git) |
+| `data/chunking-schema-{lang}.json` | ETL schema v3 (git) |
+| `data/ingest_checkpoint_{lang}.json` | Временный resume (удаляется при успехе) |
 
-| Путь | Назначение |
-|------|------------|
-| `backend/data/app.db` | База SQLite |
-| `backend/data/faiss-{lang}.index` | FAISS по языку KB |
-| `backend/data/manifest-{lang}.json` | Метаданные последней сборки индекса |
-| `backend/data/rag-document-{lang}.md` | Исходный markdown по языкам KB |
-| `backend/data/chunking-schema-ru.json` | RU schema-driven ETL контракт |
-| `backend/data/chunking-schema-en.json` | EN schema-driven ETL контракт |
-| `backend/data/ingest_checkpoint_{lang}.json` | Временное состояние для resume embedding (удаляется при успешном ingest) |
-| `backend/data/ingest_checkpoint_{lang}.tmp` | Temp при атомарной записи checkpoint |
+`id` чанка в `kb.db` должен совпадать с номером строки FAISS — пересобираются вместе при ingest.
 
-`id` чанка в SQLite и позиция строки в FAISS должны оставаться согласованными — оба пересобираются вместе при полном ingest.
+## ETL-пайплайн (mcp-rag)
 
-**Жизненный цикл checkpoint:** создаётся/обновляется на фазе embed для возобновления после сбоя; удаляется автоматически при успешном завершении (`ETLService` + CLI). См. [operations_ru.md](operations_ru.md#checkpoint-ingest-временные-файлы).
+Канонический код: **`mcp-rag/src/`** (`ETLService`, `etl/universal_chunker.py`).  
+**Нет** `/api/etl` на backend.
 
-## ETL-пайплайн
+Точки входа:
 
-ETL разделён на **чистый пакет парсинга** и **оркестрирующий сервис**.
+| Вход | Команда / tool |
+|------|----------------|
+| Makefile | `make etl-ingest`, `make -C mcp-rag etl-ingest` |
+| CLI | `mcp-rag/scripts/run_etl.py` |
+| MCP | `ingest_schema`, `ingest_all`, `stats`, `index_status` |
 
-```mermaid
-flowchart TB
-    MD["rag-document-{lang}.md"]
-    SCH["chunking-schema-{lang}.json"]
-    C["etl/universal_chunker.py"]
-    S["ETLService.ingest()"]
-    E["EmbeddingClient"]
-    DB[("SQLite")]
-    F["FAISS"]
+См. [mcp-rag/src/etl/README_RU.md](../mcp-rag/src/etl/README_RU.md) и [operations_ru.md](operations_ru.md).
 
-    SCH --> C
-    MD --> C --> S
-    S --> E
-    S --> DB
-    S --> F
-```
+Источники: `data/rag-document-{lang}.md`. Группы глав — [knowledge_base_ru.md](knowledge_base_ru.md).
 
-### Пакет `etl/` (ограниченный контекст)
+Главы **00** и **13** инжектируются при генерации через `src/llm/kb_static_context.py` — не в FAISS.
 
-- Без импортов FastAPI, SQLite и FAISS.
-- `chunking_schema.py` — контракт schema v3 и загрузка runtime-конфигурации из `chunking-schema-{code}.json`.
-- `universal_chunker.py` — policy-driven чанкование markdown (`whole_section`, `by_subheading`, `qa_pairs`, `qa_by_heading_prefix`, `regex_split`, `token_window`).
-- `faq_regex.py` — helper для извлечения FAQ по маркерам из схемы.
-- Unit-тесты изолированно на schema-driven фикстурах.
+## RAG-пайплайн (mcp-rag)
 
-### Фазы `ETLService`
+Оркестратор: **`src/rag/pipeline.py`** (`RagPipeline`).  
+Backend вызывает через:
 
-1. **Parse & chunk** — чтение документа, список `ChunkDraft`.
-2. **Plan** — инкрементальный diff с существующими чанками (`etl_plan.py`): переиспользование неизменённых векторов, embed только новых/изменённых.
-3. **Embed** — пакетные вызовы embedding API; checkpoint сохраняется после каждого батча (resume при прерывании; **удаляется при успехе**). См. [operations_ru.md](operations_ru.md#checkpoint-ingest-временные-файлы).
-4. **Persist SQLite** — замена `chunk_meta`, вставка строки `index_manifest`, commit.
-5. **Persist FAISS** — сборка `IndexFlatIP`, атомарная запись в `faiss.index`.
-6. **Запись `manifest.json`** — после commit в БД.
-
-Точки входа: `POST /api/etl/ingest`, `make etl-ingest`, `scripts/run_etl.py`.
-
-Подробности чанкинга по группам глав — в [backend/etl/README_RU.md](../backend/etl/README_RU.md).
-
-## Документ базы знаний
-
-Единый исходный файл: `backend/data/rag-document.md`. Группы глав различаются стратегией индексации:
-
-| Главы | Роль | Индексируется |
-|-------|------|---------------|
-| 00 | Мета-политика проекта | Нет — в системный промпт RAG |
-| 01–12 | Операционные SOP | Да (`sop`) |
-| 13 | Правила out-of-scope | Нет — в системный промпт RAG |
-| 14 | Центральный FAQ | Да (`faq`) |
-| 15 | Глоссарий | Нет (отключено в MVP) |
-| 16 | Decision trees | Да (`decision_tree`) |
-| 17 | Сценарии | Да (`scenario`) |
-
-FAQ-чанки объединяют **главу 14** и **блоки FAQ в конце SOP-разделов** (01–12). Каждый FAQ-чанк содержит метаданные `[Источник: <глава>]` для трассировки и контекста.
-
-Главы **00** и **13** загружаются в runtime через `app/llm/kb_static_context.py` и добавляются в `RagPipeline.build_generation_prompt()` — через FAISS не проходят. В MVP в промпт попадает полный текст глав (без суммаризации).
-
-## RAG-пайплайн
-
-Оркестратор: `RagPipeline` в `app/rag/pipeline.py`.
+| `rag_config.runtime` | Путь |
+|----------------------|------|
+| `embed` (по умолчанию) | `EmbedRagClient` → lazy import `src.rag.pipeline` |
+| `mcp` | `McpRagClient` → stdio MCP tool `retrieve` |
 
 ```mermaid
 flowchart TB
@@ -249,7 +218,7 @@ flowchart TB
 
 ### Multi-lane retrieval
 
-Определения lane — в `app/rag/retrieval_lanes.py`. `VectorRetriever.search_lanes()` запускает все lane **параллельно** (`asyncio.gather`):
+Определения lane — в `src/rag/retrieval_lanes.py`. Decision-tree walkthrough: `src/rag/decision_tree.py` (из `ChatService` через `src_bridge`).
 
 | Lane | Фильтр `content_type` | Квота | Источник |
 |------|----------------------|-------|----------|
@@ -266,7 +235,7 @@ flowchart TB
 
 Если lane `decision_tree` возвращает чанк с similarity не ниже порога (`DECISION_TREE_MIN_SIMILARITY`, по умолчанию **0.30**), пайплайн считает ситуацию **операционной** — нужен отдельный пошаговый алгоритм, а не общий справочный ответ.
 
-Логика — в `app/rag/decision_tree.py`; оркестрация — в `RagPipeline` и `ChatService`:
+Логика — в `src/rag/decision_tree.py`; оркестрация — в `RagPipeline` и `ChatService` (через `src_bridge`):
 
 1. **Детекция** — после multi-lane retrieval `select_applicable_decision_trees()` смотрит на lane `decision_tree` независимо от глобальной обрезки `top_chunks` (не более одного дерева на ответ).
 2. **Разделение контекста** — совпавшие чанки `decision_tree` **исключаются** из общего RAG-контекста, чтобы основной ответ не размывался смешением корпусов.
@@ -327,7 +296,7 @@ sequenceDiagram
 
 1. Тот же pre-check guard, что и в LLM (если не переопределено правилами режима).
 2. `RagPipeline.run()` — retrieval + trace.
-3. Блок контекста из найденных чанков **без** применимых деревьев решений (`rag/generation.py`).
+3. Блок контекста из найденных чанков **без** применимых деревьев решений (`src/rag/generation.py`).
 4. System prompt = RAG-шаблон + статические главы 00/13 + контекст.
 5. `ChatCompletionClient` генерирует общий ответ.
 6. Если дерево решений совпало — **второй** вызов LLM формирует оперативную проработку (`decision_tree_guidance` в metadata).
@@ -393,18 +362,14 @@ React 19 SPA с feature-based структурой папок.
 
 ## Конфигурация
 
-Настройки через **pydantic-settings** (`app/core/config.py`), загрузка из `backend/.env`:
+Настройки через **pydantic-settings**:
 
-| Префикс | Примеры |
-|---------|---------|
-| `LLM__` | `BASE_URL`, `API_KEY`, `MODEL`, `EMBEDDING_MODEL` |
-| `DB__` | `URL` (по умолчанию SQLite) |
-| `DATA__` | `DIR` |
-| `FAISS__` | `DIR` |
-| `ETL__` | `DOCUMENT_PATH` |
-| `APP__` | `CORS_ORIGINS` |
+| Пакет | Модуль | Префикс | Примеры |
+|-------|--------|---------|---------|
+| backend | `app/core/config.py` | `LLM__`, `DB__`, `APP__` | БД чатов, CORS, LLM API |
+| mcp-rag | `src/core/config.py` | `MCP_RAG__`, `LLM__`, `DB__`, `DATA__`, `FAISS__` | `kb.db`, FAISS, пути ETL |
 
-В Docker пути переопределяются через environment в `docker-compose.yml` и bind-mount `./backend/data`.
+См. [configuration_ru.md](configuration_ru.md) — раскладка томов (`backend/data/app.db` vs `data/`).
 
 ## Топологии развёртывания
 
@@ -422,7 +387,14 @@ React 19 SPA с feature-based структурой папок.
 | `backend` | `backend/Dockerfile` (uv + Python 3.13) | Внутренний `:8000`, healthcheck `/api/healthz` |
 | `frontend` | `frontend/Dockerfile` (Node build → Nginx) | Хост `:8080` (настраивается `FRONTEND_PORT`) |
 
-Данные сохраняются на хосте через volume `./backend/data:/app/data`.
+Тома данных (этап 9):
+
+| Mount | Содержимое |
+|-------|------------|
+| `./backend/data` | `app.db` (чаты) |
+| `./data` | `kb.db`, FAISS, markdown, схемы |
+
+См. [deployment_ru.md](deployment_ru.md).
 
 ## Внешние зависимости
 
@@ -443,19 +415,21 @@ React 19 SPA с feature-based структурой папок.
 
 | Набор | Расположение | Фокус |
 |-------|--------------|-------|
-| API integration | `backend/tests/api/` | HTTP-контракты, чат, ETL endpoints |
-| Unit | `backend/tests/unit/` | ETL chunker, RAG methods, prompt guard, services |
-| Пакет ETL | `backend/tests/unit/etl/` | Schema loader + universal chunker без БД |
+| API integration | `backend/tests/api/` | HTTP-контракты, чат |
+| Unit | `backend/tests/unit/` | RAG client, prompt guard, services |
+| Parity (opt-in) | `backend/tests/parity/` | embed vs MCP stdio (`--run-parity`) |
+| mcp-rag unit | `mcp-rag/tests/` | ETL chunker, MCP tools |
 
-Запуск: `make backend-test` (из корня репозитория). См. [backend/tests/README_RU.md](../backend/tests/README_RU.md).
+Запуск: `make backend-test`. ETL-тесты — в **`mcp-rag/tests/`**. См. [backend/tests/README_RU.md](../backend/tests/README_RU.md).
 
 ## Поверхность API (кратко)
 
 | Область | Префикс | Ключевые endpoints |
 |---------|---------|-------------------|
 | Health | `/api` | `GET /healthz`, `GET /readyz` |
-| ETL | `/api/etl` | `POST /ingest`, `GET /stats`, `GET /manifest` |
 | Chats | `/api/chats` | CRUD, `POST /{id}/messages`, `GET /events` (SSE) |
+
+Индексация (ETL) **не** на backend HTTP — `make etl-ingest`, `mcp-rag/scripts/run_etl.py` или MCP tools. См. [operations_ru.md](operations_ru.md).
 
 Полные формы запросов/ответов — в `app/schemas/`.
 
@@ -478,6 +452,6 @@ React 19 SPA с feature-based структурой папок.
 | [api_ru.md](api_ru.md) | Справочник HTTP API |
 | [deployment_ru.md](deployment_ru.md) | Runbook развёртывания |
 | [operations_ru.md](operations_ru.md) | ETL, бэкапы, troubleshooting |
-| [backend/etl/README_RU.md](../backend/etl/README_RU.md) | Внутренности schema-driven ETL |
+| [mcp-rag/src/etl/README_RU.md](../mcp-rag/src/etl/README_RU.md) | Внутренности schema-driven ETL |
 | [backend/tests/README_RU.md](../backend/tests/README_RU.md) | Структура тестов и команды |
 | [adr/](adr/) | Architecture Decision Records |
